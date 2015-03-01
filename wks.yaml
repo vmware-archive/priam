@@ -1,0 +1,15 @@
+---
+targets:
+- name: radio
+  host: https://radio.workspaceair.com
+  clientid: oauthclient
+  clientsecret: oauthpassword
+- name: "1"
+  host: https://radio.workspaceair.com
+  clientid: oauthclient
+  clientsecret: oauthpassword
+- name: staging
+  host: https://radio.hwslabs.com
+  clientid: oauthclient
+  clientsecret: oauthpassword
+

@@ -8,17 +8,14 @@ applications:
   env:
     DIEGO_STAGE_BETA: "true"
   workspace:
-    host: https://radio.workspaceair.com
-    oauthclient: oauthclient
-    oauthclientSecret: oauthpassword
     packageVersion: '1.0'
     description: Fanny's Demo App for RADIO
-    icon: icons/vin.jpg
+    iconFile: icons/vin.jpg
     attributeMaps: 
       UserName: ${user.UserName}
       FirstName: ${user.FirstName}
       LastName: ${user.LastName}
-    accessPolicySet: SuperSecure
+    accessPolicy: SuperSecure
     authInfo:
       type: Saml20
       validityTimeSeconds: 200
