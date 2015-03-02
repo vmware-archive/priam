@@ -4,12 +4,20 @@ import (
 	//"golang.org/x/oauth2"
 	"fmt"
 	"github.com/codegangsta/cli"
+	"gopkg.in/yaml.v2"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
+/* target is used to encapsulate everything needed to connect to a workspace 
+   instance. In addition, Current indicates whether this is the current default
+   target.
+*/
 type target struct {
 	Name         string
 	ClientID     string
@@ -18,15 +26,7 @@ type target struct {
 	Current      bool
 }
 
-var appConfig struct {
-	DebugMode bool
-	Targets   []target
-}
-
-var currentTarget uint
-var appConfigFile string = "./wks.yaml"
-
-type wksAppConfig struct {
+type wksApp struct {
 	packageVersion string
 	description    string
 	iconFile       string
@@ -35,47 +35,63 @@ type wksAppConfig struct {
 	authInfo       map[string]string
 }
 
-type manifest struct {
+type manifestApp struct {
 	name      string
 	memory    string
 	instances int
 	path      string
 	buildpack string
 	env       map[string]string
-	workspace wksAppConfig
+	workspace wksApp
 }
 
-func getAppConfig() {
-	getYAML("./wks.yaml", &appConfig)
-	/*
-		var cfg map[interface{}]interface{}
-		getYAML("./wks.yaml", &cfg)
-		for _, av := range cfg["targets"].([]interface{}) {
-			t := av.(map[interface{}]interface{})
-			//fmt.Printf("t %#v\n", t)
-			tgt := target{ystr(t["name"]), ystr(t["clientid"]),
-				ystr(t["clientsecret"]), ystr(t["host"]),
-				ybool(t["current"])}
-			//fmt.Printf("target %#v\n", tgt)
-			targets = append(targets, tgt)
-		}
-		//fmt.Printf("targets %#v\n", targets)
-	*/
+var currentTarget uint
+var appConfig struct {
+	DebugMode bool
+	Targets   []target
 }
 
-func putAppConfig() {
-	putYAML("./wks_out.yaml", appConfig)
+var inR io.Reader = os.Stdin
+var outW io.Writer = os.Stdout
+var errW io.Writer = os.Stderr
+var inCfg, outCfg, manifest []byte 
+
+func getFile(filename string) (out []byte, err error) {
+	fullname, err := filepath.Abs(filename)
+	if err == nil {
+		out, err = ioutil.ReadFile(fullname)
+	}
+	return
 }
 
-func getManifest() {
+func putFile(filename string, in []byte) (err error) {
+	fullname, err := filepath.Abs(filename)
+	if err == nil {
+		err = ioutil.WriteFile(fullname, in, 0644)
+	}
+	return
+}
+
+func getAppConfig() (error) {
+	return yaml.Unmarshal(inCfg, appConfig)
+}
+
+func putAppConfig() (err error) {
+	outCfg, err = yaml.Marshal(appConfig)
+	return
+}
+
+func getManifest() (err error) {
 	var cfg map[interface{}]interface{}
-	getYAML("./manifest.yaml", &cfg)
-	fmt.Printf("\n\nAppValue: %#v\n\n", cfg["applications"])
-	for _, app := range cfg["applications"].([]interface{}) {
-		for k, v := range app.(map[interface{}]interface{}) {
-			fmt.Printf("key %v, Value: %#v\n\n", k, v)
+	if err = yaml.Unmarshal(manifest, cfg); err == nil {
+		fmt.Printf("\n\nAppValue: %#v\n\n", cfg["applications"])
+		for _, app := range cfg["applications"].([]interface{}) {
+			for k, v := range app.(map[interface{}]interface{}) {
+				fmt.Printf("key %v, Value: %#v\n\n", k, v)
+			}
 		}
 	}
+	return
 }
 
 func cmdPush(c *cli.Context) {
@@ -85,7 +101,11 @@ func cmdPush(c *cli.Context) {
 
 func cmdTarget(c *cli.Context) {
 	//fmt.Printf()
+	url, err := url.Parse("what.com/")
+    fmt.Printf("url: %#v, err: %v", url, err)
 	println("target command")
+	putAppConfig()
+
 }
 
 func cmdHealth(c *cli.Context) {
@@ -104,17 +124,14 @@ func cmdHealth(c *cli.Context) {
 	fmt.Printf("Body: %v\n", string(body))
 }
 
-func wks(args []string, inCfg []bytes, outCfg []bytes, out ioutil.Writer, error ioutl.Writer) (error uint) {
-
-}
-
-func main() {
+func wks(args []string) (err error) {
 	app := cli.NewApp()
 	app.Name = "wks"
 	app.Usage = "general usage goes here"
 	app.Action = cli.ShowAppHelp
 	app.Email = ""
 	app.Author = ""
+	app.Writer = outW
 
 	app.Commands = []cli.Command{
 		{
@@ -165,12 +182,28 @@ func main() {
 		},
 	}
 
-	getAppConfig()
-	putAppConfig()
-	url, err := url.Parse("what.com/")
-	fmt.Printf("url: %#v, err: %v", url, err)
+	if err = getAppConfig(); err == nil {
+		err = app.Run(args)
+	}
+	return
+}
 
-	app.Run(os.Args)
+func main() {
+	var err error
+	var configFile string = filepath.Join(os.Getenv("HOME"), ".wks.yaml")
+	inCfg, err = getFile(configFile)
+	//println(err.Error())
+	if err != nil && !strings.HasSuffix(err.Error(), "no such file or directory") {
+		panic(err)
+	}
+	if err = wks(os.Args); err != nil {
+		panic(err)
+	}
+	if len(outCfg) > 0 {
+		if err = putFile(configFile, outCfg); err != nil {
+			panic(err)
+		}
+	}
 }
 
 
