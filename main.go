@@ -8,7 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
+	//"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,11 +19,9 @@ import (
    target.
 */
 type target struct {
-	Name         string
+	Host         string
 	ClientID     string
 	ClientSecret string
-	Host         string
-	Current      bool
 }
 
 type wksApp struct {
@@ -45,12 +43,13 @@ type manifestApp struct {
 	workspace wksApp
 }
 
-var currentTarget uint
-var appConfig struct {
+type appConfig struct {
 	DebugMode bool
-	Targets   []target
+	CurrentTarget string
+	Targets   map[string]target
 }
 
+var appCfg appConfig
 var inR io.Reader = os.Stdin
 var outW io.Writer = os.Stdout
 var errW io.Writer = os.Stderr
@@ -72,12 +71,24 @@ func putFile(filename string, in []byte) (err error) {
 	return
 }
 
-func getAppConfig() (error) {
-	return yaml.Unmarshal(inCfg, appConfig)
+func getAppConfig() (err error) {
+	appCfg = appConfig{}
+	if err = yaml.Unmarshal(inCfg, &appCfg); err != nil {
+		return
+	}
+	if appCfg.CurrentTarget != "" &&
+			appCfg.Targets[appCfg.CurrentTarget] != (target{}) {
+		return
+	}
+	for k := range appCfg.Targets {
+		appCfg.CurrentTarget = k
+		return
+	}
+	return 
 }
 
 func putAppConfig() (err error) {
-	outCfg, err = yaml.Marshal(appConfig)
+	outCfg, err = yaml.Marshal(&appCfg)
 	return
 }
 
@@ -100,12 +111,28 @@ func cmdPush(c *cli.Context) {
 }
 
 func cmdTarget(c *cli.Context) {
-	//fmt.Printf()
-	url, err := url.Parse("what.com/")
-    fmt.Printf("url: %#v, err: %v", url, err)
-	println("target command")
-	putAppConfig()
+	a := c.Args()
+	if len(a) < 1 {
+		if appCfg.CurrentTarget == "" {
+			fmt.Fprintf(outW, "no target set\n")
 
+		} else {
+			fmt.Fprintf(outW, "Current target is: %s\n", 
+				appCfg.Targets[appCfg.CurrentTarget].Host)
+		}
+		return
+	}
+	if !strings.HasPrefix(a[0], "http:") && !strings.HasPrefix(a[0], "https:") {
+		a[0] = "https://" + a[0]
+	}
+	if !c.Bool("force") {
+		//health check here
+	}
+	appCfg.CurrentTarget = "2"
+	appCfg.Targets[appCfg.CurrentTarget] = target{Host: a[0]}
+	putAppConfig()
+	fmt.Fprintf(outW, "New target is: %s\n", 
+		appCfg.Targets[appCfg.CurrentTarget].Host)
 }
 
 func cmdHealth(c *cli.Context) {
@@ -127,7 +154,7 @@ func cmdHealth(c *cli.Context) {
 func wks(args []string) (err error) {
 	app := cli.NewApp()
 	app.Name = "wks"
-	app.Usage = "general usage goes here"
+	app.Usage = "a utility to publish applications to Workspace"
 	app.Action = cli.ShowAppHelp
 	app.Email = ""
 	app.Author = ""
@@ -151,10 +178,10 @@ func wks(args []string) (err error) {
 			ShortName: "t",
 			Usage:     "set or display the target workspace instance",
 			Action:    cmdTarget,
+			Description: "wks target [new target URL] [targetName]",
 			Flags: []cli.Flag{
-				cli.StringFlag{
+				cli.BoolFlag{
 					Name:  "force, f",
-					Value: "",
 					Usage: "force target even if workspace instance not reachable",
 				},
 			},
@@ -182,8 +209,10 @@ func wks(args []string) (err error) {
 		},
 	}
 
-	if err = getAppConfig(); err == nil {
-		err = app.Run(args)
+	if err = getAppConfig(); err != nil {
+		fmt.Fprintf(errW, "failed to parse configuration: %v", err)
+	} else if err = app.Run(args); err != nil {
+		fmt.Fprintf(errW, "failed to run app: %v", err)
 	}
 	return
 }
