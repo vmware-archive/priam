@@ -1,10 +1,15 @@
 package main
 
 import (
-	//"fmt"
-	"testing"
 	"bytes"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"io"
+	//"io/ioutil"
+	"net/http"
+	"testing"
+
+	"net/http/httptest"
 )
 
 type context struct {
@@ -80,17 +85,37 @@ func TestTargetForced(t *testing.T) {
 // should add https to target url if needed
 func TestTargetAddHttps(t *testing.T) {
 	ctx := beforeEach()
-	assert.Nil(t, wks([]string{"wks", "target", "bad.example.com"}))
+	assert.Nil(t, wks([]string{"wks", "target", "-f", "bad.example.com"}))
 	assert.Contains(t, ctx.outb.String(), "https://bad.example.com")
 }
 
 // TestTargetNonWorkspace
-// TestTargetForce
 // TestTargetWithName
 // TestTargetWithoutName
-// TestTargetAddHttps
 // TestHealth
 
+type reqInfo struct {
+	path, reply string
+}
 
+func StartTestServer(info *reqInfo) (srv *httptest.Server) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != info.path {
+			http.Error(w, "bad path", 404)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, info.reply)
+		}
+	}
+	srv = httptest.NewServer(http.HandlerFunc(handler))
+	inCfg = []byte(fmt.Sprintf("---\ntargets:\n  1:\n    host: %s\n", srv.URL))
+	return
+}
 
-
+func TestHealth(t *testing.T) {
+	ctx := beforeEach()
+	srv := StartTestServer(&reqInfo{"/SAAS/jersey/manager/api/health", "allOk"})
+	defer srv.Close()
+	assert.Nil(t, wks([]string{"wks", "h"}))
+	assert.Contains(t, ctx.outb.String(), "allOk")
+}

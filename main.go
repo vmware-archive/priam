@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-/* target is used to encapsulate everything needed to connect to a workspace 
+/* target is used to encapsulate everything needed to connect to a workspace
    instance. In addition, Current indicates whether this is the current default
    target.
 */
@@ -44,16 +44,22 @@ type manifestApp struct {
 }
 
 type appConfig struct {
-	DebugMode bool
 	CurrentTarget string
-	Targets   map[string]target
+	Targets       map[string]target
 }
 
 var appCfg appConfig
 var inR io.Reader = os.Stdin
 var outW io.Writer = os.Stdout
 var errW io.Writer = os.Stderr
-var inCfg, outCfg, manifest []byte 
+var inCfg, outCfg, manifest []byte
+var debugMode bool 
+
+func putDebug(format string, args ...interface{}) {
+	if debugMode {
+		fmt.Fprintf(outW, format, args)
+	}
+}
 
 func getFile(filename string) (out []byte, err error) {
 	fullname, err := filepath.Abs(filename)
@@ -77,14 +83,17 @@ func getAppConfig() (err error) {
 		return
 	}
 	if appCfg.CurrentTarget != "" &&
-			appCfg.Targets[appCfg.CurrentTarget] != (target{}) {
+		appCfg.Targets[appCfg.CurrentTarget] != (target{}) {
 		return
 	}
 	for k := range appCfg.Targets {
 		appCfg.CurrentTarget = k
 		return
 	}
-	return 
+	if appCfg.Targets == nil {
+		appCfg.Targets = make(map[string]target)
+	}
+	return
 }
 
 func putAppConfig() (err error) {
@@ -92,6 +101,17 @@ func putAppConfig() (err error) {
 	return
 }
 
+func checkHealth(host string) (body []byte, err error) {
+	resp, err := http.Get(host + "/SAAS/jersey/manager/api/health")
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	body, err = ioutil.ReadAll(resp.Body)
+	return
+}
+
+/*
 func getManifest() (err error) {
 	var cfg map[interface{}]interface{}
 	if err = yaml.Unmarshal(manifest, cfg); err == nil {
@@ -104,11 +124,14 @@ func getManifest() (err error) {
 	}
 	return
 }
+*/
 
+/*
 func cmdPush(c *cli.Context) {
 	println("push app command")
 	getManifest()
 }
+*/
 
 func cmdTarget(c *cli.Context) {
 	a := c.Args()
@@ -117,38 +140,76 @@ func cmdTarget(c *cli.Context) {
 			fmt.Fprintf(outW, "no target set\n")
 
 		} else {
-			fmt.Fprintf(outW, "Current target is: %s\n", 
-				appCfg.Targets[appCfg.CurrentTarget].Host)
+			fmt.Fprintf(outW, "current target is: %s\nname: %s\n",
+				appCfg.Targets[appCfg.CurrentTarget].Host, appCfg.CurrentTarget)
 		}
 		return
 	}
-	if !strings.HasPrefix(a[0], "http:") && !strings.HasPrefix(a[0], "https:") {
-		a[0] = "https://" + a[0]
+
+	// if a[0] is a key, use it
+	if appCfg.Targets[a[0]].Host != "" {
+		appCfg.CurrentTarget = a[0]
+	} else {
+
+		if !strings.HasPrefix(a[0], "http:") && !strings.HasPrefix(a[0], "https:") {
+			a[0] = "https://" + a[0]
+		}
+
+		// if an existing target uses this host a[0], set it
+		reuseTarget := ""
+		if len(a) < 2 {
+			for k, v := range appCfg.Targets {
+				if v.Host == a[0] {
+					reuseTarget = k
+					break
+				}
+			}
+		}
+
+		if reuseTarget != "" {
+			appCfg.CurrentTarget = reuseTarget
+		} else {
+
+			if !c.Bool("force") {
+				body, err := checkHealth(a[0])
+				if err != nil {
+					fmt.Fprintf(errW, "Error checking health of %s: \n", a[0])
+					return
+				}
+				putDebug("health output: %s\n", string(body))
+				if !strings.Contains(string(body), "allOk") {
+					fmt.Println(string(body))
+					fmt.Fprintf(errW, "Reply from %s does not look like Workspace\n", a[0])
+					return
+				}
+			}
+			if len(a) > 1 {
+				appCfg.CurrentTarget = a[1]
+			} else {
+				// didn't specify a target name, make one up.
+				for i := 0; ; i++ {
+					k := fmt.Sprintf("%v", i)
+					if appCfg.Targets[k].Host == "" {
+						appCfg.CurrentTarget = k
+						break
+					}
+				}
+			}
+			appCfg.Targets[appCfg.CurrentTarget] = target{Host: a[0]}
+		}
 	}
-	if !c.Bool("force") {
-		//health check here
-	}
-	appCfg.CurrentTarget = "2"
-	appCfg.Targets[appCfg.CurrentTarget] = target{Host: a[0]}
 	putAppConfig()
-	fmt.Fprintf(outW, "New target is: %s\n", 
-		appCfg.Targets[appCfg.CurrentTarget].Host)
+	fmt.Fprintf(outW, "new target is: %s\nname: %s\n",
+		appCfg.Targets[appCfg.CurrentTarget].Host, appCfg.CurrentTarget)
 }
 
 func cmdHealth(c *cli.Context) {
-	println("health:\n\n")
-	resp, err := http.Get("https://radio.workspaceair.com/SAAS/jersey/manager/api/health")
+	body, err := checkHealth(appCfg.Targets[appCfg.CurrentTarget].Host)
 	if err != nil {
-		fmt.Printf("Error on GET: %v\n", err)
+		fmt.Fprintf(errW, "Error on Check Health: %v\n", err)
 		return
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Error on ReadAll: %v\n", err)
-		return
-	}
-	fmt.Printf("Body: %v\n", string(body))
+	fmt.Fprintf(outW, "Body: %v\n", string(body))
 }
 
 func wks(args []string) (err error) {
@@ -160,6 +221,18 @@ func wks(args []string) (err error) {
 	app.Author = ""
 	app.Writer = outW
 
+	app.Before = func(c *cli.Context) (err error) {
+		debugMode = c.Bool("debug")
+		return
+	}
+
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "debug, d",
+			Usage: "print debug out",
+		},
+	}
+
 	app.Commands = []cli.Command{
 		{
 			Name:      "health",
@@ -168,16 +241,10 @@ func wks(args []string) (err error) {
 			Action:    cmdHealth,
 		},
 		{
-			Name:      "push",
-			ShortName: "p",
-			Usage:     "push an application",
-			Action:    cmdPush,
-		},
-		{
-			Name:      "target",
-			ShortName: "t",
-			Usage:     "set or display the target workspace instance",
-			Action:    cmdTarget,
+			Name:        "target",
+			ShortName:   "t",
+			Usage:       "set or display the target workspace instance",
+			Action:      cmdTarget,
 			Description: "wks target [new target URL] [targetName]",
 			Flags: []cli.Flag{
 				cli.BoolFlag{
@@ -186,27 +253,35 @@ func wks(args []string) (err error) {
 				},
 			},
 		},
-		{
-			Name:      "template",
-			ShortName: "r",
-			Usage:     "options for task templates",
-			Subcommands: []cli.Command{
-				{
-					Name:  "add",
-					Usage: "add a new template",
-					Action: func(c *cli.Context) {
-						println("new task template: ", c.Args().First())
+		/*
+			{
+				Name:      "push",
+				ShortName: "p",
+				Usage:     "push an application",
+				Action:    cmdPush,
+			},
+			{
+				Name:      "template",
+				ShortName: "r",
+				Usage:     "options for task templates",
+				Subcommands: []cli.Command{
+					{
+						Name:  "add",
+						Usage: "add a new template",
+						Action: func(c *cli.Context) {
+							println("new task template: ", c.Args().First())
+						},
 					},
-				},
-				{
-					Name:  "remove",
-					Usage: "remove an existing template",
-					Action: func(c *cli.Context) {
-						println("removed task template: ", c.Args().First())
+					{
+						Name:  "remove",
+						Usage: "remove an existing template",
+						Action: func(c *cli.Context) {
+							println("removed task template: ", c.Args().First())
+						},
 					},
 				},
 			},
-		},
+		*/
 	}
 
 	if err = getAppConfig(); err != nil {
@@ -234,5 +309,3 @@ func main() {
 		}
 	}
 }
-
-
