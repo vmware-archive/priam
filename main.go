@@ -2,13 +2,16 @@ package main
 
 import (
 	//"golang.org/x/oauth2"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"
 	"net/http"
-	//"net/url"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,11 +56,32 @@ var inR io.Reader = os.Stdin
 var outW io.Writer = os.Stdout
 var errW io.Writer = os.Stderr
 var inCfg, outCfg, manifest []byte
-var debugMode bool 
+var debugMode, traceMode bool
+var sessionToken string
 
-func putDebug(format string, args ...interface{}) {
-	if debugMode {
-		fmt.Fprintf(outW, format, args)
+type logType int
+
+const (
+	linfo logType = iota
+	lerr
+	ldebug
+	ltrace
+)
+
+func log(lt logType, format string, args ...interface{}) {
+	switch lt {
+	case linfo:
+		fmt.Fprintf(outW, format, args...)
+	case lerr:
+		fmt.Fprintf(errW, format, args...)
+	case ldebug:
+		if debugMode {
+			fmt.Fprintf(outW, format, args...)
+		}
+	case ltrace:
+		if traceMode {
+			fmt.Fprintf(outW, format, args...)
+		}
 	}
 }
 
@@ -101,14 +125,67 @@ func putAppConfig() (err error) {
 	return
 }
 
-func checkHealth(host string) (body []byte, err error) {
-	resp, err := http.Get(host + "/SAAS/jersey/manager/api/health")
+func curTarget() (tgt target, err error) {
+	if appCfg.CurrentTarget == "" {
+		return tgt, errors.New("no target set")
+	}
+	return appCfg.Targets[appCfg.CurrentTarget], nil
+}
+
+func httpReq(method, path string, hdrs http.Header, input string) (output string, err error) {
+	tgt, err := curTarget()
+	if err != nil {
+		return
+	}
+	url := tgt.Host + path
+	req, err := http.NewRequest(method, url, strings.NewReader(input))
+	if err != nil {
+		return
+	}
+	if hdrs != nil {
+		req.Header = hdrs
+	}
+	if sessionToken != "" && req.Header.Get("Authorization") == "" {
+		req.Header.Set("Authorization", sessionToken)	
+	}
+	log(ltrace, "%s request to : %v\n", url)
+	log(ltrace, "request headers: %v\n", req.Header)
+	if input != "" {
+		log(ltrace, "request body: %v\n", input)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
-	body, err = ioutil.ReadAll(resp.Body)
+	log(ltrace, "response status: %v\n", resp.Status)
+	log(ltrace, "response headers: %v\n", resp.Header)
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	output = string(body)
+	log(ltrace, "response Body: %v\n", output)
+	if resp.StatusCode != 200 {
+		err = errors.New(resp.Status)
+	}
 	return
+}
+
+func httpJson(method, path string, hdrs http.Header, input string, output interface{}) (err error) {
+	if hdrs == nil {
+		hdrs = make(http.Header)
+	}
+	hdrs.Set("Accept", "application/json")
+	body, err := httpReq(method, path, hdrs, input)
+	if err != nil {
+		return
+	}
+	return json.Unmarshal([]byte(body), output)
+}
+
+func checkHealth() (string, error) {
+	return httpReq("GET", "/SAAS/jersey/manager/api/health", nil, "")
 }
 
 /*
@@ -133,83 +210,78 @@ func cmdPush(c *cli.Context) {
 }
 */
 
-func cmdTarget(c *cli.Context) {
-	a := c.Args()
-	if len(a) < 1 {
-		if appCfg.CurrentTarget == "" {
-			fmt.Fprintf(outW, "no target set\n")
+func basicAuth(name, pwd string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd))
+}
 
-		} else {
-			fmt.Fprintf(outW, "current target is: %s\nname: %s\n",
-				appCfg.Targets[appCfg.CurrentTarget].Host, appCfg.CurrentTarget)
-		}
+func getSessionToken() (err error) {
+	tokenInfo := struct {
+		Access_token, Token_type, Refresh_token, Scope string
+		Expires_in                                     int
+	}{}
+	sessionInfo := struct {
+		Id, SessionToken, Firstname, Lastname string
+		Admin                                 bool
+	}{}
+
+	tgt, err := curTarget()
+	if err != nil {
 		return
 	}
-
-	// if a[0] is a key, use it
-	if appCfg.Targets[a[0]].Host != "" {
-		appCfg.CurrentTarget = a[0]
-	} else {
-
-		if !strings.HasPrefix(a[0], "http:") && !strings.HasPrefix(a[0], "https:") {
-			a[0] = "https://" + a[0]
-		}
-
-		// if an existing target uses this host a[0], set it
-		reuseTarget := ""
-		if len(a) < 2 {
-			for k, v := range appCfg.Targets {
-				if v.Host == a[0] {
-					reuseTarget = k
-					break
-				}
-			}
-		}
-
-		if reuseTarget != "" {
-			appCfg.CurrentTarget = reuseTarget
-		} else {
-
-			if !c.Bool("force") {
-				body, err := checkHealth(a[0])
-				if err != nil {
-					fmt.Fprintf(errW, "Error checking health of %s: \n", a[0])
-					return
-				}
-				putDebug("health output: %s\n", string(body))
-				if !strings.Contains(string(body), "allOk") {
-					fmt.Println(string(body))
-					fmt.Fprintf(errW, "Reply from %s does not look like Workspace\n", a[0])
-					return
-				}
-			}
-			if len(a) > 1 {
-				appCfg.CurrentTarget = a[1]
-			} else {
-				// didn't specify a target name, make one up.
-				for i := 0; ; i++ {
-					k := fmt.Sprintf("%v", i)
-					if appCfg.Targets[k].Host == "" {
-						appCfg.CurrentTarget = k
-						break
-					}
-				}
-			}
-			appCfg.Targets[appCfg.CurrentTarget] = target{Host: a[0]}
-		}
+	pvals, hdrs := make(url.Values), make(http.Header)
+	pvals.Set("grant_type", "client_credentials")
+	hdrs.Set("Content-Type", "application/x-www-form-urlencoded")
+	hdrs.Set("Authorization", basicAuth(tgt.ClientID, tgt.ClientSecret))
+	if err = httpJson("POST", "/SAAS/API/1.0/oauth2/token", hdrs, pvals.Encode(), &tokenInfo); err != nil {
+		return
 	}
-	putAppConfig()
-	fmt.Fprintf(outW, "new target is: %s\nname: %s\n",
-		appCfg.Targets[appCfg.CurrentTarget].Host, appCfg.CurrentTarget)
+	hdrs.Set("Authorization", tokenInfo.Token_type+" "+tokenInfo.Access_token)
+	if err = httpJson("GET", "/SAAS/API/1.0/REST/oauth2/session", hdrs, "", &sessionInfo); err == nil {
+		sessionToken = "Bearer " + sessionInfo.SessionToken
+	}
+	return
 }
 
 func cmdHealth(c *cli.Context) {
-	body, err := checkHealth(appCfg.Targets[appCfg.CurrentTarget].Host)
+	body, err := checkHealth()
 	if err != nil {
-		fmt.Fprintf(errW, "Error on Check Health: %v\n", err)
+		log(lerr, "Error on Check Health: %v\n", err)
+	} else {
+		log(linfo, "Body: %v\n", body)
+	}
+}
+
+func cmdLocalUserStore(c *cli.Context) {
+	if err := getSessionToken(); err != nil {
+		log(lerr, "Error getting session token: %v\n", err)
 		return
 	}
-	fmt.Fprintf(outW, "Body: %v\n", string(body))
+	body, err := httpReq("GET", "/SAAS/jersey/manager/api/localuserstore", nil, "")
+	if err != nil {
+		log(lerr, "Error: %v\n", err)
+	} else {
+		log(linfo, "Body: %v\n", body)
+	}
+}
+
+func cmdLogin(c *cli.Context) {
+	tgt, err := curTarget()
+	if err != nil {
+		log(lerr, "Error: %v\n", err)
+		return
+	}
+	a := c.Args()
+	if len(a) < 2 {
+		log(lerr, "must supply clientID and clientSecret on the command line\n")
+		return
+	}
+	appCfg.Targets[appCfg.CurrentTarget] = target{tgt.Host, a[0], a[1]}
+	if err := getSessionToken(); err != nil {
+		log(lerr, "Error: %v\n", err)
+		return
+	}
+	putAppConfig()
+	log(linfo, "clientID and clientSecret saved\n")
 }
 
 func wks(args []string) (err error) {
@@ -223,26 +295,40 @@ func wks(args []string) (err error) {
 
 	app.Before = func(c *cli.Context) (err error) {
 		debugMode = c.Bool("debug")
+		traceMode = c.Bool("trace")
 		return
 	}
 
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:  "debug, d",
-			Usage: "print debug out",
+			Usage: "print debug output",
+		},
+		cli.BoolFlag{
+			Name:  "trace, t",
+			Usage: "print all requests and responses",
 		},
 	}
 
 	app.Commands = []cli.Command{
 		{
 			Name:      "health",
-			ShortName: "h",
 			Usage:     "check workspace service health",
 			Action:    cmdHealth,
 		},
 		{
+			Name:        "localuserstore",
+			Usage:       "gets local user store configuration",
+			Action:      cmdLocalUserStore,
+		},
+		{
+			Name:        "login",
+			Usage:       "login -- currently just saved client_id and client_secret",
+			Description: "login client_id [client_secret]",
+			Action:      cmdLogin,
+		},
+		{
 			Name:        "target",
-			ShortName:   "t",
 			Usage:       "set or display the target workspace instance",
 			Action:      cmdTarget,
 			Description: "wks target [new target URL] [targetName]",
@@ -252,6 +338,12 @@ func wks(args []string) (err error) {
 					Usage: "force target even if workspace instance not reachable",
 				},
 			},
+		},
+		{
+			Name:        "targets",
+			Usage:       "display all target workspace instances",
+			Action:      cmdTargets,
+			Description: "wks targets",
 		},
 		/*
 			{

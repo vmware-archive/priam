@@ -116,6 +116,14 @@ func TestHealth(t *testing.T) {
 	ctx := beforeEach()
 	srv := StartTestServer(&reqInfo{"/SAAS/jersey/manager/api/health", "allOk"})
 	defer srv.Close()
-	assert.Nil(t, wks([]string{"wks", "h"}))
+	assert.Nil(t, wks([]string{"wks", "health"}))
 	assert.Contains(t, ctx.outb.String(), "allOk")
+}
+
+func TestTargets(t *testing.T) {
+	ctx := beforeEach()
+	assert.Nil(t, wks([]string{"wks", "-d", "targets"}))
+	assert.Contains(t, ctx.outb.String(), "staging")
+	assert.Contains(t, ctx.outb.String(), "radio")
+	assert.Contains(t, ctx.outb.String(), "https://radio.workspaceair.com")
 }
