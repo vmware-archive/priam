@@ -6,8 +6,6 @@ import (
 	"github.com/codegangsta/cli"
 	"gopkg.in/yaml.v2"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 // target is used to encapsulate everything needed to connect to a workspace instance.
@@ -189,17 +187,16 @@ func wks(args []string) (err error) {
 
 func main() {
 	var err error
-	var configFile string = filepath.Join(os.Getenv("HOME"), ".wks.yaml")
-	inCfg, err = getFile(configFile)
-	//println(err.Error())
-	if err != nil && !strings.HasSuffix(err.Error(), "no such file or directory") {
+	dir, fname := os.Getenv("HOME"), ".wks.yaml"
+	inCfg, err = getFile(dir, fname)
+	if err != nil {
 		panic(err)
 	}
 	if err = wks(os.Args); err != nil {
 		panic(err)
 	}
 	if len(outCfg) > 0 {
-		if err = putFile(configFile, outCfg); err != nil {
+		if err = putFile(dir, fname, outCfg); err != nil {
 			panic(err)
 		}
 	}

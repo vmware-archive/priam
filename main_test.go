@@ -34,7 +34,6 @@ func beforeEach() (ctx *context) {
 	errW = &ctx.errb
 	inCfg = []byte{}
 	outCfg = []byte{}
-	manifest = []byte{}
 	inCfg = []byte(sampleCfg)
 	return
 }

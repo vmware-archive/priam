@@ -1,7 +1,6 @@
 package main
 
 import (
-	//"golang.org/x/oauth2"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,8 @@ import (
 )
 
 var sessionToken string
+
+type hdrMap map[string]string
 
 func ppHeaders(lt logType, prefix string, hdrs http.Header) {
 	log(lt, "%s:\n", prefix)
@@ -36,7 +37,7 @@ func ppJson(lt logType, prefix, s string) {
 	log(lt, "%s:\nCould not parse JSON: %v\nraw:\n%v", prefix, err, s)
 }
 
-func httpReq(method, path string, hdrs http.Header, input string) (output string, err error) {
+func httpReq(method, path string, hdrs hdrMap, input string) (output string, err error) {
 	tgt, err := curTarget()
 	if err != nil {
 		return
@@ -46,8 +47,8 @@ func httpReq(method, path string, hdrs http.Header, input string) (output string
 	if err != nil {
 		return
 	}
-	if hdrs != nil {
-		req.Header = hdrs
+	for k, v := range hdrs {
+		req.Header.Set(k, v)
 	}
 	if sessionToken != "" && req.Header.Get("Authorization") == "" {
 		req.Header.Set("Authorization", sessionToken)
@@ -78,11 +79,8 @@ func httpReq(method, path string, hdrs http.Header, input string) (output string
 	return
 }
 
-func httpJson(method, path string, hdrs http.Header, input string, output interface{}) (err error) {
-	if hdrs == nil {
-		hdrs = make(http.Header)
-	}
-	hdrs.Set("Accept", "application/json")
+func httpJson(method, path string, hdrs hdrMap, input string, output interface{}) (err error) {
+	hdrs["Accept"] = "application/json"
 	body, err := httpReq(method, path, hdrs, input)
 	if err != nil {
 		return
@@ -109,14 +107,14 @@ func getSessionToken() (err error) {
 	if err != nil {
 		return
 	}
-	pvals, hdrs := make(url.Values), make(http.Header)
+	pvals := make(url.Values)
 	pvals.Set("grant_type", "client_credentials")
-	hdrs.Set("Content-Type", "application/x-www-form-urlencoded")
-	hdrs.Set("Authorization", basicAuth(tgt.ClientID, tgt.ClientSecret))
+	hdrs := hdrMap{"Content-Type": "application/x-www-form-urlencoded",
+			"Authorization": basicAuth(tgt.ClientID, tgt.ClientSecret)}
 	if err = httpJson("POST", "API/1.0/oauth2/token", hdrs, pvals.Encode(), &tokenInfo); err != nil {
 		return
 	}
-	hdrs.Set("Authorization", tokenInfo.Token_type+" "+tokenInfo.Access_token)
+	hdrs["Authorization"] = tokenInfo.Token_type+" "+tokenInfo.Access_token
 	if err = httpJson("GET", "API/1.0/REST/oauth2/session", hdrs, "", &sessionInfo); err == nil {
 		sessionToken = "Bearer " + sessionInfo.SessionToken
 	}
@@ -128,11 +126,11 @@ func getAuthnJson(prefix, path string, mediaType string) {
 		log(lerr, "Error getting session token: %v\n", err)
 		return
 	}
-	hdrs := make(http.Header)
+	hdrs := hdrMap{}
 	if mediaType == "" {
-		hdrs.Set("Accept", "application/json")
+		hdrs["Accept"] = "application/json"
 	} else if mediaType != "<none>" {
-		hdrs.Set("Accept", "application/vnd.vmware.horizon.manager." + mediaType + "+json")
+		hdrs["Accept"] = "application/vnd.vmware.horizon.manager." + mediaType + "+json"
 	}
 	body, err := httpReq("GET", path, hdrs, "")
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type logType int
@@ -39,16 +40,18 @@ func log(lt logType, format string, args ...interface{}) {
 	}
 }
 
-func getFile(filename string) (out []byte, err error) {
-	fullname, err := filepath.Abs(filename)
+func getFile(dir, filename string) (out []byte, err error) {
+	fullname, err := filepath.Abs(filepath.Join(dir, filename))
 	if err == nil {
 		out, err = ioutil.ReadFile(fullname)
+	} else if strings.HasSuffix(err.Error(), "no such file or directory") {
+		out = []byte{}
 	}
 	return
 }
 
-func putFile(filename string, in []byte) (err error) {
-	fullname, err := filepath.Abs(filename)
+func putFile(dir, filename string, in []byte) (err error) {
+	fullname, err := filepath.Abs(filepath.Join(dir, filename))
 	if err == nil {
 		err = ioutil.WriteFile(fullname, in, 0644)
 	}
