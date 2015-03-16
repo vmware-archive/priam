@@ -10,9 +10,8 @@ import (
 
 // target is used to encapsulate everything needed to connect to a workspace instance.
 type target struct {
-	Host         string
-	ClientID     string
-	ClientSecret string
+	Host         string 
+	ClientID, ClientSecret     string `yaml:",omitempty"`
 }
 
 type appConfig struct {
@@ -134,9 +133,7 @@ func wks(args []string) (err error) {
 		{
 			Name:  "users",
 			Usage: "get users",
-			Action: func(c *cli.Context) {
-				getAuthnJson("Users", "jersey/manager/api/scim/Users?count=1000", "")
-			},
+			Action: cmdUsers,
 		},
 		{
 			Name:  "localuserstore",

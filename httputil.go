@@ -50,9 +50,6 @@ func httpReq(method, path string, hdrs hdrMap, input string) (output string, err
 	for k, v := range hdrs {
 		req.Header.Set(k, v)
 	}
-	if sessionToken != "" && req.Header.Get("Authorization") == "" {
-		req.Header.Set("Authorization", sessionToken)
-	}
 	log(ltrace, "%s request to : %v\n", method, url)
 	ppHeaders(ltrace, "request headers", req.Header)
 	if input != "" {
@@ -80,14 +77,11 @@ func httpReq(method, path string, hdrs hdrMap, input string) (output string, err
 }
 
 func httpJson(method, path string, hdrs hdrMap, input string, output interface{}) (err error) {
-	hdrs["Accept"] = "application/json"
-	body, err := httpReq(method, path, hdrs, input)
-	if err != nil {
-		return
+	if body, err := httpReq(method, path, hdrs, input); err == nil {
+		err = json.Unmarshal([]byte(body), output)
 	}
-	return json.Unmarshal([]byte(body), output)
+	return
 }
-
 
 func basicAuth(name, pwd string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd))
@@ -110,7 +104,8 @@ func getSessionToken() (err error) {
 	pvals := make(url.Values)
 	pvals.Set("grant_type", "client_credentials")
 	hdrs := hdrMap{"Content-Type": "application/x-www-form-urlencoded",
-			"Authorization": basicAuth(tgt.ClientID, tgt.ClientSecret)}
+			"Authorization": basicAuth(tgt.ClientID, tgt.ClientSecret),
+			"Accept": "application/json"}
 	if err = httpJson("POST", "API/1.0/oauth2/token", hdrs, pvals.Encode(), &tokenInfo); err != nil {
 		return
 	}
@@ -121,18 +116,30 @@ func getSessionToken() (err error) {
 	return
 }
 
-func getAuthnJson(prefix, path string, mediaType string) {
-	if err := getSessionToken(); err != nil {
-		log(lerr, "Error getting session token: %v\n", err)
-		return
-	}
-	hdrs := hdrMap{}
+func InitHdrMap(mediaType string) (hdrs hdrMap) {
+	hdrs = hdrMap{"Authorization": sessionToken}
 	if mediaType == "" {
 		hdrs["Accept"] = "application/json"
 	} else if mediaType != "<none>" {
 		hdrs["Accept"] = "application/vnd.vmware.horizon.manager." + mediaType + "+json"
 	}
-	body, err := httpReq("GET", path, hdrs, "")
+	return
+}
+
+
+func getAuthnJson(path string, mediaType string, output interface{}) (err error) {
+	if err = getSessionToken(); err == nil {
+		err = httpJson("GET", path, InitHdrMap(mediaType), "", output)
+	}
+	return
+}
+
+func showAuthnJson(prefix, path string, mediaType string) {
+	if err := getSessionToken(); err != nil {
+		log(lerr, "Error getting session token: %v\n", err)
+		return
+	}
+	body, err := httpReq("GET", path, InitHdrMap(mediaType), "")
 	if err != nil {
 		log(lerr, "Error: %v\n", err)
 	} else {
