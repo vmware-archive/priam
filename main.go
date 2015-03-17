@@ -10,8 +10,8 @@ import (
 
 // target is used to encapsulate everything needed to connect to a workspace instance.
 type target struct {
-	Host         string 
-	ClientID, ClientSecret     string `yaml:",omitempty"`
+	Host                   string
+	ClientID, ClientSecret string `yaml:",omitempty"`
 }
 
 type appConfig struct {
@@ -120,26 +120,55 @@ func wks(args []string) (err error) {
 			Name:  "catalog",
 			Usage: "get catalog items",
 			Action: func(c *cli.Context) {
-				getAuthnJson("Catalog Items", "API/1.0/REST/admin/catalog", "")
+				showAuthnJson("Catalog Items", "API/1.0/REST/admin/catalog", "")
 			},
 		},
 		{
 			Name:  "policies",
 			Usage: "get access policies",
 			Action: func(c *cli.Context) {
-				getAuthnJson("Access Policies", "jersey/manager/api/accessPolicies", "accesspolicyset.list")
+				showAuthnJson("Access Policies", "jersey/manager/api/accessPolicies", "accesspolicyset.list")
 			},
 		},
 		{
-			Name:  "users",
-			Usage: "get users",
+			Name:   "users",
+			Usage:  "get users",
 			Action: cmdUsers,
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "count",
+					Usage: "maximum users to get",
+				},
+				cli.StringFlag{
+					Name:  "filter",
+					Usage: "SCIM filter",
+				},
+			},
+		},
+		{
+			Name:   "user",
+			Usage:  "create user account: user userName [password]",
+			Action: cmdUser,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "email",
+					Usage: "email of the new user account",
+				},
+				cli.StringFlag{
+					Name:  "familyname",
+					Usage: "family name of the new user account",
+				},
+				cli.StringFlag{
+					Name:  "givenname",
+					Usage: "SCIM filter",
+				},
+			},
 		},
 		{
 			Name:  "localuserstore",
 			Usage: "gets local user store configuration",
 			Action: func(c *cli.Context) {
-				getAuthnJson("Local User Store configuration",
+				showAuthnJson("Local User Store configuration",
 					"jersey/manager/api/localuserstore", "local.userstore")
 			},
 		},
@@ -167,11 +196,11 @@ func wks(args []string) (err error) {
 			Action:      cmdTargets,
 			Description: "wks targets",
 		},
-			{
-				Name:      "pub",
-				Usage:     "publish an application",
-				Action:    cmdPublish,
-			},
+		{
+			Name:   "pub",
+			Usage:  "publish an application",
+			Action: cmdPublish,
+		},
 	}
 
 	if err = getAppConfig(); err != nil {

@@ -104,12 +104,12 @@ func getSessionToken() (err error) {
 	pvals := make(url.Values)
 	pvals.Set("grant_type", "client_credentials")
 	hdrs := hdrMap{"Content-Type": "application/x-www-form-urlencoded",
-			"Authorization": basicAuth(tgt.ClientID, tgt.ClientSecret),
-			"Accept": "application/json"}
+		"Authorization": basicAuth(tgt.ClientID, tgt.ClientSecret),
+		"Accept":        "application/json"}
 	if err = httpJson("POST", "API/1.0/oauth2/token", hdrs, pvals.Encode(), &tokenInfo); err != nil {
 		return
 	}
-	hdrs["Authorization"] = tokenInfo.Token_type+" "+tokenInfo.Access_token
+	hdrs["Authorization"] = tokenInfo.Token_type + " " + tokenInfo.Access_token
 	if err = httpJson("GET", "API/1.0/REST/oauth2/session", hdrs, "", &sessionInfo); err == nil {
 		sessionToken = "Bearer " + sessionInfo.SessionToken
 	}
@@ -125,7 +125,6 @@ func InitHdrMap(mediaType string) (hdrs hdrMap) {
 	}
 	return
 }
-
 
 func getAuthnJson(path string, mediaType string, output interface{}) (err error) {
 	if err = getSessionToken(); err == nil {
@@ -146,5 +145,3 @@ func showAuthnJson(prefix, path string, mediaType string) {
 		ppJson(linfo, prefix, body)
 	}
 }
-
-

@@ -42,4 +42,3 @@ func cmdPublish(c *cli.Context) {
 	println("push app command")
 	//getManifest()
 }
-
