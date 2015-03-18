@@ -1,16 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"net/http"
-	"net/url"
-	"strings"
+	neturl "net/url"
 )
-
-var sessionToken string
 
 type hdrMap map[string]string
 
@@ -37,13 +35,21 @@ func ppJson(lt logType, prefix, s string) {
 	log(lt, "%s:\nCould not parse JSON: %v\nraw:\n%v", prefix, err, s)
 }
 
-func httpReq(method, path string, hdrs hdrMap, input string) (output string, err error) {
-	tgt, err := curTarget()
-	if err != nil {
-		return
+func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err error) {
+	var body []byte
+	if input != nil {
+		switch inp := input.(type) {
+		case *string:
+			body = []byte(*inp)
+		case []byte:
+			body = inp
+		default:
+			if body, err = json.Marshal(inp); err != nil {
+				return
+			}
+		}
 	}
-	url := tgt.Host + "/SAAS/" + path
-	req, err := http.NewRequest(method, url, strings.NewReader(input))
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
 	if err != nil {
 		return
 	}
@@ -52,8 +58,8 @@ func httpReq(method, path string, hdrs hdrMap, input string) (output string, err
 	}
 	log(ltrace, "%s request to : %v\n", method, url)
 	ppHeaders(ltrace, "request headers", req.Header)
-	if input != "" {
-		log(ltrace, "request body: %v\n", input)
+	if input != nil {
+		log(ltrace, "request body: %s\n", body)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -62,23 +68,20 @@ func httpReq(method, path string, hdrs hdrMap, input string) (output string, err
 	defer resp.Body.Close()
 	log(ltrace, "response status: %v\n", resp.Status)
 	ppHeaders(ltrace, "response headers", resp.Header)
-	//log(ltrace, "response headers: %v\n", resp.Header)
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
+	if body, err = ioutil.ReadAll(resp.Body); err != nil {
 		return
 	}
-	output = string(body)
-	ppJson(ltrace, "response body", output)
-	//log(ltrace, "response body: %v\n", output)
-	if resp.StatusCode != 200 {
-		err = errors.New(resp.Status)
+	ppJson(ltrace, "response body", string(body))
+	switch outp := output.(type) {
+	case *string:
+		*outp = string(body)
+	case []byte:
+		outp = body
+	default:
+		err = json.Unmarshal(body, outp)
 	}
-	return
-}
-
-func httpJson(method, path string, hdrs hdrMap, input string, output interface{}) (err error) {
-	if body, err := httpReq(method, path, hdrs, input); err == nil {
-		err = json.Unmarshal([]byte(body), output)
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		err = errors.New(resp.Status)
 	}
 	return
 }
@@ -87,61 +90,32 @@ func basicAuth(name, pwd string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd))
 }
 
-func getSessionToken() (err error) {
+// returns a string with an access token suitable for an authorization header
+// in the form "Bearer xxxxxxx"
+func clientCredsGrant(url, clientID, clientSecret string) (authHeader string, err error) {
 	tokenInfo := struct {
 		Access_token, Token_type, Refresh_token, Scope string
 		Expires_in                                     int
 	}{}
-	sessionInfo := struct {
-		Id, SessionToken, Firstname, Lastname string
-		Admin                                 bool
-	}{}
-
-	tgt, err := curTarget()
-	if err != nil {
-		return
-	}
-	pvals := make(url.Values)
+	pvals := make(neturl.Values)
 	pvals.Set("grant_type", "client_credentials")
+	body := pvals.Encode()
 	hdrs := hdrMap{"Content-Type": "application/x-www-form-urlencoded",
-		"Authorization": basicAuth(tgt.ClientID, tgt.ClientSecret),
+		"Authorization": basicAuth(clientID, clientSecret),
 		"Accept":        "application/json"}
-	if err = httpJson("POST", "API/1.0/oauth2/token", hdrs, pvals.Encode(), &tokenInfo); err != nil {
+	if err = httpReq("POST", url, hdrs, &body, &tokenInfo); err != nil {
 		return
 	}
-	hdrs["Authorization"] = tokenInfo.Token_type + " " + tokenInfo.Access_token
-	if err = httpJson("GET", "API/1.0/REST/oauth2/session", hdrs, "", &sessionInfo); err == nil {
-		sessionToken = "Bearer " + sessionInfo.SessionToken
-	}
+	authHeader = tokenInfo.Token_type + " " + tokenInfo.Access_token
 	return
 }
 
-func InitHdrMap(mediaType string) (hdrs hdrMap) {
-	hdrs = hdrMap{"Authorization": sessionToken}
+func InitHdrMap(mediaType, authHdr string) hdrMap {
+	hdrs := hdrMap{"Authorization": authHdr}
 	if mediaType == "" {
 		hdrs["Accept"] = "application/json"
 	} else if mediaType != "<none>" {
 		hdrs["Accept"] = "application/vnd.vmware.horizon.manager." + mediaType + "+json"
 	}
-	return
-}
-
-func getAuthnJson(path string, mediaType string, output interface{}) (err error) {
-	if err = getSessionToken(); err == nil {
-		err = httpJson("GET", path, InitHdrMap(mediaType), "", output)
-	}
-	return
-}
-
-func showAuthnJson(prefix, path string, mediaType string) {
-	if err := getSessionToken(); err != nil {
-		log(lerr, "Error getting session token: %v\n", err)
-		return
-	}
-	body, err := httpReq("GET", path, InitHdrMap(mediaType), "")
-	if err != nil {
-		log(lerr, "Error: %v\n", err)
-	} else {
-		ppJson(linfo, prefix, body)
-	}
+	return hdrs
 }

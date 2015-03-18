@@ -53,8 +53,21 @@ func curTarget() (tgt target, err error) {
 	return appCfg.Targets[appCfg.CurrentTarget], nil
 }
 
-func checkHealth() (string, error) {
-	return httpReq("GET", "jersey/manager/api/health", nil, "")
+func getAuthHeader() (hdr string, err error) {
+	if tgt, err := curTarget(); err == nil {
+		url := tgt.Host + "/SAAS/API/1.0/oauth2/token"
+		hdr, err = clientCredsGrant(url, tgt.ClientID, tgt.ClientSecret)
+	}
+	return
+}
+
+func tgtURL(path string) string {
+	return appCfg.Targets[appCfg.CurrentTarget].Host + "/SAAS/" + path
+}
+
+func checkHealth() (output string, err error) {
+	err = httpReq("GET", tgtURL("jersey/manager/api/health"), hdrMap{}, nil, &output)
+	return
 }
 
 func cmdLogin(c *cli.Context) {
@@ -69,12 +82,33 @@ func cmdLogin(c *cli.Context) {
 		return
 	}
 	appCfg.Targets[appCfg.CurrentTarget] = target{tgt.Host, a[0], a[1]}
-	if err := getSessionToken(); err != nil {
+	if _, err := getAuthHeader(); err != nil {
 		log(lerr, "Error: %v\n", err)
 		return
 	}
 	putAppConfig()
 	log(linfo, "clientID and clientSecret saved\n")
+}
+
+func getAuthnJson(path string, mediaType string, output interface{}) (err error) {
+	if authHdr, err := getAuthHeader(); err == nil {
+		err = httpReq("GET", tgtURL(path), InitHdrMap(mediaType, authHdr), nil, output)
+	}
+	return
+}
+
+func showAuthnJson(prefix, path string, mediaType string) {
+	var body, authHdr string
+	var err error
+	if authHdr, err = getAuthHeader(); err != nil {
+		log(lerr, "Error getting access token: %v\n", err)
+		return
+	}
+	if err = httpReq("GET", tgtURL(path), InitHdrMap(mediaType, authHdr), nil, &body); err != nil {
+		log(lerr, "Error: %v\n", err)
+	} else {
+		ppJson(linfo, prefix, body)
+	}
 }
 
 func wks(args []string) (err error) {
