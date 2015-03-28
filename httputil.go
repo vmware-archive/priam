@@ -23,16 +23,36 @@ func ppHeaders(lt logType, prefix string, hdrs http.Header) {
 	}
 }
 
-func ppJson(lt logType, prefix, s string) {
-	v := map[string]interface{}{}
-	err := json.Unmarshal([]byte(s), &v)
+func ppJson(lt logType, prefix, input interface{}) {
+	var err error
+	var outp interface{}
+	var inp []byte
+	if input != nil {
+		switch in := input.(type) {
+		case string:
+			inp = []byte(in)
+		case *string:
+			inp = []byte(*in)
+		case []byte:
+			inp = in
+		default:
+			outp = input
+		}
+	}
+	if outp == nil {
+		if inp == nil || len(inp) == 0 {
+			log(lt, "%s is empty.\n", prefix)
+			return
+		}
+		err = json.Unmarshal(inp, &outp)
+	}
 	if err == nil {
-		if out, err := json.MarshalIndent(v, "", "  "); err == nil {
+		if out, err := json.MarshalIndent(outp, "", "  "); err == nil {
 			log(lt, "%s\n%s\n", prefix, string(out))
 			return
 		}
 	}
-	log(lt, "%s:\nCould not parse JSON: %v\nraw:\n%v", prefix, err, s)
+	log(lt, "%s:\nCould not parse JSON: %v\nraw:\n%v", prefix, err, input)
 }
 
 func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err error) {
@@ -72,15 +92,21 @@ func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err er
 		return
 	}
 	ppJson(ltrace, "response body", string(body))
-	switch outp := output.(type) {
-	case *string:
-		*outp = string(body)
-	case []byte:
-		outp = body
-	default:
-		err = json.Unmarshal(body, outp)
+	if output != nil {
+		switch outp := output.(type) {
+		case *string:
+			*outp = string(body)
+		case []byte:
+			outp = body
+		default:
+			if len(body) > 0 {
+				err = json.Unmarshal(body, outp)
+			}
+		}
 	}
-	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+	good := map[int]bool{200: true, 201: true, 204: true}
+	//if !good[resp.StatusCode != 200 && resp.StatusCode != 201 && res.StatusCode != 204 {
+	if !good[resp.StatusCode] {
 		err = errors.New(resp.Status)
 	}
 	return
@@ -110,7 +136,7 @@ func clientCredsGrant(url, clientID, clientSecret string) (authHeader string, er
 	return
 }
 
-func InitHdrMap(mediaType, authHdr string) hdrMap {
+func InitHdrs(mediaType, authHdr string) hdrMap {
 	hdrs := hdrMap{"Authorization": authHdr}
 	if mediaType == "" {
 		hdrs["Accept"] = "application/json"

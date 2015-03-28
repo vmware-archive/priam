@@ -10,8 +10,8 @@ func putTarget(prefix string) {
 	if appCfg.CurrentTarget == "" {
 		log(linfo, "no target set\n")
 	} else {
-		log(linfo, "%s target is: %s\nname: %s\n", prefix,
-			appCfg.Targets[appCfg.CurrentTarget].Host, appCfg.CurrentTarget)
+		log(linfo, "%s target is: %s, %s\n", prefix, appCfg.CurrentTarget,
+			appCfg.Targets[appCfg.CurrentTarget].Host)
 	}
 }
 

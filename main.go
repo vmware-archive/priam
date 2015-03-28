@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"gopkg.in/yaml.v2"
+	"net/url"
 	"os"
+	"strings"
 )
 
 // target is used to encapsulate everything needed to connect to a workspace instance.
@@ -61,6 +63,14 @@ func getAuthHeader() (hdr string, err error) {
 	return
 }
 
+func authHeader() (hdr string) {
+	var err error
+	if hdr, err = getAuthHeader(); err != nil {
+		log(lerr, "Error getting access token: %v\n", err)
+	}
+	return
+}
+
 func tgtURL(path string) string {
 	return appCfg.Targets[appCfg.CurrentTarget].Host + "/SAAS/" + path
 }
@@ -92,34 +102,73 @@ func cmdLogin(c *cli.Context) {
 
 func getAuthnJson(path string, mediaType string, output interface{}) (err error) {
 	if authHdr, err := getAuthHeader(); err == nil {
-		err = httpReq("GET", tgtURL(path), InitHdrMap(mediaType, authHdr), nil, output)
+		err = httpReq("GET", tgtURL(path), InitHdrs(mediaType, authHdr), nil, output)
 	}
 	return
 }
 
 func showAuthnJson(prefix, path string, mediaType string) {
-	var body, authHdr string
-	var err error
-	if authHdr, err = getAuthHeader(); err != nil {
-		log(lerr, "Error getting access token: %v\n", err)
+	if authHdr := authHeader(); authHdr != "" {
+		var body string
+		if err := httpReq("GET", tgtURL(path), InitHdrs(mediaType, authHdr), nil, &body); err != nil {
+			log(lerr, "Error: %v\n", err)
+		} else {
+			ppJson(linfo, prefix, body)
+		}
+	}
+}
+
+func cmdSchema(c *cli.Context) {
+	args := c.Args()
+	if len(args) < 1 {
+		log(lerr, "schema type must be specified\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig")
 		return
 	}
-	if err = httpReq("GET", tgtURL(path), InitHdrMap(mediaType, authHdr), nil, &body); err != nil {
+	vals := make(url.Values)
+	vals.Set("filter", fmt.Sprintf("name eq \"%s\"", args[0]))
+	path := fmt.Sprintf("jersey/manager/api/scim/Schemas?%v", vals.Encode())
+	showAuthnJson("Schema for "+args[0], path, "")
+}
+
+func cmdLocalUserStore(c *cli.Context) {
+	const desc = "Local User Store configuration"
+	const path = "jersey/manager/api/localuserstore"
+	const mtype = "local.userstore"
+	var authHdr, output string
+	keyvals := make(map[string]interface{})
+	for _, arg := range c.Args() {
+		kv := strings.SplitAfterN(arg, "=", 2)
+		k := strings.TrimSuffix(kv[0], "=")
+		switch kv[1] {
+		case "null":
+			keyvals[k] = nil
+		//case "true": keyvals[k] = true
+		//case "false": keyvals[k] = false
+		default:
+			keyvals[k] = kv[1]
+		}
+	}
+	if len(keyvals) == 0 {
+		showAuthnJson(desc, path, mtype)
+		return
+	}
+	if authHdr = authHeader(); authHdr == "" {
+		return
+	}
+	hdrs := InitHdrs(mtype, authHdr)
+	hdrs["Content-Type"] = hdrs["Accept"]
+	if err := httpReq("PUT", tgtURL(path), hdrs, keyvals, &output); err != nil {
 		log(lerr, "Error: %v\n", err)
 	} else {
-		ppJson(linfo, prefix, body)
+		ppJson(linfo, desc, output)
 	}
 }
 
 func wks(args []string) (err error) {
 	app := cli.NewApp()
-	app.Name = "wks"
-	app.Usage = "a utility to publish applications to Workspace"
+	app.Name, app.Usage = "wks", "a utility to publish applications to Workspace"
+	app.Email, app.Author, app.Writer = "", "", outW
 	app.Action = cli.ShowAppHelp
-	app.Email = ""
-	app.Author = ""
-	app.Writer = outW
-
 	app.Before = func(c *cli.Context) (err error) {
 		debugMode = c.Bool("debug")
 		traceMode = c.Bool("trace")
@@ -139,6 +188,13 @@ func wks(args []string) (err error) {
 
 	app.Commands = []cli.Command{
 		{
+			Name:  "catalog",
+			Usage: "get catalog items",
+			Action: func(c *cli.Context) {
+				showAuthnJson("Catalog Items", "API/1.0/REST/admin/catalog", "")
+			},
+		},
+		{
 			Name:  "health",
 			Usage: "check workspace service health",
 			Action: func(c *cli.Context) {
@@ -151,11 +207,16 @@ func wks(args []string) (err error) {
 			},
 		},
 		{
-			Name:  "catalog",
-			Usage: "get catalog items",
-			Action: func(c *cli.Context) {
-				showAuthnJson("Catalog Items", "API/1.0/REST/admin/catalog", "")
-			},
+			Name:        "localuserstore",
+			Usage:       "gets/sets local user store configuration",
+			Description: "localuserstore [key=value]...",
+			Action:      cmdLocalUserStore,
+		},
+		{
+			Name:        "login",
+			Usage:       "currently just saves client_id and client_secret",
+			Description: "login client_id [client_secret]",
+			Action:      cmdLogin,
 		},
 		{
 			Name:  "policies",
@@ -165,52 +226,10 @@ func wks(args []string) (err error) {
 			},
 		},
 		{
-			Name:   "users",
-			Usage:  "get users",
-			Action: cmdUsers,
-			Flags: []cli.Flag{
-				cli.IntFlag{
-					Name:  "count",
-					Usage: "maximum users to get",
-				},
-				cli.StringFlag{
-					Name:  "filter",
-					Usage: "SCIM filter",
-				},
-			},
-		},
-		{
-			Name:   "user",
-			Usage:  "create user account: user userName [password]",
-			Action: cmdUser,
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "email",
-					Usage: "email of the new user account",
-				},
-				cli.StringFlag{
-					Name:  "familyname",
-					Usage: "family name of the new user account",
-				},
-				cli.StringFlag{
-					Name:  "givenname",
-					Usage: "SCIM filter",
-				},
-			},
-		},
-		{
-			Name:  "localuserstore",
-			Usage: "gets local user store configuration",
-			Action: func(c *cli.Context) {
-				showAuthnJson("Local User Store configuration",
-					"jersey/manager/api/localuserstore", "local.userstore")
-			},
-		},
-		{
-			Name:        "login",
-			Usage:       "currently just saves client_id and client_secret",
-			Description: "login client_id [client_secret]",
-			Action:      cmdLogin,
+			Name:        "schema",
+			Usage:       "get scim schema for given type",
+			Description: "schema <type>\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig",
+			Action:      cmdSchema,
 		},
 		{
 			Name:        "target",
@@ -231,9 +250,69 @@ func wks(args []string) (err error) {
 			Description: "wks targets",
 		},
 		{
-			Name:   "pub",
+			Name:   "publish",
 			Usage:  "publish an application",
 			Action: cmdPublish,
+		},
+		{
+			Name:  "user",
+			Usage: "user account commands",
+			Subcommands: []cli.Command{
+				{
+					Name:   "add",
+					Usage:  "create user account: add userName [password]",
+					Action: cmdAddUser,
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:  "email",
+							Usage: "email of the new user account",
+						},
+						cli.StringFlag{
+							Name:  "family",
+							Usage: "family name of the new user account",
+						},
+						cli.StringFlag{
+							Name:  "given",
+							Usage: "given name of the new user account",
+						},
+					},
+				},
+				{
+					Name:   "get",
+					Usage:  "display user account: get userName",
+					Action: cmdGetUser,
+				},
+				{
+					Name:   "delete",
+					Usage:  "delete user account: delete userName",
+					Action: cmdDelUser,
+				},
+				{
+					Name:   "password",
+					Usage:  "set a user's password: password [password]",
+					Action: cmdSetPassword,
+				},
+				{
+					Name:   "bulk",
+					Usage:  "bulk load users",
+					Action: cmdAddUserBulk,
+				},
+			},
+		},
+		{
+			Name:   "users",
+			Usage:  "get users",
+			Action: cmdUsers,
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "count",
+					Usage: "maximum users to get",
+				},
+				cli.StringFlag{
+					Name:  "filter",
+					Usage: "SCIM filter",
+				},
+			},
 		},
 	}
 

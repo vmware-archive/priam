@@ -12,15 +12,15 @@ applications:
     description: Fanny's Demo App for RADIO
     iconFile: icons/vin.jpg
     attributeMaps: 
-      UserName: ${user.UserName}
-      FirstName: ${user.FirstName}
-      LastName: ${user.LastName}
+      UserName: "${user.UserName}"
+      FirstName: "${user.FirstName}"
+      LastName: "${user.LastName}"
     accessPolicy: SuperSecure
     authInfo:
       type: Saml20
       validityTimeSeconds: 200
       nameIdFormat: urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified
-      nameId: ${user.UserName}
+      nameId: "${user.UserName}"
 
 - name: dale-application
 

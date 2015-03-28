@@ -2,25 +2,26 @@ package main
 
 import (
 	"github.com/codegangsta/cli"
+	"gopkg.in/yaml.v2"
 )
 
 type wksApp struct {
-	packageVersion string
-	description    string
-	iconFile       string
-	attributeMaps  map[string]string
-	accessPolicy   string
-	authInfo       map[string]string
+	PackageVersion string                 `yaml:"packageVersion,omitempty"`
+	Description    string                 `yaml:"description,omitempty"`
+	IconFile       string                 `yaml:"iconFile,omitempty"`
+	AttributeMaps  map[string]interface{} `yaml:"attributeMaps,omitempty"`
+	AccessPolicy   string                 `yaml:"accessPolicy,omitempty"`
+	AuthInfo       map[string]interface{} `yaml:"authInfo,omitempty"`
 }
 
 type manifestApp struct {
-	name      string
-	memory    string
-	instances int
-	path      string
-	buildpack string
-	env       map[string]string
-	workspace wksApp
+	Name      string
+	Memory    string
+	Instances int
+	Path      string
+	BuildPack string
+	Env       map[string]string
+	Workspace wksApp
 }
 
 /*
@@ -39,6 +40,16 @@ func getManifest() (err error) {
 */
 
 func cmdPublish(c *cli.Context) {
-	println("push app command")
-	//getManifest()
+	var manifest struct{ Applications []manifestApp }
+	if yml, err := getFile(".", "manifest.yaml"); err == nil {
+		if err := yaml.Unmarshal(yml, &manifest); err != nil {
+			log(lerr, "Error parsing manifest: %v\n", err)
+			return
+		}
+	} else {
+		log(lerr, "Error opening manifest: %v\n", err)
+		return
+	}
+	log(linfo, "manifest is %#v\n", manifest)
+	ppJson(linfo, "manifest", manifest)
 }
