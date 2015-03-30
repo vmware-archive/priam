@@ -100,7 +100,7 @@ func addUser(u *basicUser, authHdr string) (err error) {
 	acct.Name.GivenName = stringOrDefault(u.Given, u.Name)
 	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
 	var body string
-	return httpReq("POST", tgtURL("jersey/manager/api/scim/Users"), InitHdrs("", authHdr), &acct, &body)
+	return httpReq("POST", tgtURL("jersey/manager/api/scim/Users"), InitHdrs(authHdr, ""), &acct, &body)
 }
 
 func cmdAddUserBulk(c *cli.Context) {
@@ -154,7 +154,7 @@ func getUser(c *cli.Context) (acct userAccount, authHdr string, ok bool) {
 	vals, users := make(url.Values), userList{}
 	vals.Set("filter", fmt.Sprintf("userName eq \"%s\"", args[0]))
 	path := fmt.Sprintf("jersey/manager/api/scim/Users?%v", vals.Encode())
-	if err := httpReq("GET", tgtURL(path), InitHdrs("", authHdr), nil, &users); err != nil {
+	if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr, ""), nil, &users); err != nil {
 		log(lerr, "Error getting user: %v\n", err)
 		return
 	}
@@ -175,7 +175,7 @@ func cmdDelUser(c *cli.Context) {
 	var output string
 	if acct, authHdr, ok := getUser(c); ok {
 		path := fmt.Sprintf("jersey/manager/api/scim/Users/%s", acct.Id)
-		if err := httpReq("DELETE", tgtURL(path), InitHdrs("", authHdr), nil, output); err != nil {
+		if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr, ""), nil, output); err != nil {
 			log(lerr, "Error deleting user: %v\n", err)
 		} else {
 			log(linfo, "User \"%s\" deleted\n", acct.UserName)
@@ -194,13 +194,12 @@ func cmdSetPassword(c *cli.Context) {
 		Password string
 	}{[]string{"urn:scim:schemas:core:1.0"},
 		getArgOrPassword(c)}
-	hdrs := InitHdrs("", authHdr)
+	hdrs := InitHdrs(authHdr, "", "")
 	hdrs["X-HTTP-Method-Override"] = "PATCH"
-	hdrs["Content-Type"] = hdrs["Accept"]
 	var output string
 	if err := httpReq("POST", tgtURL(path), hdrs, &patch, &output); err != nil {
 		log(lerr, "Error updating user: %v\n", err)
-		ppJson(lerr, "Error response", output)
+		logpp(lerr, "Error response", output)
 	} else {
 		log(linfo, "User \"%s\" updated\n", acct.UserName)
 	}

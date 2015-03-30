@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	neturl "net/url"
+	"strings"
 )
 
 type hdrMap map[string]string
@@ -21,38 +22,6 @@ func ppHeaders(lt logType, prefix string, hdrs http.Header) {
 		}
 
 	}
-}
-
-func ppJson(lt logType, prefix, input interface{}) {
-	var err error
-	var outp interface{}
-	var inp []byte
-	if input != nil {
-		switch in := input.(type) {
-		case string:
-			inp = []byte(in)
-		case *string:
-			inp = []byte(*in)
-		case []byte:
-			inp = in
-		default:
-			outp = input
-		}
-	}
-	if outp == nil {
-		if inp == nil || len(inp) == 0 {
-			log(lt, "%s is empty.\n", prefix)
-			return
-		}
-		err = json.Unmarshal(inp, &outp)
-	}
-	if err == nil {
-		if out, err := json.MarshalIndent(outp, "", "  "); err == nil {
-			log(lt, "%s\n%s\n", prefix, string(out))
-			return
-		}
-	}
-	log(lt, "%s:\nCould not parse JSON: %v\nraw:\n%v", prefix, err, input)
 }
 
 func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err error) {
@@ -91,7 +60,7 @@ func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err er
 	if body, err = ioutil.ReadAll(resp.Body); err != nil {
 		return
 	}
-	ppJson(ltrace, "response body", string(body))
+	logWithStyle(ltrace, ljson, "response body", string(body))
 	if output != nil {
 		switch outp := output.(type) {
 		case *string:
@@ -116,6 +85,25 @@ func basicAuth(name, pwd string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd))
 }
 
+/* takes up to 3 strings to be used as Authorization, Accept, and Content-Type headers.
+ * For Accept and Content-Type headers, if they are empty "application/json" is used. 
+ * For media types that don't start with "application/", the usual workspace prefix 
+ * is helpfully added. 
+ */
+func InitHdrs(args ...string) hdrMap {
+	n, h := [3]string {"Authorization", "Accept", "Content-Type"}, make(hdrMap)
+	for i, a := range args {
+		if i == 0 || strings.HasPrefix(a, "application/") {
+			h[n[i]] = a
+		} else if a == "" {
+			h[n[i]] = "application/json"
+		} else {
+			h[n[i]] = "application/vnd.vmware.horizon.manager." + a + "+json"
+		}
+	}
+	return h
+}
+
 // returns a string with an access token suitable for an authorization header
 // in the form "Bearer xxxxxxx"
 func clientCredsGrant(url, clientID, clientSecret string) (authHeader string, err error) {
@@ -126,22 +114,10 @@ func clientCredsGrant(url, clientID, clientSecret string) (authHeader string, er
 	pvals := make(neturl.Values)
 	pvals.Set("grant_type", "client_credentials")
 	body := pvals.Encode()
-	hdrs := hdrMap{"Content-Type": "application/x-www-form-urlencoded",
-		"Authorization": basicAuth(clientID, clientSecret),
-		"Accept":        "application/json"}
+	hdrs := InitHdrs(basicAuth(clientID, clientSecret), "", "application/x-www-form-urlencoded")
 	if err = httpReq("POST", url, hdrs, &body, &tokenInfo); err != nil {
 		return
 	}
 	authHeader = tokenInfo.Token_type + " " + tokenInfo.Access_token
 	return
-}
-
-func InitHdrs(mediaType, authHdr string) hdrMap {
-	hdrs := hdrMap{"Authorization": authHdr}
-	if mediaType == "" {
-		hdrs["Accept"] = "application/json"
-	} else if mediaType != "<none>" {
-		hdrs["Accept"] = "application/vnd.vmware.horizon.manager." + mediaType + "+json"
-	}
-	return hdrs
 }

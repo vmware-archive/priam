@@ -102,7 +102,7 @@ func cmdLogin(c *cli.Context) {
 
 func getAuthnJson(path string, mediaType string, output interface{}) (err error) {
 	if authHdr, err := getAuthHeader(); err == nil {
-		err = httpReq("GET", tgtURL(path), InitHdrs(mediaType, authHdr), nil, output)
+		err = httpReq("GET", tgtURL(path), InitHdrs(authHdr, mediaType), nil, output)
 	}
 	return
 }
@@ -110,10 +110,10 @@ func getAuthnJson(path string, mediaType string, output interface{}) (err error)
 func showAuthnJson(prefix, path string, mediaType string) {
 	if authHdr := authHeader(); authHdr != "" {
 		var body string
-		if err := httpReq("GET", tgtURL(path), InitHdrs(mediaType, authHdr), nil, &body); err != nil {
+		if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr, mediaType), nil, &body); err != nil {
 			log(lerr, "Error: %v\n", err)
 		} else {
-			ppJson(linfo, prefix, body)
+			logpp(linfo, prefix, body)
 		}
 	}
 }
@@ -134,33 +134,20 @@ func cmdLocalUserStore(c *cli.Context) {
 	const desc = "Local User Store configuration"
 	const path = "jersey/manager/api/localuserstore"
 	const mtype = "local.userstore"
-	var authHdr, output string
 	keyvals := make(map[string]interface{})
 	for _, arg := range c.Args() {
 		kv := strings.SplitAfterN(arg, "=", 2)
-		k := strings.TrimSuffix(kv[0], "=")
-		switch kv[1] {
-		case "null":
-			keyvals[k] = nil
-		//case "true": keyvals[k] = true
-		//case "false": keyvals[k] = false
-		default:
-			keyvals[k] = kv[1]
-		}
+		keyvals[strings.TrimSuffix(kv[0], "=")] = kv[1]
 	}
 	if len(keyvals) == 0 {
 		showAuthnJson(desc, path, mtype)
-		return
-	}
-	if authHdr = authHeader(); authHdr == "" {
-		return
-	}
-	hdrs := InitHdrs(mtype, authHdr)
-	hdrs["Content-Type"] = hdrs["Accept"]
-	if err := httpReq("PUT", tgtURL(path), hdrs, keyvals, &output); err != nil {
-		log(lerr, "Error: %v\n", err)
-	} else {
-		ppJson(linfo, desc, output)
+	} else if authHdr := authHeader(); authHdr != "" {
+		var output string
+		if err := httpReq("PUT", tgtURL(path), InitHdrs(authHdr, mtype, mtype), keyvals, &output); err != nil {
+			log(lerr, "Error: %v\n", err)
+		} else {
+			logpp(linfo, desc, output)
+		}
 	}
 }
 
@@ -172,6 +159,9 @@ func wks(args []string) (err error) {
 	app.Before = func(c *cli.Context) (err error) {
 		debugMode = c.Bool("debug")
 		traceMode = c.Bool("trace")
+		if c.Bool("json") {
+			logStyleDefault = ljson
+		}
 		return
 	}
 
@@ -184,14 +174,43 @@ func wks(args []string) (err error) {
 			Name:  "trace, t",
 			Usage: "print all requests and responses",
 		},
+		cli.BoolFlag{
+			Name:  "json, j",
+			Usage: "print output in json",
+		},
 	}
 
 	app.Commands = []cli.Command{
 		{
-			Name:  "catalog",
-			Usage: "get catalog items",
-			Action: func(c *cli.Context) {
-				showAuthnJson("Catalog Items", "API/1.0/REST/admin/catalog", "")
+			Name:  "app",
+			Usage: "application publishing commands",
+			Subcommands: []cli.Command{
+				{
+					Name:   "add",
+					Usage:  "add applications to the catalog",
+					Description: "app add [manifest.yaml]",
+					Action: cmdAppAdd,
+				},
+				{
+					Name:   "delete",
+					Usage:  "delete an app: delete appID",
+					Action: cmdAppDel,
+				},
+			},
+		},
+		{
+			Name:  "apps",
+			Usage: "list all applications in the catalog",
+			Action: cmdAppList,
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "count",
+					Usage: "maximum apps to list",
+				},
+				cli.StringFlag{
+					Name:  "filter",
+					Usage: "app name filter",
+				},
 			},
 		},
 		{
@@ -202,7 +221,7 @@ func wks(args []string) (err error) {
 				if err != nil {
 					log(lerr, "Error on Check Health: %v\n", err)
 				} else {
-					ppJson(linfo, "Health info", body)
+					logpp(linfo, "Health info", body)
 				}
 			},
 		},
@@ -248,11 +267,6 @@ func wks(args []string) (err error) {
 			Usage:       "display all target workspace instances",
 			Action:      cmdTargets,
 			Description: "wks targets",
-		},
-		{
-			Name:   "publish",
-			Usage:  "publish an application",
-			Action: cmdPublish,
 		},
 		{
 			Name:  "user",

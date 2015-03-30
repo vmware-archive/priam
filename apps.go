@@ -3,9 +3,11 @@ package main
 import (
 	"github.com/codegangsta/cli"
 	"gopkg.in/yaml.v2"
+	"fmt"
 )
 
 type wksApp struct {
+	Name           string                 `yaml:"name,omitempty"`
 	PackageVersion string                 `yaml:"packageVersion,omitempty"`
 	Description    string                 `yaml:"description,omitempty"`
 	IconFile       string                 `yaml:"iconFile,omitempty"`
@@ -24,22 +26,7 @@ type manifestApp struct {
 	Workspace wksApp
 }
 
-/*
-func getManifest() (err error) {
-	var cfg map[interface{}]interface{}
-	if err = yaml.Unmarshal(manifest, cfg); err == nil {
-		fmt.Printf("\n\nAppValue: %#v\n\n", cfg["applications"])
-		for _, app := range cfg["applications"].([]interface{}) {
-			for k, v := range app.(map[interface{}]interface{}) {
-				fmt.Printf("key %v, Value: %#v\n\n", k, v)
-			}
-		}
-	}
-	return
-}
-*/
-
-func cmdPublish(c *cli.Context) {
+func cmdAppAdd(c *cli.Context) {
 	var manifest struct{ Applications []manifestApp }
 	if yml, err := getFile(".", "manifest.yaml"); err == nil {
 		if err := yaml.Unmarshal(yml, &manifest); err != nil {
@@ -50,6 +37,27 @@ func cmdPublish(c *cli.Context) {
 		log(lerr, "Error opening manifest: %v\n", err)
 		return
 	}
-	log(linfo, "manifest is %#v\n", manifest)
-	ppJson(linfo, "manifest", manifest)
+	//log(linfo, "manifest is %#v\n", manifest)
+	logpp(linfo, "manifest", manifest)
+}
+
+func cmdAppDel(c *cli.Context) {
+}
+
+func cmdAppList(c *cli.Context) {
+	count, filter := c.Int("count"), c.String("filter")
+	if count == 0 {
+		count = 1000
+	}
+	path := fmt.Sprintf("jersey/manager/api/catalogitems/search?pageSize=%v", count)
+	input := struct{NameFilter string `json:"nameFilter,omitempty"`} {filter}
+	if authHdr := authHeader(); authHdr != "" {
+		var body string
+		hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
+		if err := httpReq("POST", tgtURL(path), hdrs, &input, &body); err != nil {
+			log(lerr, "Error: %v\n", err)
+		} else {
+			logpp(linfo, "Application catalog", body)
+		}
+	}
 }
