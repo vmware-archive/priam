@@ -71,6 +71,16 @@ func authHeader() (hdr string) {
 	return
 }
 
+func InitCmd(c *cli.Context, minArgs int) (args []string, authHdr string) {
+	args = c.Args()
+	if len(args) < minArgs {
+		log(lerr, "at least %d arguments must be specified\n", minArgs)
+	} else {
+		authHdr = authHeader()
+	}
+	return
+}
+
 func tgtURL(path string) string {
 	return appCfg.Targets[appCfg.CurrentTarget].Host + "/SAAS/" + path
 }
@@ -118,18 +128,6 @@ func showAuthnJson(prefix, path string, mediaType string) {
 	}
 }
 
-func cmdSchema(c *cli.Context) {
-	args := c.Args()
-	if len(args) < 1 {
-		log(lerr, "schema type must be specified\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig")
-		return
-	}
-	vals := make(url.Values)
-	vals.Set("filter", fmt.Sprintf("name eq \"%s\"", args[0]))
-	path := fmt.Sprintf("jersey/manager/api/scim/Schemas?%v", vals.Encode())
-	showAuthnJson("Schema for "+args[0], path, "")
-}
-
 func cmdLocalUserStore(c *cli.Context) {
 	const desc = "Local User Store configuration"
 	const path = "jersey/manager/api/localuserstore"
@@ -149,6 +147,18 @@ func cmdLocalUserStore(c *cli.Context) {
 			logpp(linfo, desc, output)
 		}
 	}
+}
+
+func cmdSchema(c *cli.Context) {
+	args := c.Args()
+	if len(args) < 1 {
+		log(lerr, "schema type must be specified\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig\n")
+		return
+	}
+	vals := make(url.Values)
+	vals.Set("filter", fmt.Sprintf("name eq \"%s\"", args[0]))
+	path := fmt.Sprintf("jersey/manager/api/scim/Schemas?%v", vals.Encode())
+	showAuthnJson("Schema for "+args[0], path, "")
 }
 
 func wks(args []string) (err error) {
@@ -180,36 +190,76 @@ func wks(args []string) (err error) {
 		},
 	}
 
+	pageFlags := []cli.Flag{
+		cli.IntFlag{
+			Name:  "count",
+			Usage: "maximum entries to get",
+		},
+		cli.StringFlag{
+			Name:  "filter",
+			Usage: "filter such as 'username eq \"joe\"' for SCIM resources",
+		},
+	}
+
+	memberFlags := []cli.Flag{
+		cli.BoolFlag{
+			Name:  "delete, d",
+			Usage: "delete member",
+		},
+	}
+
 	app.Commands = []cli.Command{
 		{
 			Name:  "app",
 			Usage: "application publishing commands",
 			Subcommands: []cli.Command{
 				{
-					Name:   "add",
-					Usage:  "add applications to the catalog",
+					Name:        "add",
+					Usage:       "add applications to the catalog",
 					Description: "app add [manifest.yaml]",
-					Action: cmdAppAdd,
+					Action:      cmdAppAdd,
 				},
 				{
 					Name:   "delete",
 					Usage:  "delete an app: delete appID",
 					Action: cmdAppDel,
 				},
+				{
+					Name:   "list",
+					Usage:  "list all applications in the catalog",
+					Flags:  pageFlags,
+					Action: cmdAppList,
+				},
 			},
 		},
 		{
-			Name:  "apps",
-			Usage: "list all applications in the catalog",
-			Action: cmdAppList,
-			Flags: []cli.Flag{
-				cli.IntFlag{
-					Name:  "count",
-					Usage: "maximum apps to list",
+			Name:  "group",
+			Usage: "commands for groups",
+			Subcommands: []cli.Command{
+				{
+					Name:        "get",
+					Usage:       "get a specific group",
+					Description: "group get <name>",
+					Action: func(c *cli.Context) {
+						scimGet(c, "Groups", "displayName")
+					},
 				},
-				cli.StringFlag{
-					Name:  "filter",
-					Usage: "app name filter",
+				{
+					Name:  "list",
+					Usage: "list all groups",
+					Flags: pageFlags,
+					Action: func(c *cli.Context) {
+						scimList(c, "Groups")
+					},
+				},
+				{
+					Name:        "member",
+					Usage:       "add or remove users from a group",
+					Description: "member <groupname> <username>",
+					Flags:       memberFlags,
+					Action: func(c *cli.Context) {
+						scimMember(c, "Groups", "displayName")
+					},
 				},
 			},
 		},
@@ -245,10 +295,34 @@ func wks(args []string) (err error) {
 			},
 		},
 		{
-			Name:        "schema",
-			Usage:       "get scim schema for given type",
-			Description: "schema <type>\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig",
-			Action:      cmdSchema,
+			Name:  "role",
+			Usage: "commands for roles",
+			Subcommands: []cli.Command{
+				{
+					Name:  "get",
+					Usage: "get specific SCIM role",
+					Action: func(c *cli.Context) {
+						scimGet(c, "Roles", "displayName")
+					},
+				},
+				{
+					Name:  "list",
+					Usage: "list all roles",
+					Flags: pageFlags,
+					Action: func(c *cli.Context) {
+						scimList(c, "Roles")
+					},
+				},
+				{
+					Name:        "member",
+					Usage:       "add or remove users from a role",
+					Description: "member <rolename> <username>",
+					Flags:       memberFlags,
+					Action: func(c *cli.Context) {
+						scimMember(c, "Roles", "displayName")
+					},
+				},
+			},
 		},
 		{
 			Name:        "target",
@@ -292,41 +366,43 @@ func wks(args []string) (err error) {
 					},
 				},
 				{
-					Name:   "get",
-					Usage:  "display user account: get userName",
-					Action: cmdGetUser,
+					Name:  "get",
+					Usage: "display user account: get userName",
+					Action: func(c *cli.Context) {
+						scimGet(c, "Users", "userName")
+					},
 				},
 				{
-					Name:   "delete",
-					Usage:  "delete user account: delete userName",
-					Action: cmdDelUser,
+					Name:  "delete",
+					Usage: "delete user account: delete userName",
+					Action: func(c *cli.Context) {
+						scimDelete(c, "Users", "userName")
+					},
+				},
+				{
+					Name:  "list",
+					Usage: "list user accounts",
+					Action: func(c *cli.Context) {
+						scimList(c, "Users")
+					},
+				},
+				{
+					Name:   "load",
+					Usage:  "bulk load users",
+					Action: cmdLoadUsers,
 				},
 				{
 					Name:   "password",
 					Usage:  "set a user's password: password [password]",
 					Action: cmdSetPassword,
 				},
-				{
-					Name:   "bulk",
-					Usage:  "bulk load users",
-					Action: cmdAddUserBulk,
-				},
 			},
 		},
 		{
-			Name:   "users",
-			Usage:  "get users",
-			Action: cmdUsers,
-			Flags: []cli.Flag{
-				cli.IntFlag{
-					Name:  "count",
-					Usage: "maximum users to get",
-				},
-				cli.StringFlag{
-					Name:  "filter",
-					Usage: "SCIM filter",
-				},
-			},
+			Name:        "schema",
+			Usage:       "get SCIM schema of specific type",
+			Description: "schema <type>\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
+			Action:      cmdSchema,
 		},
 	}
 

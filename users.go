@@ -9,48 +9,167 @@ import (
 	"strconv"
 )
 
-type dispValue struct{ Display, Value string }
+const coreSchemaURN = "urn:scim:schemas:core:1.0"
+
+type dispValue struct {
+	Display, Value string `json:",omitempty"`
+}
+
+type nameAttr struct {
+	GivenName, FamilyName string `json:",omitempty"`
+}
 
 type userAccount struct {
-	Schemas               []string `json:",omitempty"`
-	UserName              string
+	Schemas               []string                                                   `json:",omitempty"`
+	UserName              string                                                     `json:",omitempty"`
 	Id                    string                                                     `json:",omitempty"`
 	Active                bool                                                       `json:",omitempty"`
 	Emails, Groups, Roles []dispValue                                                `json:",omitempty"`
 	Meta                  *struct{ Created, LastModified, Location, Version string } `json:",omitempty"`
-	Name                  struct{ GivenName, FamilyName string }                     `json:",omitempty"`
+	Name                  *nameAttr                                                  `json:",omitempty"`
 	WksExt                *struct{ InternalUserType, UserStatus string }             `json:"urn:scim:schemas:extension:workspace:1.0,omitempty"`
 	Password              string                                                     `json:",omitempty"`
 }
 
-type userList struct {
-	Resources                              []userAccount
-	ItemsPerPage, TotalResults, StartIndex uint
-	Schemas                                []string `json:",omitempty"`
-}
-
-func ppUserAccount(a *userAccount) {
+func (a *userAccount) pp() {
 	log(linfo, "%v, %v %v, %v\n%v\n\n", a.UserName, a.Name.GivenName, a.Name.FamilyName,
 		a.Emails[0].Value, a.Id)
 }
 
-func cmdUsers(c *cli.Context) {
-	count, filter, users, vals := c.Int("count"), c.String("filter"), userList{}, make(url.Values)
-	if count == 0 {
-		count = 1000
+type memberValue struct {
+	Value, Type, Operation string `json:",omitempty"`
+}
+
+type memberPatch struct {
+	Schemas []string      `json:",omitempty"`
+	Members []memberValue `json:",omitempty"`
+}
+
+type basicUser struct {
+	Name, Given, Family, Email, Pwd string `yaml:",omitempty,flow"`
+}
+
+func scimGetByName(resType, nameAttr, name, authHdr string) (item map[string]interface{}, err error) {
+	output := struct {
+		Resources                              []map[string]interface{}
+		ItemsPerPage, TotalResults, StartIndex uint
+		Schemas                                []string
+	}{}
+	vals := url.Values{"count": {"10000"}, "filter": {fmt.Sprintf("%s eq \"%s\"", nameAttr, name)}}
+	path := fmt.Sprintf("jersey/manager/api/scim/%v?%v", resType, vals.Encode())
+	if err = httpReq("GET", tgtURL(path), InitHdrs(authHdr, ""), nil, &output); err != nil {
+		return
 	}
-	vals.Set("count", strconv.Itoa(count))
+	for _, v := range output.Resources {
+		if s, ok := v[nameAttr].(string); ok && s == name {
+			if item != nil {
+				return nil, fmt.Errorf("multiple %v found named \"%s\"", resType, name)
+			} else {
+				item = v
+			}
+		}
+	}
+	if item == nil {
+		err = fmt.Errorf("no %v found named \"%s\"", resType, name)
+	}
+	return
+}
+
+func scimNameToID(resType, nameAttr, name, authHdr string) (string, error) {
+	if item, err := scimGetByName(resType, nameAttr, name, authHdr); err != nil {
+		return "", err
+	} else if id, ok := item["id"].(string); !ok {
+		return "", fmt.Errorf("no id returned for \"%s\"", name)
+	} else {
+		return id, nil
+	}
+}
+
+func scimList(c *cli.Context, resType string) {
+	count, filter, output := c.Int("count"), c.String("filter"), make(map[string]interface{})
+	vals := url.Values{}
+	if count > 0 {
+		vals.Set("filter", strconv.Itoa(count))
+	}
 	if filter != "" {
 		vals.Set("filter", filter)
 	}
-	path := fmt.Sprintf("jersey/manager/api/scim/Users?%v", vals.Encode())
-	if err := getAuthnJson(path, "", &users); err != nil {
-		log(lerr, "Error getting users: %v\n", err)
-		return
+	path := fmt.Sprintf("jersey/manager/api/scim/%s?%v", resType, vals.Encode())
+	if err := getAuthnJson(path, "", &output); err != nil {
+		log(lerr, "Error getting SCIM resources of type %s: %v\n", resType, err)
+	} else {
+		logpp(linfo, resType, output["Resources"])
 	}
-	//log(linfo, "User response: %#v\n", users)
-	for _, v := range users.Resources {
-		ppUserAccount(&v)
+}
+
+func scimPatch(resType, id, authHdr string, input interface{}) error {
+	hdrs := InitHdrs(authHdr, "", "")
+	hdrs["X-HTTP-Method-Override"] = "PATCH"
+	path := fmt.Sprintf("jersey/manager/api/scim/%s/%s", resType, id)
+	return httpReq("POST", tgtURL(path), hdrs, input, nil)
+}
+
+func cmdNameToID(resType, nameAttr, name, authHdr string) string {
+	if id, err := scimNameToID(resType, nameAttr, name, authHdr); err == nil {
+		return id
+	} else {
+		log(lerr, "Error getting SCIM %s ID of %s: %v\n", resType, name, err)
+	}
+	return ""
+}
+
+func scimMember(c *cli.Context, resType, nameAttr string) {
+	if args, authHdr := InitCmd(c, 2); authHdr != "" {
+		rid, uid := cmdNameToID(resType, nameAttr, args[0], authHdr), cmdNameToID("Users", "userName", args[1], authHdr)
+		if rid == "" || uid == "" {
+			return
+		}
+		patch := memberPatch{Schemas: []string{coreSchemaURN}, Members: []memberValue{{Value: uid, Type: "User"}}}
+		if c.Bool("delete") {
+			patch.Members[0].Operation = "delete"
+		}
+		if err := scimPatch(resType, rid, authHdr, &patch); err != nil {
+			log(lerr, "Error updating SCIM resource %s of type %s: %v\n", args[0], resType, err)
+		} else {
+			log(linfo, "Updated SCIM resource %s of type %s\n", args[0], resType)
+		}
+	}
+}
+
+func scimGet(c *cli.Context, resType, nameAttr string) {
+	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+		if item, err := scimGetByName(resType, nameAttr, args[0], authHdr); err != nil {
+			log(lerr, "Error getting SCIM resource named %s of type %s: %v\n", args[0], resType, err)
+		} else {
+			logpp(linfo, "", item)
+		}
+	}
+}
+
+func addUser(u *basicUser, authHdr string) error {
+	acct := userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
+	acct.Password = u.Pwd
+	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
+	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
+	return httpReq("POST", tgtURL("jersey/manager/api/scim/Users"), InitHdrs(authHdr, ""), &acct, &acct)
+}
+
+func cmdLoadUsers(c *cli.Context) {
+	var newUsers []basicUser
+	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+		if inYaml, err := getFile(".", args[0]); err != nil {
+			log(lerr, "could not read file of bulk users: %v\n", err)
+		} else if err := yaml.Unmarshal(inYaml, &newUsers); err != nil {
+			log(lerr, "Error parsing new users: %v\n", err)
+		} else {
+			for k, v := range newUsers {
+				if err := addUser(&v, authHdr); err != nil {
+					log(lerr, "Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
+				} else {
+					log(linfo, "added user %s\n", v.Name)
+				}
+			}
+		}
 	}
 }
 
@@ -62,145 +181,52 @@ func getpwd(prompt string) string {
 	}
 }
 
-func getPassword() (pwd string) {
+func getArgOrPassword(args []string) string {
+	if len(args) > 1 {
+		return args[1]
+	}
 	for {
-		pwd = getpwd("Password: ")
-		if pwd == getpwd("Password again: ") {
-			return
+		if pwd := getpwd("Password: "); pwd == getpwd("Password again: ") {
+			return pwd
 		}
 		log(linfo, "Passwords didn't match. Try again.")
 	}
 }
 
-func stringOrDefault(v, dfault string) string {
-	if v != "" {
-		return v
+func cmdAddUser(c *cli.Context) {
+	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+		user := basicUser{Name: args[0], Given: c.String("given"), Family: c.String("family"),
+			Email: c.String("email"), Pwd: getArgOrPassword(args)}
+		if err := addUser(&user, authHdr); err != nil {
+			log(lerr, "Error creating user: %v\n", err)
+		} else {
+			log(linfo, "User successfully added\n")
+		}
 	}
-	return dfault
 }
 
-func InitUserCmd(c *cli.Context, minArgs int, needed string) (args []string, authHdr string) {
-	args = c.Args()
-	if len(args) < minArgs {
-		log(lerr, "%s must be specified\n", needed)
-	} else {
-		authHdr = authHeader()
-	}
-	return
-}
-
-type basicUser struct {
-	Name, Given, Family, Email, Pwd string `yaml:",omitempty,flow"`
-}
-
-func addUser(u *basicUser, authHdr string) (err error) {
-	acct := userAccount{UserName: u.Name, Schemas: []string{"urn:scim:schemas:core:1.0"}}
-	acct.Password = u.Pwd
-	acct.Name.FamilyName = stringOrDefault(u.Family, u.Name)
-	acct.Name.GivenName = stringOrDefault(u.Given, u.Name)
-	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
-	var body string
-	return httpReq("POST", tgtURL("jersey/manager/api/scim/Users"), InitHdrs(authHdr, ""), &acct, &body)
-}
-
-func cmdAddUserBulk(c *cli.Context) {
-	args, authHdr := InitUserCmd(c, 1, "file name of new users")
-	var newUsers []basicUser
-	if authHdr == "" {
-		return
-	}
-	if inYaml, err := getFile(".", args[0]); err != nil {
-		log(lerr, "could not read file of bulk users: %v\n", err)
-	} else if err := yaml.Unmarshal(inYaml, &newUsers); err != nil {
-		log(lerr, "Error parsing new users: %v\n", err)
-	} else {
-		for k, v := range newUsers {
-			if err := addUser(&v, authHdr); err != nil {
-				log(lerr, "Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
+func scimDelete(c *cli.Context, resType, nameAttr string) {
+	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+		if id := cmdNameToID(resType, nameAttr, args[0], authHdr); id != "" {
+			path := fmt.Sprintf("jersey/manager/api/scim/%s/%s", resType, id)
+			if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr, ""), nil, nil); err != nil {
+				log(lerr, "Error deleting %s %sr: %v\n", resType, args[0], err)
 			} else {
-				log(linfo, "added user %s\n", v.Name)
+				log(linfo, "%s \"%s\" deleted\n", resType, args[0])
 			}
 		}
 	}
 }
 
-func getArgOrPassword(c *cli.Context) string {
-	if args := c.Args(); len(args) > 1 {
-		return args[1]
-	}
-	return getPassword()
-}
-
-func cmdAddUser(c *cli.Context) {
-	args, authHdr := InitUserCmd(c, 1, "user name")
-	if authHdr == "" {
-		return
-	}
-	user := basicUser{Name: args[0], Given: c.String("given"), Family: c.String("family"),
-		Email: c.String("email"), Pwd: getArgOrPassword(c)}
-	if err := addUser(&user, authHdr); err != nil {
-		log(lerr, "Error creating user: %v\n", err)
-	} else {
-		log(linfo, "User successfully added\n")
-	}
-}
-
-func getUser(c *cli.Context) (acct userAccount, authHdr string, ok bool) {
-	var args []string
-	args, authHdr = InitUserCmd(c, 1, "user name")
-	if authHdr == "" {
-		return
-	}
-	vals, users := make(url.Values), userList{}
-	vals.Set("filter", fmt.Sprintf("userName eq \"%s\"", args[0]))
-	path := fmt.Sprintf("jersey/manager/api/scim/Users?%v", vals.Encode())
-	if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr, ""), nil, &users); err != nil {
-		log(lerr, "Error getting user: %v\n", err)
-		return
-	}
-	if len(users.Resources) != 1 {
-		log(lerr, "expected to find one user with name \"%s\", but found %d\n", args[0], len(users.Resources))
-		return
-	}
-	return users.Resources[0], authHdr, true
-}
-
-func cmdGetUser(c *cli.Context) {
-	if acct, _, ok := getUser(c); ok {
-		ppUserAccount(&acct)
-	}
-}
-
-func cmdDelUser(c *cli.Context) {
-	var output string
-	if acct, authHdr, ok := getUser(c); ok {
-		path := fmt.Sprintf("jersey/manager/api/scim/Users/%s", acct.Id)
-		if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr, ""), nil, output); err != nil {
-			log(lerr, "Error deleting user: %v\n", err)
-		} else {
-			log(linfo, "User \"%s\" deleted\n", acct.UserName)
-		}
-	}
-}
-
 func cmdSetPassword(c *cli.Context) {
-	acct, authHdr, ok := getUser(c)
-	if !ok {
-		return
-	}
-	path := fmt.Sprintf("jersey/manager/api/scim/Users/%s", acct.Id)
-	patch := struct {
-		Schemas  []string
-		Password string
-	}{[]string{"urn:scim:schemas:core:1.0"},
-		getArgOrPassword(c)}
-	hdrs := InitHdrs(authHdr, "", "")
-	hdrs["X-HTTP-Method-Override"] = "PATCH"
-	var output string
-	if err := httpReq("POST", tgtURL(path), hdrs, &patch, &output); err != nil {
-		log(lerr, "Error updating user: %v\n", err)
-		logpp(lerr, "Error response", output)
-	} else {
-		log(linfo, "User \"%s\" updated\n", acct.UserName)
+	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+		if id := cmdNameToID("Users", "userName", args[0], authHdr); id != "" {
+			acct := userAccount{Schemas: []string{coreSchemaURN}, Password: getArgOrPassword(args)}
+			if err := scimPatch("Users", id, authHdr, &acct); err != nil {
+				log(lerr, "Error updating user: %v\n", err)
+			} else {
+				log(linfo, "User \"%s\" updated\n", acct.UserName)
+			}
+		}
 	}
 }

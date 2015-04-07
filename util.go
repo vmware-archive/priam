@@ -50,7 +50,7 @@ func log(lt logType, format string, args ...interface{}) {
 	}
 }
 
-func logWithStyle(lt logType, ls logStyle, prefix string, input interface{}) {
+func toStringWithStyle(ls logStyle, input interface{}) string {
 	var err error
 	var outp interface{}
 	var out, inp []byte
@@ -68,8 +68,7 @@ func logWithStyle(lt logType, ls logStyle, prefix string, input interface{}) {
 	}
 	if outp == nil {
 		if inp == nil || len(inp) == 0 {
-			log(lt, "%s is empty.\n", prefix)
-			return
+			return ""
 		}
 		err = json.Unmarshal(inp, &outp)
 	}
@@ -80,10 +79,17 @@ func logWithStyle(lt logType, ls logStyle, prefix string, input interface{}) {
 			out, err = json.MarshalIndent(outp, "", "  ")
 		}
 	}
-	if err == nil {
-		log(lt, "%s\n%s\n", prefix, string(out))
+	if err != nil {
+		return fmt.Sprintf("Could not pretty print: %v\nraw:\n%v", err, input)
+	}
+	return string(out)
+}
+
+func logWithStyle(lt logType, ls logStyle, prefix string, input interface{}) {
+	if s := toStringWithStyle(ls, input); s == "" {
+		log(lt, "%s is empty.\n", prefix)
 	} else {
-		log(lt, "%s:\nCould not pretty print: %v\nraw:\n%v", prefix, err, input)
+		log(lt, "%s\n%s\n", prefix, s)
 	}
 }
 
@@ -107,4 +113,11 @@ func putFile(dir, filename string, in []byte) (err error) {
 		err = ioutil.WriteFile(fullname, in, 0644)
 	}
 	return
+}
+
+func stringOrDefault(v, dfault string) string {
+	if v != "" {
+		return v
+	}
+	return dfault
 }
