@@ -69,9 +69,18 @@ func cmdAppAdd(c *cli.Context) {
 }
 
 func cmdAppDel(c *cli.Context) {
+	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+		path := fmt.Sprintf("jersey/manager/api/catalogitems/%s", args[0])
+		if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr), nil, nil); err != nil {
+			log(lerr, "Error deleting app %s from catalog: %v\n", args[0], err)
+		} else {
+			log(linfo, "app %s deleted\n", args[0])
+		}
+	}
 }
 
 func cmdAppList(c *cli.Context) {
+	summaryFields := []string{"Apps", "name", "description", "catalogItemType", "uuid"}
 	count, filter := c.Int("count"), c.String("filter")
 	if count == 0 {
 		count = 1000
@@ -81,12 +90,12 @@ func cmdAppList(c *cli.Context) {
 		NameFilter string `json:"nameFilter,omitempty"`
 	}{filter}
 	if authHdr := authHeader(); authHdr != "" {
-		var body string
+		body := make(map[string]interface{})
 		hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
 		if err := httpReq("POST", tgtURL(path), hdrs, &input, &body); err != nil {
 			log(lerr, "Error: %v\n", err)
 		} else {
-			logpp(linfo, "Application catalog", body)
+			logppf(linfo, "Apps", body["items"], summaryFields)
 		}
 	}
 }

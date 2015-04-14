@@ -55,17 +55,18 @@ func curTarget() (tgt target, err error) {
 	return appCfg.Targets[appCfg.CurrentTarget], nil
 }
 
-func getAuthHeader() (hdr string, err error) {
+func getAuthHeader() (string, error) {
 	if tgt, err := curTarget(); err == nil {
 		url := tgt.Host + "/SAAS/API/1.0/oauth2/token"
-		hdr, err = clientCredsGrant(url, tgt.ClientID, tgt.ClientSecret)
+		return clientCredsGrant(url, tgt.ClientID, tgt.ClientSecret)
+	} else {
+		return "", err
 	}
-	return
 }
 
 func authHeader() (hdr string) {
-	var err error
-	if hdr, err = getAuthHeader(); err != nil {
+	hdr, err := getAuthHeader()
+	if err != nil {
 		log(lerr, "Error getting access token: %v\n", err)
 	}
 	return
@@ -169,6 +170,7 @@ func wks(args []string) (err error) {
 	app.Before = func(c *cli.Context) (err error) {
 		debugMode = c.Bool("debug")
 		traceMode = c.Bool("trace")
+		verboseMode = c.Bool("verbose")
 		if c.Bool("json") {
 			logStyleDefault = ljson
 		}
@@ -187,6 +189,10 @@ func wks(args []string) (err error) {
 		cli.BoolFlag{
 			Name:  "json, j",
 			Usage: "print output in json",
+		},
+		cli.BoolFlag{
+			Name:  "verbose, V",
+			Usage: "print verbose output",
 		},
 	}
 
@@ -221,7 +227,7 @@ func wks(args []string) (err error) {
 				},
 				{
 					Name:   "delete",
-					Usage:  "delete an app: delete appID",
+					Usage:  "delete an app: delete <app-uuid>",
 					Action: cmdAppDel,
 				},
 				{
@@ -229,6 +235,20 @@ func wks(args []string) (err error) {
 					Usage:  "list all applications in the catalog",
 					Flags:  pageFlags,
 					Action: cmdAppList,
+				},
+			},
+		},
+		{
+			Name:  "entitlements",
+			Usage: "commands for entitlements",
+			Subcommands: []cli.Command{
+				{
+					Name:        "get",
+					Usage:       "get entitlements for a specific user, app, or group",
+					Description: "ent get (group|user|app) <name>",
+					Action: func(c *cli.Context) {
+						cmdEntitlementGet(c)
+					},
 				},
 			},
 		},
@@ -249,7 +269,8 @@ func wks(args []string) (err error) {
 					Usage: "list all groups",
 					Flags: pageFlags,
 					Action: func(c *cli.Context) {
-						scimList(c, "Groups")
+						scimList(c, "Groups", "Groups", "displayName", "id",
+							"members", "display")
 					},
 				},
 				{
@@ -383,7 +404,9 @@ func wks(args []string) (err error) {
 					Name:  "list",
 					Usage: "list user accounts",
 					Action: func(c *cli.Context) {
-						scimList(c, "Users")
+						scimList(c, "Users", "Users", "userName", "id",
+							"emails", "display", "roles", "groups", "name",
+							"givenName", "familyName", "value")
 					},
 				},
 				{

@@ -30,7 +30,7 @@ const (
 var inR io.Reader = os.Stdin
 var outW io.Writer = os.Stdout
 var errW io.Writer = os.Stderr
-var debugMode, traceMode bool
+var debugMode, traceMode, verboseMode bool
 var logStyleDefault = lyaml
 
 func log(lt logType, format string, args ...interface{}) {
@@ -83,6 +83,54 @@ func toStringWithStyle(ls logStyle, input interface{}) string {
 		return fmt.Sprintf("Could not pretty print: %v\nraw:\n%v", err, input)
 	}
 	return string(out)
+}
+
+func hasString(s string, a []string) bool {
+	for _, v := range a {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func logWithFilter(lt logType, indent, label, sep string, info interface{}, filter []string) {
+	const indenter, arrayPrefix string = "  ", "- "
+	if label != "" && label != arrayPrefix && !hasString(label, filter) {
+		return
+	}
+	switch inf := info.(type) {
+	case []interface{}:
+		log(lt, "%s%s%s\n", indent, label, sep)
+		for _, v := range inf {
+			logWithFilter(lt, indent, arrayPrefix, "", v, filter)
+		}
+	case map[string]interface{}:
+		if label != arrayPrefix {
+			log(lt, "%s%s%s\n", indent, label, sep)
+			label = indenter
+		}
+
+		for _, k := range filter {
+			if v, ok := inf[k]; ok {
+				logWithFilter(lt, indent+label, k, ":", v, filter)
+				if label == arrayPrefix {
+					label = indenter
+				}
+			}
+		}
+	default:
+		log(lt, "%s%s%s %v\n", indent, label, sep, inf)
+	}
+
+}
+
+func logppf(lt logType, title string, info interface{}, filter []string) {
+	if verboseMode || len(filter) == 0 {
+		logpp(lt, title, info)
+	} else {
+		logWithFilter(lt, "", title, ":", info, filter)
+	}
 }
 
 func logWithStyle(lt logType, ls logStyle, prefix string, input interface{}) {

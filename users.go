@@ -85,7 +85,7 @@ func scimNameToID(resType, nameAttr, name, authHdr string) (string, error) {
 	}
 }
 
-func scimList(c *cli.Context, resType string) {
+func scimList(c *cli.Context, resType string, summaryLabels ...string) {
 	count, filter, output := c.Int("count"), c.String("filter"), make(map[string]interface{})
 	vals := url.Values{}
 	if count > 0 {
@@ -98,7 +98,7 @@ func scimList(c *cli.Context, resType string) {
 	if err := getAuthnJson(path, "", &output); err != nil {
 		log(lerr, "Error getting SCIM resources of type %s: %v\n", resType, err)
 	} else {
-		logpp(linfo, resType, output["Resources"])
+		logppf(linfo, resType, output["Resources"], summaryLabels)
 	}
 }
 
@@ -210,7 +210,7 @@ func scimDelete(c *cli.Context, resType, nameAttr string) {
 		if id := cmdNameToID(resType, nameAttr, args[0], authHdr); id != "" {
 			path := fmt.Sprintf("jersey/manager/api/scim/%s/%s", resType, id)
 			if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr, ""), nil, nil); err != nil {
-				log(lerr, "Error deleting %s %sr: %v\n", resType, args[0], err)
+				log(lerr, "Error deleting %s %s: %v\n", resType, args[0], err)
 			} else {
 				log(linfo, "%s \"%s\" deleted\n", resType, args[0])
 			}

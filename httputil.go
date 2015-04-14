@@ -74,7 +74,6 @@ func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err er
 		}
 	}
 	good := map[int]bool{200: true, 201: true, 204: true}
-	//if !good[resp.StatusCode != 200 && resp.StatusCode != 201 && res.StatusCode != 204 {
 	if !good[resp.StatusCode] {
 		err = fmt.Errorf("Status: %s\n%s\n", resp.Status, toStringWithStyle(lyaml, body))
 	}
