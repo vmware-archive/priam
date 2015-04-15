@@ -111,13 +111,6 @@ func cmdLogin(c *cli.Context) {
 	log(linfo, "clientID and clientSecret saved\n")
 }
 
-func getAuthnJson(path string, mediaType string, output interface{}) (err error) {
-	if authHdr, err := getAuthHeader(); err == nil {
-		err = httpReq("GET", tgtURL(path), InitHdrs(authHdr, mediaType), nil, output)
-	}
-	return
-}
-
 func showAuthnJson(prefix, path string, mediaType string) {
 	if authHdr := authHeader(); authHdr != "" {
 		var body string

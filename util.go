@@ -54,14 +54,18 @@ func toStringWithStyle(ls logStyle, input interface{}) string {
 	var err error
 	var outp interface{}
 	var out, inp []byte
+	var raw string
 	if input != nil {
 		switch in := input.(type) {
 		case string:
 			inp = []byte(in)
+			raw = in
 		case *string:
 			inp = []byte(*in)
+			raw = *in
 		case []byte:
 			inp = in
+			raw = string(in)
 		default:
 			outp = input
 		}
@@ -80,7 +84,10 @@ func toStringWithStyle(ls logStyle, input interface{}) string {
 		}
 	}
 	if err != nil {
-		return fmt.Sprintf("Could not pretty print: %v\nraw:\n%v", err, input)
+		if raw == "" {
+			raw = fmt.Sprintf("%v", input)
+		}
+		return fmt.Sprintf("Could not pretty print: %v\nraw:\n%v", err, raw)
 	}
 	return string(out)
 }

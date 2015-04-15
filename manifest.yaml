@@ -10,17 +10,30 @@ applications:
   workspace:
     packageVersion: '1.0'
     description: Fanny's Demo App for RADIO
-    iconFile: icons/vin.jpg
+    #iconFile: icons/vin.jpg
+    catalogItemType: Saml20
     attributeMaps: 
       UserName: "${user.UserName}"
       FirstName: "${user.FirstName}"
       LastName: "${user.LastName}"
-    accessPolicy: SuperSecure
+    accessPolicy: default_access_policy_set
     authInfo:
       type: Saml20
       validityTimeSeconds: 200
       nameIdFormat: urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified
       nameId: "${user.UserName}"
+      configureAs: "manual"
+      audience: "https://test.fanny.audience"
+      assertionConsumerServiceUrl: "https://test.fanny/a/{domainName}/acs?RelayState=http://mail.google.com/a/{domainName}"
+      recipientName: "https://test.fanny/a/{domainName}/acs"
 
 - name: dale-application
+  workspace:
+    #uuid: 123456
+    packageVersion: '0.0'
+    description: Dale's Demo App for RADIO
+    catalogItemType: WebAppLink
+    authInfo:
+      type: WebAppLink
+      targetUrl: "http://example.com"
 

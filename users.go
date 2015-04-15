@@ -86,8 +86,7 @@ func scimNameToID(resType, nameAttr, name, authHdr string) (string, error) {
 }
 
 func scimList(c *cli.Context, resType string, summaryLabels ...string) {
-	count, filter, output := c.Int("count"), c.String("filter"), make(map[string]interface{})
-	vals := url.Values{}
+	count, filter, vals := c.Int("count"), c.String("filter"), url.Values{}
 	if count > 0 {
 		vals.Set("filter", strconv.Itoa(count))
 	}
@@ -95,10 +94,13 @@ func scimList(c *cli.Context, resType string, summaryLabels ...string) {
 		vals.Set("filter", filter)
 	}
 	path := fmt.Sprintf("jersey/manager/api/scim/%s?%v", resType, vals.Encode())
-	if err := getAuthnJson(path, "", &output); err != nil {
-		log(lerr, "Error getting SCIM resources of type %s: %v\n", resType, err)
-	} else {
-		logppf(linfo, resType, output["Resources"], summaryLabels)
+	if authHdr := authHeader(); authHdr != "" {
+		output := make(map[string]interface{})
+		if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr), nil, &output); err != nil {
+			log(lerr, "Error getting SCIM resources of type %s: %v\n", resType, err)
+		} else {
+			logppf(linfo, resType, output["Resources"], summaryLabels)
+		}
 	}
 }
 

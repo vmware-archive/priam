@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"gopkg.in/yaml.v2"
+	"strings"
 )
 
 type wksApp struct {
-	Name           string `yaml:"name,omitempty"`
-	Uuid           string `yaml:"uuid,omitempty"`
-	PackageVersion string `yaml:"packageVersion,omitempty"`
-	Description    string `yaml:"description,omitempty"`
-	//IconFile              string                 `yaml:"iconFile,omitempty"`
-	ResourceConfiguration map[string]interface{} `yaml:"resourceConfiguration,omitempty"`
-	AccessPolicy          string                 `yaml:"accessPolicy,omitempty"`
-	AccessPolicySetUuid   string                 `yaml:"accessPolicySet Uuid,omitempty"`
-	CatalogItemType       string                 `yaml:"catalogItemType,omitempty"`
-	Labels                []string               `yaml:"catalogItemType,omitempty"`
-	AuthInfo              map[string]interface{} `yaml:"authInfo,omitempty"`
+	Name           string `json:"name,omitempty" yaml:"name,omitempty"`
+	Uuid           string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	PackageVersion string `json:"packageVersion,omitempty" yaml:"packageVersion,omitempty"`
+	Description    string `json:"description,omitempty" yaml:"description,omitempty"`
+	//IconFile              string                 `json:"iconFile,omitempty" yaml:"iconFile,omitempty"`
+	ResourceConfiguration map[string]interface{} `json:"resourceConfiguration" yaml:"resourceConfiguration,omitempty"`
+	AccessPolicy          string                 `json:"accessPolicy,omitempty" yaml:"accessPolicy,omitempty"`
+	AccessPolicySetUuid   string                 `json:"accessPolicySetUuid,omitempty" yaml:"accessPolicySetUuid,omitempty"`
+	CatalogItemType       string                 `json:"catalogItemType,omitempty" yaml:"catalogItemType,omitempty"`
+	Labels                []string               `json:"labels,omitempty" yaml:"labels,omitempty"`
+	AuthInfo              map[string]interface{} `json:"authInfo,omitempty" yaml:"authInfo,omitempty"`
 }
 
 type manifestApp struct {
@@ -31,8 +32,25 @@ type manifestApp struct {
 	Workspace wksApp
 }
 
-func GetAccessPolicyUuid(name string) string {
-	return name
+func accessPolicyId(name, authHdr string) string {
+	body := make(map[string]interface{})
+	if err := httpReq("GET", tgtURL("jersey/manager/api/accessPolicies"), InitHdrs(authHdr), nil, &body); err != nil {
+		log(lerr, "Error getting access policies: %v\n", err)
+		return ""
+	}
+	if items, ok := body["items"].([]interface{}); ok {
+		for _, v := range items {
+			if item, ok := v.(map[string]interface{}); ok {
+				if name == "" && item["base"] == true || name == item["name"] {
+					if s, ok := item["uuid"].(string); ok {
+						return s
+					}
+				}
+			}
+		}
+	}
+	log(lerr, "Could not find access policy uuid\n")
+	return ""
 }
 
 func cmdAppAdd(c *cli.Context) {
@@ -46,14 +64,17 @@ func cmdAppAdd(c *cli.Context) {
 		log(lerr, "Error opening manifest: %v\n", err)
 		return
 	}
+	authHdr := authHeader()
+	if authHdr == "" {
+		return
+	}
 	for _, v := range manifest.Applications {
 		var w = &v.Workspace
 		if w.AccessPolicySetUuid == "" {
-			if w.AccessPolicy == "" {
-				log(lerr, "Invalid manifest entry for %s: one of accessPolicy name or AccessPolicySetUuid must be specified\n", w.Name)
+			if w.AccessPolicySetUuid = accessPolicyId(w.AccessPolicy, authHdr); w.AccessPolicySetUuid == "" {
 				continue
 			}
-			w.AccessPolicySetUuid = GetAccessPolicyUuid(w.AccessPolicy)
+			w.AccessPolicy = ""
 		} else if w.AccessPolicy != "" {
 			log(lerr, "Invalid manifest for %s: both accessPolicy \"%s\" and AccessPolicySetUuid \"%s\" cannot be specified\n",
 				w.Name, w.AccessPolicy, w.AccessPolicySetUuid)
@@ -62,10 +83,18 @@ func cmdAppAdd(c *cli.Context) {
 		if w.Uuid == "" {
 			w.Uuid = uuid.New()
 		}
-
+		if w.Name == "" {
+			w.Name = v.Name
+		}
+		mtype := "catalog." + strings.ToLower(w.CatalogItemType)
+		hdrs := InitHdrs(authHdr, mtype, mtype)
+		if err := httpReq("POST", tgtURL("jersey/manager/api/catalogitems"), hdrs, w, nil); err != nil {
+			log(lerr, "Error adding %s to the catalog: %v\n", w.Name, err)
+		} else {
+			log(linfo, "Apps %s added to the catalog\n", w.Name)
+		}
 	}
 	//log(linfo, "manifest is %#v\n", manifest)
-	logpp(linfo, "manifest", manifest)
 }
 
 func cmdAppDel(c *cli.Context) {
