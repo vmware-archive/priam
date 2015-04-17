@@ -4,11 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"gopkg.in/yaml.v2"
-	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 type logType int
@@ -27,25 +24,22 @@ const (
 	lyaml
 )
 
-var inR io.Reader = os.Stdin
-var outW io.Writer = os.Stdout
-var errW io.Writer = os.Stderr
 var debugMode, traceMode, verboseMode bool
 var logStyleDefault = lyaml
 
 func log(lt logType, format string, args ...interface{}) {
 	switch lt {
 	case linfo:
-		fmt.Fprintf(outW, format, args...)
+		fmt.Printf(format, args...)
 	case lerr:
-		fmt.Fprintf(errW, format, args...)
+		fmt.Fprintf(os.Stderr, format, args...)
 	case ldebug:
 		if debugMode {
-			fmt.Fprintf(outW, format, args...)
+			fmt.Printf(format, args...)
 		}
 	case ltrace:
 		if traceMode {
-			fmt.Fprintf(outW, format, args...)
+			fmt.Printf(format, args...)
 		}
 	}
 }
@@ -117,7 +111,6 @@ func logWithFilter(lt logType, indent, label, sep string, info interface{}, filt
 			log(lt, "%s%s%s\n", indent, label, sep)
 			label = indenter
 		}
-
 		for _, k := range filter {
 			if v, ok := inf[k]; ok {
 				logWithFilter(lt, indent+label, k, ":", v, filter)
@@ -152,22 +145,20 @@ func logpp(lt logType, prefix string, input interface{}) {
 	logWithStyle(lt, logStyleDefault, prefix, input)
 }
 
-func getFile(dir, filename string) (out []byte, err error) {
-	fullname, err := filepath.Abs(filepath.Join(dir, filename))
-	if err == nil {
-		out, err = ioutil.ReadFile(fullname)
-	} else if strings.HasSuffix(err.Error(), "no such file or directory") {
-		out = []byte{}
+func getYamlFile(filename string, output interface{}) error {
+	if f, err := ioutil.ReadFile(filename); err != nil {
+		return err
+	} else {
+		return yaml.Unmarshal(f, output)
 	}
-	return
 }
 
-func putFile(dir, filename string, in []byte) (err error) {
-	fullname, err := filepath.Abs(filepath.Join(dir, filename))
-	if err == nil {
-		err = ioutil.WriteFile(fullname, in, 0644)
+func putYamlFile(filename string, input interface{}) error {
+	if f, err := yaml.Marshal(input); err != nil {
+		return err
+	} else {
+		return ioutil.WriteFile(filename, f, 0644)
 	}
-	return
 }
 
 func stringOrDefault(v, dfault string) string {

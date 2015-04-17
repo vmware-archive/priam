@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/codegangsta/cli"
-	"gopkg.in/yaml.v2"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,30 +22,34 @@ type appConfig struct {
 }
 
 var appCfg appConfig
-var inCfg, outCfg []byte
+var configFileName string
 
-func getAppConfig() (err error) {
-	appCfg = appConfig{}
-	if err = yaml.Unmarshal(inCfg, &appCfg); err != nil {
-		return
+func getAppConfig(fileName string) error {
+	configFileName = fileName
+	if err := getYamlFile(fileName, &appCfg); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("could not read config file %s, error: %v\n", fileName, err)
+		}
+		appCfg = appConfig{}
 	}
 	if appCfg.CurrentTarget != "" &&
 		appCfg.Targets[appCfg.CurrentTarget] != (target{}) {
-		return
+		return nil
 	}
 	for k := range appCfg.Targets {
 		appCfg.CurrentTarget = k
-		return
+		return nil
 	}
 	if appCfg.Targets == nil {
 		appCfg.Targets = make(map[string]target)
 	}
-	return
+	return nil
 }
 
-func putAppConfig() (err error) {
-	outCfg, err = yaml.Marshal(&appCfg)
-	return
+func putAppConfig() {
+	if err := putYamlFile(configFileName, &appCfg); err != nil {
+		log(lerr, "could not write config file %s, error: %v\n", configFileName, err)
+	}
 }
 
 func curTarget() (tgt target, err error) {
@@ -64,12 +68,13 @@ func getAuthHeader() (string, error) {
 	}
 }
 
-func authHeader() (hdr string) {
-	hdr, err := getAuthHeader()
-	if err != nil {
+func authHeader() string {
+	if hdr, err := getAuthHeader(); err != nil {
 		log(lerr, "Error getting access token: %v\n", err)
+		return ""
+	} else {
+		return hdr
 	}
-	return
 }
 
 func InitCmd(c *cli.Context, minArgs int) (args []string, authHdr string) {
@@ -155,33 +160,43 @@ func cmdSchema(c *cli.Context) {
 	showAuthnJson("Schema for "+args[0], path, "")
 }
 
-func wks(args []string) (err error) {
+func cmdBefore(c *cli.Context) (err error) {
+	debugMode = c.Bool("debug")
+	traceMode = c.Bool("trace")
+	verboseMode = c.Bool("verbose")
+	if c.Bool("json") {
+		logStyleDefault = ljson
+	}
+	fname := c.String("config")
+	if fname == "" {
+		fname = filepath.Join(os.Getenv("HOME"), ".wks.yaml")
+	}
+	return getAppConfig(fname)
+}
+
+func main() {
+	var err error
 	app := cli.NewApp()
 	app.Name, app.Usage = "wks", "a utility to publish applications to Workspace"
-	app.Email, app.Author, app.Writer = "", "", outW
+	app.Email, app.Author, app.Writer = "", "", os.Stdout
 	app.Action = cli.ShowAppHelp
-	app.Before = func(c *cli.Context) (err error) {
-		debugMode = c.Bool("debug")
-		traceMode = c.Bool("trace")
-		verboseMode = c.Bool("verbose")
-		if c.Bool("json") {
-			logStyleDefault = ljson
-		}
-		return
-	}
-
+	app.Before = cmdBefore
 	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "config",
+			Usage: "specify alternate configuration file. Default is ~/.wks.yaml",
+		},
 		cli.BoolFlag{
 			Name:  "debug, d",
 			Usage: "print debug output",
 		},
 		cli.BoolFlag{
-			Name:  "trace, t",
-			Usage: "print all requests and responses",
-		},
-		cli.BoolFlag{
 			Name:  "json, j",
 			Usage: "print output in json",
+		},
+		cli.BoolFlag{
+			Name:  "trace, t",
+			Usage: "print all requests and responses",
 		},
 		cli.BoolFlag{
 			Name:  "verbose, V",
@@ -232,7 +247,7 @@ func wks(args []string) (err error) {
 			},
 		},
 		{
-			Name:  "entitlements",
+			Name:  "entitlement",
 			Usage: "commands for entitlements",
 			Subcommands: []cli.Command{
 				{
@@ -422,27 +437,7 @@ func wks(args []string) (err error) {
 		},
 	}
 
-	if err = getAppConfig(); err != nil {
-		fmt.Fprintf(errW, "failed to parse configuration: %v", err)
-	} else if err = app.Run(args); err != nil {
-		fmt.Fprintf(errW, "failed to run app: %v", err)
-	}
-	return
-}
-
-func main() {
-	var err error
-	dir, fname := os.Getenv("HOME"), ".wks.yaml"
-	inCfg, err = getFile(dir, fname)
-	if err != nil {
-		panic(err)
-	}
-	if err = wks(os.Args); err != nil {
-		panic(err)
-	}
-	if len(outCfg) > 0 {
-		if err = putFile(dir, fname, outCfg); err != nil {
-			panic(err)
-		}
+	if err = app.Run(os.Args); err != nil {
+		log(lerr, "failed to run app: %v", err)
 	}
 }

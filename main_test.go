@@ -1,20 +1,16 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
+	//"bytes"
+	//"fmt"
 	"github.com/stretchr/testify/assert"
-	"io"
-	//"io/ioutil"
-	"net/http"
+	//"io"
+	//"net/http"
+	"os"
 	"testing"
-
-	"net/http/httptest"
+	//"net/http/httptest"
+	"io/ioutil"
 )
-
-type context struct {
-	outb, inb, errb bytes.Buffer
-}
 
 var sampleCfg string = `---
 currenttarget: 1
@@ -27,23 +23,74 @@ targets:
     host: https://radio.hwslabs.com
 `
 
-func beforeEach() (ctx *context) {
-	ctx = new(context)
-	outW = &ctx.outb
-	inR = &ctx.inb
-	errW = &ctx.errb
-	inCfg = []byte{}
-	outCfg = []byte{}
-	inCfg = []byte(sampleCfg)
+func closeDelete(f *os.File) {
+	f.Close()
+	os.Remove(f.Name())
+}
+
+func runner(t *testing.T, config string, input string, args ...string) (cfgout, stdout, errout string) {
+	orgIn, orgErr, orgOut := os.Stdin, os.Stderr, os.Stdout
+	fc, err := ioutil.TempFile("", "wks-test-c-")
+	if !assert.Nil(t, err) {
+		return
+	}
+	defer closeDelete(fc)
+	fi, err := ioutil.TempFile("", "wks-test-i-")
+	if !assert.Nil(t, err) {
+		return
+	}
+	defer closeDelete(fi)
+	fo, err := ioutil.TempFile("", "wks-test-o-")
+	if !assert.Nil(t, err) {
+		return
+	}
+	defer closeDelete(fo)
+	fe, err := ioutil.TempFile("", "wks-test-e-")
+	if !assert.Nil(t, err) {
+		return
+	}
+	defer closeDelete(fe)
+	_, err = fc.Write([]byte(config))
+	if !assert.Nil(t, err) {
+		return
+	}
+	_, err = fi.Write([]byte(input))
+	if !assert.Nil(t, err) {
+		return
+	}
+	os.Stdin, os.Stderr, os.Stdout = fi, fe, fo
+	os.Args = append([]string{"wks", "--config", fc.Name()}, args...)
+	//append(os.Args, args...)
+	main()
+	fc.Seek(0, 0)
+	fe.Seek(0, 0)
+	fo.Seek(0, 0)
+	contents, err := ioutil.ReadAll(fc)
+	if !assert.Nil(t, err) {
+		return
+	}
+	cfgout = string(contents)
+	contents, err = ioutil.ReadAll(fo)
+	if !assert.Nil(t, err) {
+		return
+	}
+	stdout = string(contents)
+	contents, err = ioutil.ReadAll(fe)
+	if !assert.Nil(t, err) {
+		return
+	}
+	errout = string(contents)
+	os.Stdin, os.Stderr, os.Stdout = orgIn, orgErr, orgOut
 	return
 }
 
 func TestHelp(t *testing.T) {
-	ctx := beforeEach()
-	assert.Nil(t, wks([]string{"wks", "help"}))
-	assert.Contains(t, ctx.outb.String(), "USAGE")
+	_, stdo, erro := runner(t, sampleCfg, "", "help")
+	assert.Empty(t, erro)
+	assert.Contains(t, stdo, "USAGE")
 }
 
+/*
 // should pick a target if none is set
 func TestTargetNoCurrent(t *testing.T) {
 	var targetYaml string = `---
@@ -126,3 +173,4 @@ func TestTargets(t *testing.T) {
 	assert.Contains(t, ctx.outb.String(), "radio")
 	assert.Contains(t, ctx.outb.String(), "https://radio.workspaceair.com")
 }
+*/

@@ -4,7 +4,6 @@ import (
 	"code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"github.com/codegangsta/cli"
-	"gopkg.in/yaml.v2"
 	"strings"
 )
 
@@ -54,18 +53,13 @@ func accessPolicyId(name, authHdr string) string {
 }
 
 func cmdAppAdd(c *cli.Context) {
-	var manifest struct{ Applications []manifestApp }
-	if yml, err := getFile(".", "manifest.yaml"); err == nil {
-		if err := yaml.Unmarshal(yml, &manifest); err != nil {
-			log(lerr, "Error parsing manifest: %v\n", err)
-			return
-		}
-	} else {
-		log(lerr, "Error opening manifest: %v\n", err)
+	args, authHdr := InitCmd(c, 1)
+	if authHdr == "" {
 		return
 	}
-	authHdr := authHeader()
-	if authHdr == "" {
+	var manifest struct{ Applications []manifestApp }
+	if err := getYamlFile(stringOrDefault(args[0], "manifest.yaml"), &manifest); err != nil {
+		log(lerr, "Error getting manifest: %v\n", err)
 		return
 	}
 	for _, v := range manifest.Applications {

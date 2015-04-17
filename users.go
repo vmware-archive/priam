@@ -4,7 +4,6 @@ import (
 	"code.google.com/p/gopass"
 	"fmt"
 	"github.com/codegangsta/cli"
-	"gopkg.in/yaml.v2"
 	"net/url"
 	"strconv"
 )
@@ -159,10 +158,8 @@ func addUser(u *basicUser, authHdr string) error {
 func cmdLoadUsers(c *cli.Context) {
 	var newUsers []basicUser
 	if args, authHdr := InitCmd(c, 1); authHdr != "" {
-		if inYaml, err := getFile(".", args[0]); err != nil {
+		if err := getYamlFile(args[0], &newUsers); err != nil {
 			log(lerr, "could not read file of bulk users: %v\n", err)
-		} else if err := yaml.Unmarshal(inYaml, &newUsers); err != nil {
-			log(lerr, "Error parsing new users: %v\n", err)
 		} else {
 			for k, v := range newUsers {
 				if err := addUser(&v, authHdr); err != nil {
