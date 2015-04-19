@@ -2,14 +2,14 @@ package main
 
 import (
 	//"bytes"
-	//"fmt"
+	"fmt"
 	"github.com/stretchr/testify/assert"
-	//"io"
-	//"net/http"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
-	//"net/http/httptest"
-	"io/ioutil"
 )
 
 var sampleCfg string = `---
@@ -25,6 +25,7 @@ targets:
 
 type context struct {
 	cfgin, cfgout, stdin, stdout, stderr string
+	expectError                          bool
 }
 
 func newContext(cfg string) *context {
@@ -33,7 +34,29 @@ func newContext(cfg string) *context {
 
 func closeDelete(f *os.File) {
 	f.Close()
-	//os.Remove(f.Name())
+	os.Remove(f.Name())
+}
+
+type reqInfo struct {
+	reply, mtype, expect string
+}
+
+func StartTestServer(paths map[string]reqInfo) *httptest.Server {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if rbody, err := ioutil.ReadAll(r.Body); err != nil {
+			http.Error(w, fmt.Sprintf("error reading request body: %v", err), 404)
+		} else if info, ok := paths[r.URL.Path]; !ok {
+			http.Error(w, "bad path", 404)
+		} else if info.expect == "" || info.expect == string(rbody) {
+			w.Header().Set("Content-Type", stringOrDefault(info.mtype, "application/json"))
+			io.WriteString(w, info.reply)
+		}
+	}
+	return httptest.NewServer(http.HandlerFunc(handler))
+}
+
+func tstSrvTgt(url string) string {
+	return fmt.Sprintf("---\ntargets:\n  1:\n    host: %s\n", url)
 }
 
 func runner(t *testing.T, ctx *context, args ...string) *context {
@@ -66,12 +89,20 @@ func runner(t *testing.T, ctx *context, args ...string) *context {
 			*v = string(contents)
 		}
 	}
+	if ctx.expectError {
+		if !assert.NotEmpty(t, ctx.stderr) {
+			return nil
+		}
+	} else {
+		if !assert.Empty(t, ctx.stderr) {
+			return nil
+		}
+	}
 	return ctx
 }
 
 func TestHelp(t *testing.T) {
 	if ctx := runner(t, newContext(""), "help"); ctx != nil {
-		assert.Empty(t, ctx.stderr)
 		assert.Contains(t, ctx.stdout, "USAGE")
 	}
 }
@@ -84,7 +115,6 @@ targets:
     host: https://radio.workspaceair.com
 `
 	if ctx := runner(t, newContext(targetYaml), "target"); ctx != nil {
-		assert.Empty(t, ctx.stderr)
 		assert.Contains(t, ctx.cfgout, "radio.workspaceair.com")
 	}
 }
@@ -92,7 +122,6 @@ targets:
 // should use the current target if one is set
 func TestTargetCurrent(t *testing.T) {
 	if ctx := runner(t, newContext(""), "target"); ctx != nil {
-		assert.Empty(t, ctx.stderr)
 		assert.Contains(t, ctx.stdout, "radio.workspaceair.com")
 	}
 }
@@ -100,62 +129,36 @@ func TestTargetCurrent(t *testing.T) {
 // should fail gracefully if no appConfig exists
 func TestTargetNoConfig(t *testing.T) {
 	if ctx := runner(t, newContext(" "), "target"); ctx != nil {
-		assert.Empty(t, ctx.stderr)
 		assert.Contains(t, ctx.stdout, "no target set")
 	}
 }
 
-/*
 // should not require access to server if target forced
 func TestTargetForced(t *testing.T) {
-	ctx := beforeEach()
-	assert.Nil(t, wks([]string{"wks", "target", "-f", "https://bad.example.com"}))
-	assert.Contains(t, ctx.outb.String(), "bad.example.com")
+	if ctx := runner(t, newContext(""), "target", "-f", "https://bad.example.com"); ctx != nil {
+		assert.Contains(t, ctx.stdout, "bad.example.com")
+	}
 }
 
 // should add https to target url if needed
 func TestTargetAddHttps(t *testing.T) {
-	ctx := beforeEach()
-	assert.Nil(t, wks([]string{"wks", "target", "-f", "bad.example.com"}))
-	assert.Contains(t, ctx.outb.String(), "https://bad.example.com")
-}
-
-// TestTargetNonWorkspace
-// TestTargetWithName
-// TestTargetWithoutName
-// TestHealth
-
-type reqInfo struct {
-	path, reply string
-}
-
-func StartTestServer(info *reqInfo) (srv *httptest.Server) {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != info.path {
-			http.Error(w, "bad path", 404)
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			io.WriteString(w, info.reply)
-		}
+	if ctx := runner(t, newContext(""), "target", "-f", "bad.example.com"); ctx != nil {
+		assert.Contains(t, ctx.stdout, "https://bad.example.com")
 	}
-	srv = httptest.NewServer(http.HandlerFunc(handler))
-	inCfg = []byte(fmt.Sprintf("---\ntargets:\n  1:\n    host: %s\n", srv.URL))
-	return
-}
-
-func TestHealth(t *testing.T) {
-	ctx := beforeEach()
-	srv := StartTestServer(&reqInfo{"/SAAS/jersey/manager/api/health", "allOk"})
-	defer srv.Close()
-	assert.Nil(t, wks([]string{"wks", "health"}))
-	assert.Contains(t, ctx.outb.String(), "allOk")
 }
 
 func TestTargets(t *testing.T) {
-	ctx := beforeEach()
-	assert.Nil(t, wks([]string{"wks", "-d", "targets"}))
-	assert.Contains(t, ctx.outb.String(), "staging")
-	assert.Contains(t, ctx.outb.String(), "radio")
-	assert.Contains(t, ctx.outb.String(), "https://radio.workspaceair.com")
+	if ctx := runner(t, newContext(""), "-d", "targets"); ctx != nil {
+		assert.Contains(t, ctx.stdout, "staging")
+		assert.Contains(t, ctx.stdout, "radio")
+		assert.Contains(t, ctx.stdout, "https://radio.workspaceair.com")
+	}
 }
-*/
+
+func TestHealth(t *testing.T) {
+	paths := map[string]reqInfo{"/SAAS/jersey/manager/api/health": reqInfo{reply: "allOk"}}
+	srv := StartTestServer(paths)
+	if ctx := runner(t, newContext(tstSrvTgt(srv.URL)), "health"); ctx != nil {
+		assert.Contains(t, ctx.stdout, "allOk")
+	}
+}
