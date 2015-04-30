@@ -156,7 +156,7 @@ func TestTargets(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	paths := map[string]reqInfo{"/SAAS/jersey/manager/api/health": reqInfo{reply: "allOk"}}
+	paths := map[string]reqInfo{"/SAAS/health": reqInfo{reply: "allOk"}}
 	srv := StartTestServer(paths)
 	if ctx := runner(t, newContext(tstSrvTgt(srv.URL)), "health"); ctx != nil {
 		assert.Contains(t, ctx.stdout, "allOk")

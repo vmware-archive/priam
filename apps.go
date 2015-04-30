@@ -8,11 +8,11 @@ import (
 )
 
 type wksApp struct {
-	Name           string `json:"name,omitempty" yaml:"name,omitempty"`
-	Uuid           string `json:"uuid,omitempty" yaml:"uuid,omitempty"`
-	PackageVersion string `json:"packageVersion,omitempty" yaml:"packageVersion,omitempty"`
-	Description    string `json:"description,omitempty" yaml:"description,omitempty"`
-	//IconFile              string                 `json:"iconFile,omitempty" yaml:"iconFile,omitempty"`
+	Name                  string                 `json:"name,omitempty" yaml:"name,omitempty"`
+	Uuid                  string                 `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	PackageVersion        string                 `json:"packageVersion,omitempty" yaml:"packageVersion,omitempty"`
+	Description           string                 `json:"description,omitempty" yaml:"description,omitempty"`
+	IconFile              string                 `json:"iconFile,omitempty" yaml:"iconFile,omitempty"`
 	ResourceConfiguration map[string]interface{} `json:"resourceConfiguration" yaml:"resourceConfiguration,omitempty"`
 	AccessPolicy          string                 `json:"accessPolicy,omitempty" yaml:"accessPolicy,omitempty"`
 	AccessPolicySetUuid   string                 `json:"accessPolicySetUuid,omitempty" yaml:"accessPolicySetUuid,omitempty"`
@@ -33,7 +33,7 @@ type manifestApp struct {
 
 func accessPolicyId(name, authHdr string) string {
 	body := make(map[string]interface{})
-	if err := httpReq("GET", tgtURL("jersey/manager/api/accessPolicies"), InitHdrs(authHdr), nil, &body); err != nil {
+	if err := httpReq("GET", tgtURL("accessPolicies"), InitHdrs(authHdr), nil, &body); err != nil {
 		log(lerr, "Error getting access policies: %v\n", err)
 		return ""
 	}
@@ -80,20 +80,32 @@ func cmdAppAdd(c *cli.Context) {
 		if w.Name == "" {
 			w.Name = v.Name
 		}
-		mtype := "catalog." + strings.ToLower(w.CatalogItemType)
-		hdrs := InitHdrs(authHdr, mtype, mtype)
-		if err := httpReq("POST", tgtURL("jersey/manager/api/catalogitems"), hdrs, w, nil); err != nil {
+		amtype := "catalog." + strings.ToLower(w.CatalogItemType)
+		cmtype, iconFile := amtype, w.IconFile
+		w.IconFile = ""
+		content, err := toJson(w)
+		if err != nil {
+			log(lerr, "Error converting app %s to JSON: %v\n", w.Name, err)
+			continue
+		}
+		if iconFile != "" {
+			if content, cmtype, err = newReqWithFileUpload("catalogitem", amtype, content, iconFile); err != nil {
+				log(lerr, "Error creating upload request for app %s: %v\n", w.Name, err)
+				continue
+			}
+		}
+		hdrs := InitHdrs(authHdr, "-", cmtype)
+		if err = httpReq("POST", tgtURL("catalogitems"), hdrs, content, nil); err != nil {
 			log(lerr, "Error adding %s to the catalog: %v\n", w.Name, err)
 		} else {
 			log(linfo, "Apps %s added to the catalog\n", w.Name)
 		}
 	}
-	//log(linfo, "manifest is %#v\n", manifest)
 }
 
 func cmdAppDel(c *cli.Context) {
 	if args, authHdr := InitCmd(c, 1); authHdr != "" {
-		path := fmt.Sprintf("jersey/manager/api/catalogitems/%s", args[0])
+		path := fmt.Sprintf("catalogitems/%s", args[0])
 		if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr), nil, nil); err != nil {
 			log(lerr, "Error deleting app %s from catalog: %v\n", args[0], err)
 		} else {
@@ -108,7 +120,7 @@ func cmdAppList(c *cli.Context) {
 	if count == 0 {
 		count = 1000
 	}
-	path := fmt.Sprintf("jersey/manager/api/catalogitems/search?pageSize=%v", count)
+	path := fmt.Sprintf("catalogitems/search?pageSize=%v", count)
 	input := struct {
 		NameFilter string `json:"nameFilter,omitempty"`
 	}{filter}

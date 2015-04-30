@@ -55,7 +55,7 @@ func scimGetByName(resType, nameAttr, name, authHdr string) (item map[string]int
 		Schemas                                []string
 	}{}
 	vals := url.Values{"count": {"10000"}, "filter": {fmt.Sprintf("%s eq \"%s\"", nameAttr, name)}}
-	path := fmt.Sprintf("jersey/manager/api/scim/%v?%v", resType, vals.Encode())
+	path := fmt.Sprintf("scim/%v?%v", resType, vals.Encode())
 	if err = httpReq("GET", tgtURL(path), InitHdrs(authHdr, ""), nil, &output); err != nil {
 		return
 	}
@@ -92,7 +92,7 @@ func scimList(c *cli.Context, resType string, summaryLabels ...string) {
 	if filter != "" {
 		vals.Set("filter", filter)
 	}
-	path := fmt.Sprintf("jersey/manager/api/scim/%s?%v", resType, vals.Encode())
+	path := fmt.Sprintf("scim/%s?%v", resType, vals.Encode())
 	if authHdr := authHeader(); authHdr != "" {
 		output := make(map[string]interface{})
 		if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr), nil, &output); err != nil {
@@ -106,7 +106,7 @@ func scimList(c *cli.Context, resType string, summaryLabels ...string) {
 func scimPatch(resType, id, authHdr string, input interface{}) error {
 	hdrs := InitHdrs(authHdr, "", "")
 	hdrs["X-HTTP-Method-Override"] = "PATCH"
-	path := fmt.Sprintf("jersey/manager/api/scim/%s/%s", resType, id)
+	path := fmt.Sprintf("scim/%s/%s", resType, id)
 	return httpReq("POST", tgtURL(path), hdrs, input, nil)
 }
 
@@ -152,7 +152,7 @@ func addUser(u *basicUser, authHdr string) error {
 	acct.Password = u.Pwd
 	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
 	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
-	return httpReq("POST", tgtURL("jersey/manager/api/scim/Users"), InitHdrs(authHdr, ""), &acct, &acct)
+	return httpReq("POST", tgtURL("scim/Users"), InitHdrs(authHdr, ""), &acct, &acct)
 }
 
 func cmdLoadUsers(c *cli.Context) {
@@ -207,7 +207,7 @@ func cmdAddUser(c *cli.Context) {
 func scimDelete(c *cli.Context, resType, nameAttr string) {
 	if args, authHdr := InitCmd(c, 1); authHdr != "" {
 		if id := cmdNameToID(resType, nameAttr, args[0], authHdr); id != "" {
-			path := fmt.Sprintf("jersey/manager/api/scim/%s/%s", resType, id)
+			path := fmt.Sprintf("scim/%s/%s", resType, id)
 			if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr, ""), nil, nil); err != nil {
 				log(lerr, "Error deleting %s %s: %v\n", resType, args[0], err)
 			} else {

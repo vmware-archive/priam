@@ -5,9 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	neturl "net/url"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -24,19 +29,57 @@ func ppHeaders(lt logType, prefix string, hdrs http.Header) {
 	}
 }
 
-func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err error) {
-	var body []byte
-	if input != nil {
-		switch inp := input.(type) {
-		case *string:
-			body = []byte(*inp)
-		case []byte:
-			body = inp
-		default:
-			if body, err = json.Marshal(inp); err != nil {
-				return
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
+}
+
+/* CreateFormFileWithType is copied from miltipart.CreateFormFile
+ * which currently only supports octetstream file types.
+ */
+func CreateFormFileWithType(w *multipart.Writer, fieldname, mtype, filename string) (io.Writer, error) {
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+			escapeQuotes(fieldname), escapeQuotes(filename)))
+	h.Set("Content-Type", mtype)
+	return w.CreatePart(h)
+}
+
+func newReqWithFileUpload(key, mediaType string, content []byte, fileName string) (body []byte, contentType string, err error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	part, err := CreateFormFileWithType(writer, "file", "image/jpeg", filepath.Base(fileName))
+	if err == nil {
+		_, err = io.Copy(part, file)
+	}
+	if err != nil {
+		return
+	}
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="blob"`, key))
+	h.Set("Content-Type", fullWksMType(mediaType))
+	pw, err := writer.CreatePart(h)
+	if err == nil {
+		if _, err = pw.Write(content); err == nil {
+			if err = writer.Close(); err == nil {
+				contentType, body = writer.FormDataContentType(), buf.Bytes()
 			}
 		}
+	}
+	return
+}
+
+func httpReq(method, url string, hdrs hdrMap, input, output interface{}) (err error) {
+	body, err := toJson(input)
+	if err != nil {
+		return
 	}
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
 	if err != nil {
@@ -84,6 +127,10 @@ func basicAuth(name, pwd string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd))
 }
 
+func fullWksMType(shortType string) string {
+	return "application/vnd.vmware.horizon.manager." + shortType + "+json"
+}
+
 /* takes up to 3 strings to be used as Authorization, Accept, and Content-Type headers.
  * For Accept and Content-Type headers, if they are empty "application/json" is used.
  * For media types that don't start with "application/", the usual workspace prefix
@@ -92,12 +139,12 @@ func basicAuth(name, pwd string) string {
 func InitHdrs(args ...string) hdrMap {
 	n, h := [3]string{"Authorization", "Accept", "Content-Type"}, make(hdrMap)
 	for i, a := range args {
-		if i == 0 || strings.HasPrefix(a, "application/") {
+		if i == 0 || strings.Contains(a, "/") {
 			h[n[i]] = a
 		} else if a == "" {
 			h[n[i]] = "application/json"
-		} else {
-			h[n[i]] = "application/vnd.vmware.horizon.manager." + a + "+json"
+		} else if a != "-" {
+			h[n[i]] = fullWksMType(a)
 		}
 	}
 	return h

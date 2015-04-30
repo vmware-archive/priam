@@ -10,7 +10,7 @@ applications:
   workspace:
     packageVersion: '1.0'
     description: Fanny's Demo App for RADIO
-    #iconFile: icons/vin.jpg
+    iconFile: icons/vin.jpg
     catalogItemType: Saml20
     attributeMaps: 
       UserName: "${user.UserName}"
@@ -27,13 +27,13 @@ applications:
       assertionConsumerServiceUrl: "https://test.fanny/a/{domainName}/acs?RelayState=http://mail.google.com/a/{domainName}"
       recipientName: "https://test.fanny/a/{domainName}/acs"
 
-- name: dale-application
-  workspace:
-    #uuid: 123456
-    packageVersion: '0.0'
-    description: Dale's Demo App for RADIO
-    catalogItemType: WebAppLink
-    authInfo:
-      type: WebAppLink
-      targetUrl: "http://example.com"
+#- name: dale-application
+#  workspace:
+#    #uuid: 123456
+#    packageVersion: '0.0'
+#    description: Dale's Demo App for RADIO
+#    catalogItemType: WebAppLink
+#    authInfo:
+#      type: WebAppLink
+#      targetUrl: "http://example.com"
 

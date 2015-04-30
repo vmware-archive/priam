@@ -26,7 +26,7 @@ func cmdEntitlementGet(c *cli.Context) {
 	if id == "" {
 		return
 	}
-	path := fmt.Sprintf("jersey/manager/api/entitlements/definitions/%s/%s", resType, id)
+	path := fmt.Sprintf("entitlements/definitions/%s/%s", resType, id)
 	if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr), nil, &body); err != nil {
 		log(lerr, "Error: %v\n", err)
 	} else {

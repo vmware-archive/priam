@@ -44,6 +44,27 @@ func log(lt logType, format string, args ...interface{}) {
 	}
 }
 
+func toJson(input interface{}) (output []byte, err error) {
+	switch inp := input.(type) {
+	case nil:
+	case string:
+		output = []byte(inp)
+	case []byte:
+		output = inp
+	case *string:
+		if inp != nil {
+			output = []byte(*inp)
+		}
+	case *[]byte:
+		if inp != nil {
+			output = *inp
+		}
+	default:
+		output, err = json.Marshal(inp)
+	}
+	return
+}
+
 func toStringWithStyle(ls logStyle, input interface{}) string {
 	var err error
 	var outp interface{}

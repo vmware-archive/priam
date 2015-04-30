@@ -88,11 +88,11 @@ func InitCmd(c *cli.Context, minArgs int) (args []string, authHdr string) {
 }
 
 func tgtURL(path string) string {
-	return appCfg.Targets[appCfg.CurrentTarget].Host + "/SAAS/" + path
+	return appCfg.Targets[appCfg.CurrentTarget].Host + "/SAAS/jersey/manager/api/" + path
 }
 
 func checkHealth() (output string, err error) {
-	err = httpReq("GET", tgtURL("jersey/manager/api/health"), hdrMap{}, nil, &output)
+	err = httpReq("GET", tgtURL("health"), hdrMap{}, nil, &output)
 	return
 }
 
@@ -129,7 +129,7 @@ func showAuthnJson(prefix, path string, mediaType string) {
 
 func cmdLocalUserStore(c *cli.Context) {
 	const desc = "Local User Store configuration"
-	const path = "jersey/manager/api/localuserstore"
+	const path = "localuserstore"
 	const mtype = "local.userstore"
 	keyvals := make(map[string]interface{})
 	for _, arg := range c.Args() {
@@ -156,7 +156,7 @@ func cmdSchema(c *cli.Context) {
 	}
 	vals := make(url.Values)
 	vals.Set("filter", fmt.Sprintf("name eq \"%s\"", args[0]))
-	path := fmt.Sprintf("jersey/manager/api/scim/Schemas?%v", vals.Encode())
+	path := fmt.Sprintf("scim/Schemas?%v", vals.Encode())
 	showAuthnJson("Schema for "+args[0], path, "")
 }
 
@@ -175,6 +175,10 @@ func cmdBefore(c *cli.Context) (err error) {
 }
 
 func main() {
+	if strings.HasSuffix(os.Args[0], "cf-wks") {
+		cfplugin()
+		return
+	}
 	var err error
 	app := cli.NewApp()
 	app.Name, app.Usage = "wks", "a utility to publish applications to Workspace"
@@ -320,7 +324,7 @@ func main() {
 			Name:  "policies",
 			Usage: "get access policies",
 			Action: func(c *cli.Context) {
-				showAuthnJson("Access Policies", "jersey/manager/api/accessPolicies", "accesspolicyset.list")
+				showAuthnJson("Access Policies", "accessPolicies", "accesspolicyset.list")
 			},
 		},
 		{
