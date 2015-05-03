@@ -35,43 +35,42 @@ func escapeQuotes(s string) string {
 	return quoteEscaper.Replace(s)
 }
 
-/* CreateFormFileWithType is copied from miltipart.CreateFormFile
- * which currently only supports octetstream file types.
- */
-func CreateFormFileWithType(w *multipart.Writer, fieldname, mtype, filename string) (io.Writer, error) {
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition",
-		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
-			escapeQuotes(fieldname), escapeQuotes(filename)))
-	h.Set("Content-Type", mtype)
-	return w.CreatePart(h)
-}
-
 func newReqWithFileUpload(key, mediaType string, content []byte, fileName string) (body []byte, contentType string, err error) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return
 	}
 	defer file.Close()
+	first512 := make([]byte, 512) // first 512 bytes are used to evaluate mime type
+	file.Read(first512)
+	file.Seek(0, 0)
 	buf := &bytes.Buffer{}
-	writer := multipart.NewWriter(buf)
-	part, err := CreateFormFileWithType(writer, "file", "image/jpeg", filepath.Base(fileName))
+	writer, h := multipart.NewWriter(buf), make(textproto.MIMEHeader)
+
+	// TODO: determine media type from file contents
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`,
+		escapeQuotes(filepath.Base(fileName))))
+	h.Set("Content-Type", http.DetectContentType(first512))
+	pw, err := writer.CreatePart(h)
 	if err == nil {
-		_, err = io.Copy(part, file)
+		_, err = io.Copy(pw, file)
 	}
 	if err != nil {
 		return
 	}
-	h := make(textproto.MIMEHeader)
+
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="blob"`, key))
 	h.Set("Content-Type", fullWksMType(mediaType))
-	pw, err := writer.CreatePart(h)
+	pw, err = writer.CreatePart(h)
 	if err == nil {
-		if _, err = pw.Write(content); err == nil {
-			if err = writer.Close(); err == nil {
-				contentType, body = writer.FormDataContentType(), buf.Bytes()
-			}
-		}
+		_, err = pw.Write(content)
+	}
+	if err != nil {
+		return
+	}
+
+	if err = writer.Close(); err == nil {
+		contentType, body = writer.FormDataContentType(), buf.Bytes()
 	}
 	return
 }

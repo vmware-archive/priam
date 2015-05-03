@@ -8,7 +8,7 @@ import (
 func cmdEntitlementGet(c *cli.Context) {
 	var resType, id string
 	body := make(map[string]interface{})
-	args, authHdr := InitCmd(c, 2)
+	args, authHdr := InitCmd(c, 2, 2)
 	if authHdr == "" {
 		return
 	}

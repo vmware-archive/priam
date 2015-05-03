@@ -120,7 +120,7 @@ func cmdNameToID(resType, nameAttr, name, authHdr string) string {
 }
 
 func scimMember(c *cli.Context, resType, nameAttr string) {
-	if args, authHdr := InitCmd(c, 2); authHdr != "" {
+	if args, authHdr := InitCmd(c, 2, 2); authHdr != "" {
 		rid, uid := cmdNameToID(resType, nameAttr, args[0], authHdr), cmdNameToID("Users", "userName", args[1], authHdr)
 		if rid == "" || uid == "" {
 			return
@@ -138,7 +138,7 @@ func scimMember(c *cli.Context, resType, nameAttr string) {
 }
 
 func scimGet(c *cli.Context, resType, nameAttr string) {
-	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
 		if item, err := scimGetByName(resType, nameAttr, args[0], authHdr); err != nil {
 			log(lerr, "Error getting SCIM resource named %s of type %s: %v\n", args[0], resType, err)
 		} else {
@@ -157,7 +157,7 @@ func addUser(u *basicUser, authHdr string) error {
 
 func cmdLoadUsers(c *cli.Context) {
 	var newUsers []basicUser
-	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
 		if err := getYamlFile(args[0], &newUsers); err != nil {
 			log(lerr, "could not read file of bulk users: %v\n", err)
 		} else {
@@ -193,7 +193,7 @@ func getArgOrPassword(args []string) string {
 }
 
 func cmdAddUser(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
 		user := basicUser{Name: args[0], Given: c.String("given"), Family: c.String("family"),
 			Email: c.String("email"), Pwd: getArgOrPassword(args)}
 		if err := addUser(&user, authHdr); err != nil {
@@ -205,7 +205,7 @@ func cmdAddUser(c *cli.Context) {
 }
 
 func scimDelete(c *cli.Context, resType, nameAttr string) {
-	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
 		if id := cmdNameToID(resType, nameAttr, args[0], authHdr); id != "" {
 			path := fmt.Sprintf("scim/%s/%s", resType, id)
 			if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr, ""), nil, nil); err != nil {
@@ -218,7 +218,7 @@ func scimDelete(c *cli.Context, resType, nameAttr string) {
 }
 
 func cmdSetPassword(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
 		if id := cmdNameToID("Users", "userName", args[0], authHdr); id != "" {
 			acct := userAccount{Schemas: []string{coreSchemaURN}, Password: getArgOrPassword(args)}
 			if err := scimPatch("Users", id, authHdr, &acct); err != nil {

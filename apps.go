@@ -33,7 +33,7 @@ type manifestApp struct {
 
 func accessPolicyId(name, authHdr string) string {
 	body := make(map[string]interface{})
-	if err := httpReq("GET", tgtURL("accessPolicies"), InitHdrs(authHdr), nil, &body); err != nil {
+	if err := httpReq("GET", tgtURL("accessPolicies"), InitHdrs(authHdr, "accesspolicyset.list"), nil, &body); err != nil {
 		log(lerr, "Error getting access policies: %v\n", err)
 		return ""
 	}
@@ -52,13 +52,12 @@ func accessPolicyId(name, authHdr string) string {
 	return ""
 }
 
-func cmdAppAdd(c *cli.Context) {
-	args, authHdr := InitCmd(c, 1)
-	if authHdr == "" {
-		return
+func publishApps(authHdr, manifile string) {
+	if manifile == "" {
+		manifile = "manifest.yaml"
 	}
 	var manifest struct{ Applications []manifestApp }
-	if err := getYamlFile(stringOrDefault(args[0], "manifest.yaml"), &manifest); err != nil {
+	if err := getYamlFile(manifile, &manifest); err != nil {
 		log(lerr, "Error getting manifest: %v\n", err)
 		return
 	}
@@ -94,17 +93,23 @@ func cmdAppAdd(c *cli.Context) {
 				continue
 			}
 		}
-		hdrs := InitHdrs(authHdr, "-", cmtype)
+		hdrs := InitHdrs(authHdr, amtype, cmtype)
 		if err = httpReq("POST", tgtURL("catalogitems"), hdrs, content, nil); err != nil {
 			log(lerr, "Error adding %s to the catalog: %v\n", w.Name, err)
 		} else {
-			log(linfo, "Apps %s added to the catalog\n", w.Name)
+			log(linfo, "App \"%s\" added to the catalog\n", w.Name)
 		}
 	}
 }
 
+func cmdAppAdd(c *cli.Context) {
+	if args, authHdr := InitCmd(c, 0, 1); authHdr != "" {
+		publishApps(authHdr, args[0])
+	}
+}
+
 func cmdAppDel(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
 		path := fmt.Sprintf("catalogitems/%s", args[0])
 		if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr), nil, nil); err != nil {
 			log(lerr, "Error deleting app %s from catalog: %v\n", args[0], err)

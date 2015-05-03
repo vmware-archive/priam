@@ -13,15 +13,15 @@ applications:
     iconFile: icons/vin.jpg
     catalogItemType: Saml20
     attributeMaps: 
-      UserName: "${user.UserName}"
-      FirstName: "${user.FirstName}"
-      LastName: "${user.LastName}"
+      userName: "${user.userName}"
+      firstName: "${user.firstName}"
+      lastName: "${user.lastName}"
     accessPolicy: default_access_policy_set
     authInfo:
       type: Saml20
       validityTimeSeconds: 200
       nameIdFormat: urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified
-      nameId: "${user.UserName}"
+      nameId: "${user.userName}"
       configureAs: "manual"
       audience: "https://test.fanny.audience"
       assertionConsumerServiceUrl: "https://test.fanny/a/{domainName}/acs?RelayState=http://mail.google.com/a/{domainName}"

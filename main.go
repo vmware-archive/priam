@@ -26,6 +26,9 @@ var configFileName string
 
 func getAppConfig(fileName string) error {
 	configFileName, appCfg = fileName, appConfig{}
+	if fileName == "" {
+		fileName = filepath.Join(os.Getenv("HOME"), ".wks.yaml")
+	}
 	if err := getYamlFile(fileName, &appCfg); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("could not read config file %s, error: %v\n", fileName, err)
@@ -77,12 +80,17 @@ func authHeader() string {
 	}
 }
 
-func InitCmd(c *cli.Context, minArgs int) (args []string, authHdr string) {
+func InitCmd(c *cli.Context, minArgs, maxArgs int) (args []string, authHdr string) {
 	args = c.Args()
 	if len(args) < minArgs {
 		log(lerr, "at least %d arguments must be specified\n", minArgs)
+	} else if len(args) > maxArgs {
+		log(lerr, "at most %d arguments can be specified\n", minArgs)
 	} else {
 		authHdr = authHeader()
+		for i := len(args); i < maxArgs; i++ {
+			args = append(args, "")
+		}
 	}
 	return
 }
@@ -167,19 +175,19 @@ func cmdBefore(c *cli.Context) (err error) {
 	if c.Bool("json") {
 		logStyleDefault = ljson
 	}
-	fname := c.String("config")
-	if fname == "" {
-		fname = filepath.Join(os.Getenv("HOME"), ".wks.yaml")
-	}
-	return getAppConfig(fname)
+	return getAppConfig(c.String("config"))
 }
 
 func main() {
+	var err error
 	if strings.HasSuffix(os.Args[0], "cf-wks") {
-		cfplugin()
+		if err = getAppConfig(""); err != nil {
+			log(lerr, "could not get app config: %v", err)
+		} else {
+			cfplugin()
+		}
 		return
 	}
-	var err error
 	app := cli.NewApp()
 	app.Name, app.Usage = "wks", "a utility to publish applications to Workspace"
 	app.Email, app.Author, app.Writer = "", "", os.Stdout
