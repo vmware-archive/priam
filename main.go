@@ -25,10 +25,10 @@ var appCfg appConfig
 var configFileName string
 
 func getAppConfig(fileName string) error {
-	configFileName, appCfg = fileName, appConfig{}
 	if fileName == "" {
 		fileName = filepath.Join(os.Getenv("HOME"), ".wks.yaml")
 	}
+	configFileName, appCfg = fileName, appConfig{}
 	if err := getYamlFile(fileName, &appCfg); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("could not read config file %s, error: %v\n", fileName, err)

@@ -5,6 +5,33 @@ import (
 	"github.com/codegangsta/cli"
 )
 
+// PUT /entitlements/definitions/catalogitems/{catalogItemId}/groups/{groupId}
+// application/vnd.vmware.horizon.manager.entitlements.definition+json
+func entitleGroup(authHdr, groupID, itemID string) error {
+	//req := map[string]string{"catalogItemId": itemID, "subjectType": "GROUPS",
+	//	"subjectId": groupID, "activationPolicy": "AUTOMATIC"}
+	//path := fmt.Sprintf("entitlements/definitions/catalogitems/%s/groups/%s", itemID, groupID)
+	//mtype := "entitlements.definition"
+
+	req := fmt.Sprintf(`
+{
+  "returnPayloadOnError" : true,
+  "operations" : [ {
+    "method" : "POST",
+    "data" : {
+      "catalogItemId" : "%s",
+      "subjectType" : "GROUPS",
+      "subjectId" : "%s",
+      "activationPolicy" : "AUTOMATIC"
+    }
+  } ]
+}`, itemID, groupID)
+
+	path := "entitlements/definitions"
+	mtype := "entitlements.definition.bulk"
+	return httpReq("POST", tgtURL(path), InitHdrs(authHdr, "bulk.sync.response", mtype), req, nil)
+}
+
 func cmdEntitlementGet(c *cli.Context) {
 	var resType, id string
 	body := make(map[string]interface{})

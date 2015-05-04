@@ -13,6 +13,7 @@ type wksApp struct {
 	PackageVersion        string                 `json:"packageVersion,omitempty" yaml:"packageVersion,omitempty"`
 	Description           string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	IconFile              string                 `json:"iconFile,omitempty" yaml:"iconFile,omitempty"`
+	EntitleGroup          string                 `json:"entitleGroup,omitempty" yaml:"entitleGroup,omitempty"`
 	ResourceConfiguration map[string]interface{} `json:"resourceConfiguration" yaml:"resourceConfiguration,omitempty"`
 	AccessPolicy          string                 `json:"accessPolicy,omitempty" yaml:"accessPolicy,omitempty"`
 	AccessPolicySetUuid   string                 `json:"accessPolicySetUuid,omitempty" yaml:"accessPolicySetUuid,omitempty"`
@@ -80,8 +81,8 @@ func publishApps(authHdr, manifile string) {
 			w.Name = v.Name
 		}
 		amtype := "catalog." + strings.ToLower(w.CatalogItemType)
-		cmtype, iconFile := amtype, w.IconFile
-		w.IconFile = ""
+		cmtype, iconFile, entitleGrp := amtype, w.IconFile, w.EntitleGroup
+		w.IconFile, w.EntitleGroup = "", ""
 		content, err := toJson(w)
 		if err != nil {
 			log(lerr, "Error converting app %s to JSON: %v\n", w.Name, err)
@@ -98,6 +99,18 @@ func publishApps(authHdr, manifile string) {
 			log(lerr, "Error adding %s to the catalog: %v\n", w.Name, err)
 		} else {
 			log(linfo, "App \"%s\" added to the catalog\n", w.Name)
+		}
+		if entitleGrp == "" {
+			continue
+		}
+		groupID, err := scimNameToID("Groups", "displayName", entitleGrp, authHdr)
+		if err == nil {
+			err = entitleGroup(authHdr, groupID, w.Uuid)
+		}
+		if err != nil {
+			log(lerr, "Could not entitle group \"%s\" to app \"%s\", error: %v\n", entitleGrp, w.Name, err)
+		} else {
+			log(linfo, "Entitled group \"%s\" to app \"%s\".\n", entitleGrp, w.Name)
 		}
 	}
 }

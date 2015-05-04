@@ -6,6 +6,7 @@ import (
 	"github.com/codegangsta/cli"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 const coreSchemaURN = "urn:scim:schemas:core:1.0"
@@ -60,7 +61,7 @@ func scimGetByName(resType, nameAttr, name, authHdr string) (item map[string]int
 		return
 	}
 	for _, v := range output.Resources {
-		if s, ok := v[nameAttr].(string); ok && s == name {
+		if s, ok := v[nameAttr].(string); ok && strings.EqualFold(s, name) {
 			if item != nil {
 				return nil, fmt.Errorf("multiple %v found named \"%s\"", resType, name)
 			} else {

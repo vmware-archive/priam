@@ -11,6 +11,7 @@ applications:
     packageVersion: '1.0'
     description: Fanny's Demo App for RADIO
     iconFile: icons/vin.jpg
+    entitleGroup: All Users
     catalogItemType: Saml20
     attributeMaps: 
       userName: "${user.userName}"
