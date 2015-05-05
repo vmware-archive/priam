@@ -29,12 +29,6 @@ func ppHeaders(lt logType, prefix string, hdrs http.Header) {
 	}
 }
 
-var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
-
-func escapeQuotes(s string) string {
-	return quoteEscaper.Replace(s)
-}
-
 func newReqWithFileUpload(key, mediaType string, content []byte, fileName string) (body []byte, contentType string, err error) {
 	file, err := os.Open(fileName)
 	if err != nil {

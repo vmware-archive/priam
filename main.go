@@ -247,8 +247,13 @@ func main() {
 				},
 				{
 					Name:   "delete",
-					Usage:  "delete an app: delete <app-uuid>",
+					Usage:  "delete an app: delete <name>",
 					Action: cmdAppDel,
+				},
+				{
+					Name:   "get",
+					Usage:  "get an app: delete <name>",
+					Action: cmdAppGet,
 				},
 				{
 					Name:   "list",

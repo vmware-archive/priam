@@ -1,6 +1,6 @@
 ---
 applications:
-- name: fannys-web-application
+- name: fannys-app
   memory: 512M
   instances: 1
   path: build/libs/web-application-1.0.0.BUILD-SNAPSHOT.war
@@ -11,7 +11,7 @@ applications:
     packageVersion: '1.0'
     description: Fanny's Demo App for RADIO
     iconFile: icons/vin.jpg
-    entitleGroup: All Users
+    entitleGroup: ALL USERS
     catalogItemType: Saml20
     attributeMaps: 
       userName: "${user.userName}"

@@ -32,25 +32,76 @@ type manifestApp struct {
 	Workspace wksApp
 }
 
+type itemResponse struct {
+	Links map[string]interface{}   `json:"_links,omitempty" yaml:"_links,omitempty"`
+	Items []map[string]interface{} `json:",omitempty" yaml:",omitempty"`
+}
+
 func accessPolicyId(name, authHdr string) string {
-	body := make(map[string]interface{})
+	body := new(itemResponse)
 	if err := httpReq("GET", tgtURL("accessPolicies"), InitHdrs(authHdr, "accesspolicyset.list"), nil, &body); err != nil {
 		log(lerr, "Error getting access policies: %v\n", err)
 		return ""
 	}
-	if items, ok := body["items"].([]interface{}); ok {
-		for _, v := range items {
-			if item, ok := v.(map[string]interface{}); ok {
-				if name == "" && item["base"] == true || name == item["name"] {
-					if s, ok := item["uuid"].(string); ok {
-						return s
-					}
-				}
+	for _, item := range body.Items {
+		if name == "" && item["base"] == true || caselessEqual(name, item["name"]) {
+			if s, ok := item["uuid"].(string); ok {
+				return s
 			}
 		}
 	}
 	log(lerr, "Could not find access policy uuid\n")
 	return ""
+}
+
+// input name, uuid
+// output uuid of existing app with the input uuid or uuid of first app with name
+func checkAppExists(name, uuid, authHdr string) (outid string, err error) {
+	path, body := "catalogitems/search?pageSize=10000", new(itemResponse)
+	hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
+	if err = httpReq("POST", tgtURL(path), hdrs, "{}", &body); err == nil {
+		for _, item := range body.Items {
+			if caseEqual(uuid, item["uuid"]) {
+				outid = uuid
+				return
+			}
+			if caselessEqual(name, item["name"]) && outid == "" {
+				outid = interfaceToString(item["uuid"])
+			}
+		}
+	}
+	return
+}
+
+func getAppUuid(name, authHdr string) (uuid, mtype string, err error) {
+	input := fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(name))
+	path, body := "catalogitems/search?pageSize=10000", new(itemResponse)
+	hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
+	if err = httpReq("POST", tgtURL(path), hdrs, &input, &body); err == nil {
+		for _, item := range body.Items {
+			if u, ok := item["uuid"].(string); ok && caselessEqual(name, item["name"]) {
+				if uuid != "" {
+					err = fmt.Errorf("Multiple apps with name \"%s\"", name)
+					return
+				}
+				uuid = u
+				if mt, ok := item["catalogItemType"].(string); ok {
+					mtype = "catalog." + strings.ToLower(mt)
+				}
+			}
+		}
+	}
+	if uuid == "" {
+		err = fmt.Errorf("No app found with name \"%s\"", name)
+	}
+	return
+}
+
+func getAppByUuid(uuid, mtype, authHdr string) (app map[string]interface{}, err error) {
+	app = make(map[string]interface{})
+	path := fmt.Sprintf("catalogitems/%s", uuid)
+	err = httpReq("GET", tgtURL(path), InitHdrs(authHdr, mtype), nil, &app)
+	return
 }
 
 func publishApps(authHdr, manifile string) {
@@ -74,11 +125,22 @@ func publishApps(authHdr, manifile string) {
 				w.Name, w.AccessPolicy, w.AccessPolicySetUuid)
 			continue
 		}
-		if w.Uuid == "" {
-			w.Uuid = uuid.New()
-		}
 		if w.Name == "" {
 			w.Name = v.Name
+		}
+		method, path := "POST", "catalogitems"
+		id, err := checkAppExists(w.Name, w.Uuid, authHdr)
+		if err != nil {
+			log(lerr, "Error checking if app %s exists: %v\n", w.Name, err)
+			continue
+		}
+		if id != "" {
+			method = "PUT"
+			path += "/" + id
+			w.Uuid = id
+		}
+		if w.Uuid == "" {
+			w.Uuid = uuid.New()
 		}
 		amtype := "catalog." + strings.ToLower(w.CatalogItemType)
 		cmtype, iconFile, entitleGrp := amtype, w.IconFile, w.EntitleGroup
@@ -95,7 +157,7 @@ func publishApps(authHdr, manifile string) {
 			}
 		}
 		hdrs := InitHdrs(authHdr, amtype, cmtype)
-		if err = httpReq("POST", tgtURL("catalogitems"), hdrs, content, nil); err != nil {
+		if err = httpReq(method, tgtURL(path), hdrs, content, nil); err != nil {
 			log(lerr, "Error adding %s to the catalog: %v\n", w.Name, err)
 		} else {
 			log(linfo, "App \"%s\" added to the catalog\n", w.Name)
@@ -123,11 +185,24 @@ func cmdAppAdd(c *cli.Context) {
 
 func cmdAppDel(c *cli.Context) {
 	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
-		path := fmt.Sprintf("catalogitems/%s", args[0])
-		if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr), nil, nil); err != nil {
+		if uuid, _, err := getAppUuid(args[0], authHdr); err != nil {
+			log(lerr, "Error getting app info by name: %v\n", err)
+		} else if err := httpReq("DELETE", tgtURL(fmt.Sprintf("catalogitems/%s", uuid)), InitHdrs(authHdr), nil, nil); err != nil {
 			log(lerr, "Error deleting app %s from catalog: %v\n", args[0], err)
 		} else {
 			log(linfo, "app %s deleted\n", args[0])
+		}
+	}
+}
+
+func cmdAppGet(c *cli.Context) {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
+		if uuid, mtype, err := getAppUuid(args[0], authHdr); err != nil {
+			log(lerr, "Error getting app info by name: %v\n", err)
+		} else if app, err := getAppByUuid(uuid, mtype, authHdr); err != nil {
+			log(lerr, "Error getting app info by uuid: %v\n", err)
+		} else {
+			logpp(linfo, "App "+args[0], app)
 		}
 	}
 }
@@ -138,10 +213,10 @@ func cmdAppList(c *cli.Context) {
 	if count == 0 {
 		count = 1000
 	}
-	path := fmt.Sprintf("catalogitems/search?pageSize=%v", count)
-	input := struct {
-		NameFilter string `json:"nameFilter,omitempty"`
-	}{filter}
+	path, input := fmt.Sprintf("catalogitems/search?pageSize=%v", count), "{}"
+	if filter != "" {
+		input = fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(filter))
+	}
 	if authHdr := authHeader(); authHdr != "" {
 		body := make(map[string]interface{})
 		hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
