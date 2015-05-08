@@ -5,31 +5,25 @@ import (
 	"github.com/codegangsta/cli"
 )
 
-// PUT /entitlements/definitions/catalogitems/{catalogItemId}/groups/{groupId}
-// application/vnd.vmware.horizon.manager.entitlements.definition+json
-func entitleGroup(authHdr, groupID, itemID string) error {
-	//req := map[string]string{"catalogItemId": itemID, "subjectType": "GROUPS",
-	//	"subjectId": groupID, "activationPolicy": "AUTOMATIC"}
-	//path := fmt.Sprintf("entitlements/definitions/catalogitems/%s/groups/%s", itemID, groupID)
-	//mtype := "entitlements.definition"
-
-	req := fmt.Sprintf(`
+const fmtEntitlement = `
 {
   "returnPayloadOnError" : true,
   "operations" : [ {
     "method" : "POST",
     "data" : {
       "catalogItemId" : "%s",
-      "subjectType" : "GROUPS",
+      "subjectType" : "%s",
       "subjectId" : "%s",
       "activationPolicy" : "AUTOMATIC"
     }
   } ]
-}`, itemID, groupID)
+}`
 
-	path := "entitlements/definitions"
-	mtype := "entitlements.definition.bulk"
-	return httpReq("POST", tgtURL(path), InitHdrs(authHdr, "bulk.sync.response", mtype), req, nil)
+func entitleSubject(authHdr, subjectId, subjectType, itemID string) error {
+	req := fmt.Sprintf(fmtEntitlement, itemID, subjectType, subjectId)
+	return httpReq("POST", tgtURL("entitlements/definitions"),
+		InitHdrs(authHdr, "bulk.sync.response", "entitlements.definition.bulk"),
+		req, nil)
 }
 
 func cmdEntitlementGet(c *cli.Context) {

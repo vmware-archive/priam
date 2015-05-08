@@ -14,6 +14,7 @@ type wksApp struct {
 	Description           string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	IconFile              string                 `json:"iconFile,omitempty" yaml:"iconFile,omitempty"`
 	EntitleGroup          string                 `json:"entitleGroup,omitempty" yaml:"entitleGroup,omitempty"`
+	EntitleUser           string                 `json:"entitleUser,omitempty" yaml:"entitleUser,omitempty"`
 	ResourceConfiguration map[string]interface{} `json:"resourceConfiguration" yaml:"resourceConfiguration,omitempty"`
 	AccessPolicy          string                 `json:"accessPolicy,omitempty" yaml:"accessPolicy,omitempty"`
 	AccessPolicySetUuid   string                 `json:"accessPolicySetUuid,omitempty" yaml:"accessPolicySetUuid,omitempty"`
@@ -104,6 +105,20 @@ func getAppByUuid(uuid, mtype, authHdr string) (app map[string]interface{}, err 
 	return
 }
 
+func maybeEntitle(authHdr, itemID, subjName, subjType, nameAttr, appName string) {
+	if subjName != "" {
+		subjID, err := scimNameToID(strings.Title(subjType+"s"), nameAttr, subjName, authHdr)
+		if err == nil {
+			err = entitleSubject(authHdr, subjID, strings.ToUpper(subjType+"s"), itemID)
+		}
+		if err != nil {
+			log(lerr, "Could not entitle %s \"%s\" to app \"%s\", error: %v\n", subjType, subjName, appName, err)
+		} else {
+			log(linfo, "Entitled %s \"%s\" to app \"%s\".\n", subjType, subjName, appName)
+		}
+	}
+}
+
 func publishApps(authHdr, manifile string) {
 	if manifile == "" {
 		manifile = "manifest.yaml"
@@ -128,23 +143,22 @@ func publishApps(authHdr, manifile string) {
 		if w.Name == "" {
 			w.Name = v.Name
 		}
-		method, path := "POST", "catalogitems"
+		method, path, errVerb, successVerb := "POST", "catalogitems", "adding", "added"
 		id, err := checkAppExists(w.Name, w.Uuid, authHdr)
 		if err != nil {
 			log(lerr, "Error checking if app %s exists: %v\n", w.Name, err)
 			continue
 		}
 		if id != "" {
-			method = "PUT"
+			method, errVerb, successVerb, w.Uuid = "PUT", "updating", "updated", id
 			path += "/" + id
-			w.Uuid = id
 		}
 		if w.Uuid == "" {
 			w.Uuid = uuid.New()
 		}
 		amtype := "catalog." + strings.ToLower(w.CatalogItemType)
-		cmtype, iconFile, entitleGrp := amtype, w.IconFile, w.EntitleGroup
-		w.IconFile, w.EntitleGroup = "", ""
+		cmtype, iconFile, entitleGrp, entitleUser := amtype, w.IconFile, w.EntitleGroup, w.EntitleUser
+		w.IconFile, w.EntitleGroup, w.EntitleUser = "", "", ""
 		content, err := toJson(w)
 		if err != nil {
 			log(lerr, "Error converting app %s to JSON: %v\n", w.Name, err)
@@ -158,22 +172,12 @@ func publishApps(authHdr, manifile string) {
 		}
 		hdrs := InitHdrs(authHdr, amtype, cmtype)
 		if err = httpReq(method, tgtURL(path), hdrs, content, nil); err != nil {
-			log(lerr, "Error adding %s to the catalog: %v\n", w.Name, err)
+			log(lerr, "Error %s %s to the catalog: %v\n", errVerb, w.Name, err)
 		} else {
-			log(linfo, "App \"%s\" added to the catalog\n", w.Name)
+			log(linfo, "App \"%s\" %s to the catalog\n", w.Name, successVerb)
 		}
-		if entitleGrp == "" {
-			continue
-		}
-		groupID, err := scimNameToID("Groups", "displayName", entitleGrp, authHdr)
-		if err == nil {
-			err = entitleGroup(authHdr, groupID, w.Uuid)
-		}
-		if err != nil {
-			log(lerr, "Could not entitle group \"%s\" to app \"%s\", error: %v\n", entitleGrp, w.Name, err)
-		} else {
-			log(linfo, "Entitled group \"%s\" to app \"%s\".\n", entitleGrp, w.Name)
-		}
+		maybeEntitle(authHdr, w.Uuid, entitleGrp, "group", "displayName", w.Name)
+		maybeEntitle(authHdr, w.Uuid, entitleUser, "user", "userName", w.Name)
 	}
 }
 
