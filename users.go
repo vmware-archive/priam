@@ -180,9 +180,9 @@ func getpwd(prompt string) string {
 	}
 }
 
-func getArgOrPassword(args []string) string {
-	if len(args) > 1 {
-		return args[1]
+func getArgOrPassword(arg string) string {
+	if arg != "" {
+		return arg
 	}
 	for {
 		if pwd := getpwd("Password: "); pwd == getpwd("Password again: ") {
@@ -193,13 +193,33 @@ func getArgOrPassword(args []string) string {
 }
 
 func cmdAddUser(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 2); authHdr != "" {
 		user := basicUser{Name: args[0], Given: c.String("given"), Family: c.String("family"),
-			Email: c.String("email"), Pwd: getArgOrPassword(args)}
+			Email: c.String("email"), Pwd: getArgOrPassword(args[1])}
 		if err := addUser(&user, authHdr); err != nil {
 			log(lerr, "Error creating user: %v\n", err)
 		} else {
 			log(linfo, "User successfully added\n")
+		}
+	}
+}
+
+func cmdUpdateUser(c *cli.Context) {
+	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
+		if id := cmdNameToID("Users", "userName", args[0], authHdr); id != "" {
+			acct := userAccount{Schemas: []string{coreSchemaURN}}
+			g, f, e := c.String("given"), c.String("family"), c.String("email")
+			if g != "" || f != "" {
+				acct.Name = &nameAttr{FamilyName: f, GivenName: g}
+			}
+			if e != "" {
+				acct.Emails = []dispValue{{Value: e}}
+			}
+			if err := scimPatch("Users", id, authHdr, &acct); err != nil {
+				log(lerr, "Error updating user: %v\n", err)
+			} else {
+				log(linfo, "User \"%s\" updated\n", args[0])
+			}
 		}
 	}
 }
@@ -218,9 +238,9 @@ func scimDelete(c *cli.Context, resType, nameAttr string) {
 }
 
 func cmdSetPassword(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
+	if args, authHdr := InitCmd(c, 1, 2); authHdr != "" {
 		if id := cmdNameToID("Users", "userName", args[0], authHdr); id != "" {
-			acct := userAccount{Schemas: []string{coreSchemaURN}, Password: getArgOrPassword(args)}
+			acct := userAccount{Schemas: []string{coreSchemaURN}, Password: getArgOrPassword(args[1])}
 			if err := scimPatch("Users", id, authHdr, &acct); err != nil {
 				log(lerr, "Error updating user: %v\n", err)
 			} else {

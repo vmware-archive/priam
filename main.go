@@ -234,6 +234,21 @@ func main() {
 		},
 	}
 
+	userAttrFlags := []cli.Flag{
+		cli.StringFlag{
+			Name:  "email",
+			Usage: "email of the user account",
+		},
+		cli.StringFlag{
+			Name:  "family",
+			Usage: "family name of the user account",
+		},
+		cli.StringFlag{
+			Name:  "given",
+			Usage: "given name of the user account",
+		},
+	}
+
 	app.Commands = []cli.Command{
 		{
 			Name:  "app",
@@ -396,20 +411,7 @@ func main() {
 					Name:   "add",
 					Usage:  "create user account: add userName [password]",
 					Action: cmdAddUser,
-					Flags: []cli.Flag{
-						cli.StringFlag{
-							Name:  "email",
-							Usage: "email of the new user account",
-						},
-						cli.StringFlag{
-							Name:  "family",
-							Usage: "family name of the new user account",
-						},
-						cli.StringFlag{
-							Name:  "given",
-							Usage: "given name of the new user account",
-						},
-					},
+					Flags:  userAttrFlags,
 				},
 				{
 					Name:  "get",
@@ -443,6 +445,12 @@ func main() {
 					Name:   "password",
 					Usage:  "set a user's password: password [password]",
 					Action: cmdSetPassword,
+				},
+				{
+					Name:   "update",
+					Usage:  "update user account: update userName",
+					Action: cmdUpdateUser,
+					Flags:  userAttrFlags,
 				},
 			},
 		},
