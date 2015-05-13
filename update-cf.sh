@@ -3,5 +3,5 @@
 set -ev
 go build
 cp wks cf-wks
-cf uninstall-plugin cf-wks
+cf uninstall-plugin cf-wks || echo "Ignoring..."
 cf install-plugin cf-wks
