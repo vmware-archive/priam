@@ -24,12 +24,19 @@ targets:
 `
 
 type context struct {
-	cfgin, cfgout, stdin, stdout, stderr string
-	expectError                          bool
+	cfgin,        cfgout,        stdin,        stdout,        stderr string
+	expectError                                                      bool
 }
 
 func newContext(cfg string) *context {
 	return &context{cfgin: stringOrDefault(cfg, sampleCfg)}
+}
+
+// Build a context with expected error
+func newErrorContext(cfg string) *context {
+	ctx := newContext(cfg)
+	ctx.expectError = true
+	return ctx
 }
 
 func closeDelete(f *os.File) {
@@ -38,17 +45,23 @@ func closeDelete(f *os.File) {
 }
 
 type reqInfo struct {
-	reply, mtype, expect string
+	reply,        mtype,        expect string
 }
 
 func StartTestServer(paths map[string]reqInfo) *httptest.Server {
 	handler := func(w http.ResponseWriter, r *http.Request) {
+
+		println("processing request: ", r.URL.Path)
 		if rbody, err := ioutil.ReadAll(r.Body); err != nil {
 			http.Error(w, fmt.Sprintf("error reading request body: %v", err), 404)
 		} else if info, ok := paths[r.URL.Path]; !ok {
-			http.Error(w, "bad path", 404)
+			http.Error(w, fmt.Sprintf("bad path: %s", r.URL.Path), 404)
 		} else if info.expect == "" || info.expect == string(rbody) {
+
+			println("   - replying with", info.reply)
+
 			w.Header().Set("Content-Type", stringOrDefault(info.mtype, "application/json"))
+
 			io.WriteString(w, info.reply)
 		}
 	}
@@ -63,7 +76,7 @@ func runner(t *testing.T, ctx *context, args ...string) *context {
 	var err error
 	f := map[string]*os.File{"c": nil, "i": nil, "o": nil, "e": nil}
 	for k, _ := range f {
-		if f[k], err = ioutil.TempFile("", "wks-test-"+k+"-"); !assert.Nil(t, err) {
+		if f[k], err = ioutil.TempFile("", "wks-test-" + k + "-"); !assert.Nil(t, err) {
 			return nil
 		}
 		defer closeDelete(f[k])
@@ -101,6 +114,7 @@ func runner(t *testing.T, ctx *context, args ...string) *context {
 	return ctx
 }
 
+// help usage
 func TestHelp(t *testing.T) {
 	if ctx := runner(t, newContext(""), "help"); ctx != nil {
 		assert.Contains(t, ctx.stdout, "USAGE")
@@ -123,6 +137,13 @@ targets:
 func TestTargetCurrent(t *testing.T) {
 	if ctx := runner(t, newContext(""), "target"); ctx != nil {
 		assert.Contains(t, ctx.stdout, "radio.workspaceair.com")
+	}
+}
+
+// should fail gracefully if the config file does not exist
+func TestTargetNoConfig(t *testing.T) {
+	if ctx := runner(t, newContext(" "), "target"); ctx != nil {
+		assert.Contains(t, ctx.stdout, "no target set")
 	}
 }
 
@@ -160,5 +181,89 @@ func TestHealth(t *testing.T) {
 	srv := StartTestServer(paths)
 	if ctx := runner(t, newContext(tstSrvTgt(srv.URL)), "health"); ctx != nil {
 		assert.Contains(t, ctx.stdout, "allOk")
+	}
+}
+
+// -- Entitlements methods
+
+func TestGetEntitlementWithNoArgsShowsHelp(t *testing.T) {
+	if ctx := runner(t, newContext(""), "entitlement"); ctx != nil {
+		assert.Contains(t, ctx.stdout, "USAGE")
+	}
+}
+
+func TestGetEntitlementWithNoTypeShowsError(t *testing.T) {
+	if ctx := runner(t, newErrorContext(""), "entitlement", "get"); ctx != nil {
+		assert.Contains(t, ctx.stderr, "at least 2 arguments must be specified")
+	}
+}
+
+func TestGetEntitlementWithNoNameShowsError(t *testing.T) {
+	types := [...]string{"user", "app", "group"}
+	for i := range types {
+		if ctx := runner(t, newErrorContext(""), "entitlement", "get", types[i]); ctx != nil {
+			assert.Contains(t, ctx.stderr, "at least 2 arguments must be specified")
+		}
+	}
+}
+
+// common method to test entitlement
+func checkGetEntitlementReturnsError(t *testing.T, entity string) {
+	if ctx := runner(t, newErrorContext(""), "entitlement", "get", entity, "foo"); ctx != nil {
+		assert.Contains(t, ctx.stderr, "error: invalid_client")
+	}
+
+}
+
+// Don't know how to mock functions (and avoid global)
+// So just check we will get an error
+func TestGetEntitlementForUser(t *testing.T) {
+	checkGetEntitlementReturnsError(t, "user")
+}
+
+func TestGetEntitlementForGroup(t *testing.T) {
+	checkGetEntitlementReturnsError(t, "group")
+}
+
+func TestGetEntitlementForApp(t *testing.T) {
+	checkGetEntitlementReturnsError(t, "app")
+}
+
+
+// -- Login
+func TestCanNotLoginWithNoTarget(t *testing.T) {
+	if ctx := runner(t, newErrorContext(" "), "login"); ctx != nil {
+		assert.Contains(t, ctx.stderr, "Error: no target set")
+	}
+}
+
+func TestCanNotLoginWithTargetSetButNoOauthCreds(t *testing.T) {
+	if ctx := runner(t, newErrorContext(sampleCfg), "login"); ctx != nil {
+		assert.Contains(t, ctx.stderr, "must supply clientID and clientSecret on the command line")
+	}
+}
+
+func TestCanHandleBadLoginReply(t *testing.T) {
+	paths := map[string]reqInfo{"/SAAS/API/1.0/oauth2/token": reqInfo{reply: "crap"}}
+	srv := StartTestServer(paths)
+	if ctx := runner(t, newErrorContext(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
+		assert.Contains(t, ctx.stderr, "invalid")
+	}
+}
+
+func TestCanLogin(t *testing.T) {
+	paths := map[string]reqInfo{"/SAAS/API/1.0/oauth2/token": reqInfo{reply: `{"access_token" : "ABC", "token_type" : "TestTokenType"}`}}
+	srv := StartTestServer(paths)
+	if ctx := runner(t, newContext(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
+		assert.Contains(t, ctx.stdout, "clientID and clientSecret saved")
+	}
+}
+
+
+// -- common CLI checks
+
+func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
+	if ctx := runner(t, newErrorContext(sampleCfg), "app", "get", "too", "many", "args"); ctx != nil {
+		assert.Contains(t, ctx.stderr, "at most 1 arguments can be specified")
 	}
 }

@@ -267,7 +267,7 @@ func main() {
 				},
 				{
 					Name:   "get",
-					Usage:  "get an app: delete <name>",
+					Usage:  "get an app: get <name>",
 					Action: cmdAppGet,
 				},
 				{
