@@ -5,22 +5,23 @@ import (
 	"fmt"
 	"github.com/cloudfoundry/cli/plugin"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-type CfWks struct{}
+type CfPriam struct{}
 
 const publishUsage string = "publish [-n] [-f MANIFEST_PATH]"
 const defaultManifest string = "./manifest.yaml"
 
-func (c *CfWks) GetMetadata() plugin.PluginMetadata {
+func (c *CfPriam) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
-		Name:    "cf-wks",
+		Name:    "cf-priam",
 		Version: plugin.VersionType{Major: 0, Minor: 0, Build: 1},
 		Commands: []plugin.Command{
 			{
 				Name:     "publish",
-				HelpText: "push application(s) from a manifest and publish to Workspace",
+				HelpText: "push application(s) from a manifest and publish to VMware Identity Manager catalog",
 				UsageDetails: plugin.Usage{
 					Usage: publishUsage,
 					Options: map[string]string{
@@ -31,21 +32,17 @@ func (c *CfWks) GetMetadata() plugin.PluginMetadata {
 			},
 			{
 				Name:     "unpublish",
-				HelpText: "remove an app from the workspace catalog",
+				HelpText: "remove an app from the VMware Identity Manager catalog",
 			},
 		},
 	}
 }
 
 func cfplugin() {
-	plugin.Start(new(CfWks))
+	plugin.Start(new(CfPriam))
 }
 
-func (c *CfWks) Run(cliConnection plugin.CliConnection, args []string) {
-	os.Stderr = os.Stdin // when cf execs a plugin it sets stdin and stdout but not stderr
-	if strings.ToLower(os.Getenv("CF_TRACE")) == "true" {
-		traceMode = true
-	}
+func (c *CfPriam) Run(cliConnection plugin.CliConnection, args []string) {
 	if args[0] == "publish" {
 		c.Publish(cliConnection, args[1:])
 	} else if args[0] == "unpublish" {
@@ -53,14 +50,16 @@ func (c *CfWks) Run(cliConnection plugin.CliConnection, args []string) {
 	}
 }
 
-func (c *CfWks) Publish(cliConn plugin.CliConnection, args []string) {
+func (c *CfPriam) Publish(cliConn plugin.CliConnection, args []string) {
 	flagSet := flag.NewFlagSet("publish", flag.ExitOnError)
 	nopush := flagSet.Bool("n", false, "don't push app, just publish")
+	trace := flagSet.Bool("t", false, "trace IDM requests")
 	manifile := flagSet.String("f", defaultManifest, "manifest file")
 	if err := flagSet.Parse(args); err != nil {
 		fmt.Printf("Error parsing arguments: %v\nUsage: %s\n", err, publishUsage)
 		return
 	}
+
 	if !*nopush {
 		output, err := cliConn.CliCommand("push", "-f", *manifile)
 		if err != nil {
@@ -69,11 +68,17 @@ func (c *CfWks) Publish(cliConn plugin.CliConnection, args []string) {
 		}
 		fmt.Println(strings.Join(output, "\n"))
 	}
-	if authHdr := authHeader(); authHdr != "" {
-		publishApps(authHdr, *manifile)
+
+	// when cf execs a plugin it sets stdin and stdout but not stderr
+	log := &logr{traceOn: *trace, errw: os.Stdout, outw: os.Stdout}
+
+	if cfg := newAppConfig(log, filepath.Join(os.Getenv("HOME"), ".priam.yaml")); cfg != nil {
+		if ctx := initCtx(cfg, true); ctx != nil {
+			publishApps(ctx, *manifile)
+		}
 	}
 }
 
-func (c *CfWks) Unpublish(args []string) {
+func (c *CfPriam) Unpublish(args []string) {
 	fmt.Println("unpublish is not implemented yet.")
 }

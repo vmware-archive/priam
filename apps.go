@@ -3,11 +3,10 @@ package main
 import (
 	"code.google.com/p/go-uuid/uuid"
 	"fmt"
-	"github.com/codegangsta/cli"
 	"strings"
 )
 
-type wksApp struct {
+type priamApp struct {
 	Name                  string                 `json:"name,omitempty" yaml:"name,omitempty"`
 	Uuid                  string                 `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 	PackageVersion        string                 `json:"packageVersion,omitempty" yaml:"packageVersion,omitempty"`
@@ -30,7 +29,7 @@ type manifestApp struct {
 	Path      string
 	BuildPack string
 	Env       map[string]string
-	Workspace wksApp
+	Workspace priamApp
 }
 
 type itemResponse struct {
@@ -38,30 +37,31 @@ type itemResponse struct {
 	Items []map[string]interface{} `json:",omitempty" yaml:",omitempty"`
 }
 
-func accessPolicyId(name, authHdr string) string {
-	body := new(itemResponse)
-	if err := httpReq("GET", tgtURL("accessPolicies"), InitHdrs(authHdr, "accesspolicyset.list"), nil, &body); err != nil {
-		log(lerr, "Error getting access policies: %v\n", err)
+func accessPolicyId(ctx *httpContext, name string) string {
+	outp := &itemResponse{}
+	ctx.accept("accesspolicyset.list")
+	if err := ctx.request("GET", "accessPolicies", nil, &outp); err != nil {
+		ctx.log.err("Error getting access policies: %v\n", err)
 		return ""
 	}
-	for _, item := range body.Items {
+	for _, item := range outp.Items {
 		if name == "" && item["base"] == true || caselessEqual(name, item["name"]) {
 			if s, ok := item["uuid"].(string); ok {
 				return s
 			}
 		}
 	}
-	log(lerr, "Could not find access policy uuid\n")
+	ctx.log.err("Could not find access policy uuid\n")
 	return ""
 }
 
 // input name, uuid
 // output uuid of existing app with the input uuid or uuid of first app with name
-func checkAppExists(name, uuid, authHdr string) (outid string, err error) {
-	path, body := "catalogitems/search?pageSize=10000", new(itemResponse)
-	hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
-	if err = httpReq("POST", tgtURL(path), hdrs, "{}", &body); err == nil {
-		for _, item := range body.Items {
+func checkAppExists(ctx *httpContext, name, uuid string) (outid string, err error) {
+	outp := &itemResponse{}
+	ctx.accept("catalog.summary.list").contentType("catalog.search")
+	if err = ctx.request("POST", "catalogitems/search?pageSize=10000", "{}", &outp); err == nil {
+		for _, item := range outp.Items {
 			if caseEqual(uuid, item["uuid"]) {
 				outid = uuid
 				return
@@ -74,12 +74,11 @@ func checkAppExists(name, uuid, authHdr string) (outid string, err error) {
 	return
 }
 
-func getAppUuid(name, authHdr string) (uuid, mtype string, err error) {
-	input := fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(name))
-	path, body := "catalogitems/search?pageSize=10000", new(itemResponse)
-	hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
-	if err = httpReq("POST", tgtURL(path), hdrs, &input, &body); err == nil {
-		for _, item := range body.Items {
+func getAppUuid(ctx *httpContext, name string) (uuid, mtype string, err error) {
+	inp, outp := fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(name)), new(itemResponse)
+	ctx.accept("catalog.summary.list").contentType("catalog.search")
+	if err = ctx.request("POST", "catalogitems/search?pageSize=10000", &inp, &outp); err == nil {
+		for _, item := range outp.Items {
 			if u, ok := item["uuid"].(string); ok && caselessEqual(name, item["name"]) {
 				if uuid != "" {
 					err = fmt.Errorf("Multiple apps with name \"%s\"", name)
@@ -98,45 +97,44 @@ func getAppUuid(name, authHdr string) (uuid, mtype string, err error) {
 	return
 }
 
-func getAppByUuid(uuid, mtype, authHdr string) (app map[string]interface{}, err error) {
+func getAppByUuid(ctx *httpContext, uuid, mtype string) (app map[string]interface{}, err error) {
 	app = make(map[string]interface{})
-	path := fmt.Sprintf("catalogitems/%s", uuid)
-	err = httpReq("GET", tgtURL(path), InitHdrs(authHdr, mtype), nil, &app)
+	err = ctx.accept(mtype).request("GET", fmt.Sprintf("catalogitems/%s", uuid), nil, &app)
 	return
 }
 
-func maybeEntitle(authHdr, itemID, subjName, subjType, nameAttr, appName string) {
+func maybeEntitle(ctx *httpContext, itemID, subjName, subjType, nameAttr, appName string) {
 	if subjName != "" {
-		subjID, err := scimNameToID(strings.Title(subjType+"s"), nameAttr, subjName, authHdr)
+		subjID, err := scimGetID(ctx, strings.Title(subjType+"s"), nameAttr, subjName)
 		if err == nil {
-			err = entitleSubject(authHdr, subjID, strings.ToUpper(subjType+"s"), itemID)
+			err = entitleSubject(ctx, subjID, strings.ToUpper(subjType+"s"), itemID)
 		}
 		if err != nil {
-			log(lerr, "Could not entitle %s \"%s\" to app \"%s\", error: %v\n", subjType, subjName, appName, err)
+			ctx.log.err("Could not entitle %s \"%s\" to app \"%s\", error: %v\n", subjType, subjName, appName, err)
 		} else {
-			log(linfo, "Entitled %s \"%s\" to app \"%s\".\n", subjType, subjName, appName)
+			ctx.log.info("Entitled %s \"%s\" to app \"%s\".\n", subjType, subjName, appName)
 		}
 	}
 }
 
-func publishApps(authHdr, manifile string) {
+func publishApps(ctx *httpContext, manifile string) {
 	if manifile == "" {
 		manifile = "manifest.yaml"
 	}
 	var manifest struct{ Applications []manifestApp }
 	if err := getYamlFile(manifile, &manifest); err != nil {
-		log(lerr, "Error getting manifest: %v\n", err)
+		ctx.log.err("Error getting manifest: %v\n", err)
 		return
 	}
 	for _, v := range manifest.Applications {
 		var w = &v.Workspace
 		if w.AccessPolicySetUuid == "" {
-			if w.AccessPolicySetUuid = accessPolicyId(w.AccessPolicy, authHdr); w.AccessPolicySetUuid == "" {
+			if w.AccessPolicySetUuid = accessPolicyId(ctx, w.AccessPolicy); w.AccessPolicySetUuid == "" {
 				continue
 			}
 			w.AccessPolicy = ""
 		} else if w.AccessPolicy != "" {
-			log(lerr, "Invalid manifest for %s: both accessPolicy \"%s\" and AccessPolicySetUuid \"%s\" cannot be specified\n",
+			ctx.log.err("Invalid manifest for %s: both accessPolicy \"%s\" and AccessPolicySetUuid \"%s\" cannot be specified\n",
 				w.Name, w.AccessPolicy, w.AccessPolicySetUuid)
 			continue
 		}
@@ -144,9 +142,9 @@ func publishApps(authHdr, manifile string) {
 			w.Name = v.Name
 		}
 		method, path, errVerb, successVerb := "POST", "catalogitems", "adding", "added"
-		id, err := checkAppExists(w.Name, w.Uuid, authHdr)
+		id, err := checkAppExists(ctx, w.Name, w.Uuid)
 		if err != nil {
-			log(lerr, "Error checking if app %s exists: %v\n", w.Name, err)
+			ctx.log.err("Error checking if app %s exists: %v\n", w.Name, err)
 			continue
 		}
 		if id != "" {
@@ -156,64 +154,51 @@ func publishApps(authHdr, manifile string) {
 		if w.Uuid == "" {
 			w.Uuid = uuid.New()
 		}
-		amtype := "catalog." + strings.ToLower(w.CatalogItemType)
-		cmtype, iconFile, entitleGrp, entitleUser := amtype, w.IconFile, w.EntitleGroup, w.EntitleUser
+		mtype := "catalog." + strings.ToLower(w.CatalogItemType)
+		iconFile, entitleGrp, entitleUser := w.IconFile, w.EntitleGroup, w.EntitleUser
 		w.IconFile, w.EntitleGroup, w.EntitleUser = "", "", ""
 		content, err := toJson(w)
 		if err != nil {
-			log(lerr, "Error converting app %s to JSON: %v\n", w.Name, err)
+			ctx.log.err("Error converting app %s to JSON: %v\n", w.Name, err)
 			continue
 		}
-		if iconFile != "" {
-			if content, cmtype, err = newReqWithFileUpload("catalogitem", amtype, content, iconFile); err != nil {
-				log(lerr, "Error creating upload request for app %s: %v\n", w.Name, err)
-				continue
-			}
-		}
-		hdrs := InitHdrs(authHdr, amtype, cmtype)
-		if err = httpReq(method, tgtURL(path), hdrs, content, nil); err != nil {
-			log(lerr, "Error %s %s to the catalog: %v\n", errVerb, w.Name, err)
+		if iconFile == "" {
+			err = ctx.contentType(mtype).request(method, path, content, nil)
 		} else {
-			log(linfo, "App \"%s\" %s to the catalog\n", w.Name, successVerb)
+			err = ctx.fileUploadRequest(method, path, "catalogitem", mtype, content, iconFile, nil)
 		}
-		maybeEntitle(authHdr, w.Uuid, entitleGrp, "group", "displayName", w.Name)
-		maybeEntitle(authHdr, w.Uuid, entitleUser, "user", "userName", w.Name)
-	}
-}
-
-func cmdAppAdd(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 0, 1); authHdr != "" {
-		publishApps(authHdr, args[0])
-	}
-}
-
-func cmdAppDel(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
-		if uuid, _, err := getAppUuid(args[0], authHdr); err != nil {
-			log(lerr, "Error getting app info by name: %v\n", err)
-		} else if err := httpReq("DELETE", tgtURL(fmt.Sprintf("catalogitems/%s", uuid)), InitHdrs(authHdr), nil, nil); err != nil {
-			log(lerr, "Error deleting app %s from catalog: %v\n", args[0], err)
-		} else {
-			log(linfo, "app %s deleted\n", args[0])
+		if err != nil {
+			ctx.log.err("Error %s %s to the catalog: %v\n", errVerb, w.Name, err)
+			continue
 		}
+		ctx.log.info("App \"%s\" %s to the catalog\n", w.Name, successVerb)
+		maybeEntitle(ctx, w.Uuid, entitleGrp, "group", "displayName", w.Name)
+		maybeEntitle(ctx, w.Uuid, entitleUser, "user", "userName", w.Name)
 	}
 }
 
-func cmdAppGet(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
-		if uuid, mtype, err := getAppUuid(args[0], authHdr); err != nil {
-			log(lerr, "Error getting app info by name: %v\n", err)
-		} else if app, err := getAppByUuid(uuid, mtype, authHdr); err != nil {
-			log(lerr, "Error getting app info by uuid: %v\n", err)
-		} else {
-			logpp(linfo, "App "+args[0], app)
-		}
+func appDelete(ctx *httpContext, name string) {
+	if uuid, _, err := getAppUuid(ctx, name); err != nil {
+		ctx.log.err("Error getting app info by name: %v\n", err)
+	} else if err := ctx.request("DELETE", fmt.Sprintf("catalogitems/%s", uuid), nil, nil); err != nil {
+		ctx.log.err("Error deleting app %s from catalog: %v\n", name, err)
+	} else {
+		ctx.log.info("app %s deleted\n", name)
 	}
 }
 
-func cmdAppList(c *cli.Context) {
+func appGet(ctx *httpContext, name string) {
+	if uuid, mtype, err := getAppUuid(ctx, name); err != nil {
+		ctx.log.err("Error getting app info by name: %v\n", err)
+	} else if app, err := getAppByUuid(ctx, uuid, mtype); err != nil {
+		ctx.log.err("Error getting app info by uuid: %v\n", err)
+	} else {
+		ctx.log.pp("App "+name, app)
+	}
+}
+
+func appList(ctx *httpContext, count int, filter string) {
 	summaryFields := []string{"Apps", "name", "description", "catalogItemType", "uuid"}
-	count, filter := c.Int("count"), c.String("filter")
 	if count == 0 {
 		count = 1000
 	}
@@ -221,13 +206,11 @@ func cmdAppList(c *cli.Context) {
 	if filter != "" {
 		input = fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(filter))
 	}
-	if authHdr := authHeader(); authHdr != "" {
-		body := make(map[string]interface{})
-		hdrs := InitHdrs(authHdr, "catalog.summary.list", "catalog.search")
-		if err := httpReq("POST", tgtURL(path), hdrs, &input, &body); err != nil {
-			log(lerr, "Error: %v\n", err)
-		} else {
-			logppf(linfo, "Apps", body["items"], summaryFields)
-		}
+	body := make(map[string]interface{})
+	ctx.accept("catalog.summary.list").contentType("catalog.search")
+	if err := ctx.request("POST", path, input, &body); err != nil {
+		ctx.log.err("Error: %v\n", err)
+	} else {
+		ctx.log.ppf("Apps", body["items"], summaryFields)
 	}
 }

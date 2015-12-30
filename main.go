@@ -1,468 +1,441 @@
 package main
 
 import (
-	"errors"
+	"code.google.com/p/gopass"
 	"fmt"
 	"github.com/codegangsta/cli"
-	"net/url"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-// target is used to encapsulate everything needed to connect to a workspace instance.
-type target struct {
-	Host                   string
-	ClientID, ClientSecret string `yaml:",omitempty"`
-}
+const (
+	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
+	vidmBasePath      = "/SAAS/jersey/manager/api/"
+	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
+)
 
-type appConfig struct {
-	CurrentTarget string
-	Targets       map[string]target
-}
-
-var appCfg appConfig
-var configFileName string
-
-func getAppConfig(fileName string) error {
-	if fileName == "" {
-		fileName = filepath.Join(os.Getenv("HOME"), ".wks.yaml")
+func getPwd(prompt string) string {
+	if s, err := gopass.GetPass(prompt); err != nil {
+		panic(err)
+	} else {
+		return s
 	}
-	configFileName, appCfg = fileName, appConfig{}
-	if err := getYamlFile(fileName, &appCfg); err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("could not read config file %s, error: %v\n", fileName, err)
+}
+
+func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
+	if arg != "" {
+		return arg
+	}
+	for {
+		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
+			return pwd
 		}
-		appCfg = appConfig{}
+		log.info(prompt + "s didn't match. Try again.")
 	}
-	if appCfg.CurrentTarget != "" &&
-		appCfg.Targets[appCfg.CurrentTarget] != (target{}) {
+}
+
+func initCtx(cfg *config, authn bool) *httpContext {
+	if cfg.CurrentTarget == "" {
+		cfg.log.err("Error: no target set\n")
 		return nil
 	}
-	for k := range appCfg.Targets {
-		appCfg.CurrentTarget = k
-		return nil
+	tgt := cfg.Targets[cfg.CurrentTarget]
+	ctx := newHttpContext(cfg.log, tgt.Host, vidmBasePath, vidmBaseMediaType)
+	if authn {
+		if err := ctx.clientCredsGrant(vidmTokenPath, tgt.ClientID, tgt.ClientSecret); err != nil {
+			cfg.log.err("Error getting access token: %v\n", err)
+			return nil
+		}
 	}
-	if appCfg.Targets == nil {
-		appCfg.Targets = make(map[string]target)
-	}
-	return nil
+	return ctx
 }
 
-func putAppConfig() {
-	if err := putYamlFile(configFileName, &appCfg); err != nil {
-		log(lerr, "could not write config file %s, error: %v\n", configFileName, err)
-	}
-}
-
-func curTarget() (tgt target, err error) {
-	if appCfg.CurrentTarget == "" {
-		return tgt, errors.New("no target set")
-	}
-	return appCfg.Targets[appCfg.CurrentTarget], nil
-}
-
-func getAuthHeader() (string, error) {
-	if tgt, err := curTarget(); err == nil {
-		url := tgt.Host + "/SAAS/API/1.0/oauth2/token"
-		return clientCredsGrant(url, tgt.ClientID, tgt.ClientSecret)
-	} else {
-		return "", err
-	}
-}
-
-func authHeader() string {
-	if hdr, err := getAuthHeader(); err != nil {
-		log(lerr, "Error getting access token: %v\n", err)
-		return ""
-	} else {
-		return hdr
-	}
-}
-
-func InitCmd(c *cli.Context, minArgs, maxArgs int) (args []string, authHdr string) {
-	args = c.Args()
+func initArgs(cfg *config, c *cli.Context, minArgs, maxArgs int) []string {
+	args := c.Args()
 	if len(args) < minArgs {
-		log(lerr, "at least %d arguments must be specified\n", minArgs)
-	} else if len(args) > maxArgs {
-		log(lerr, "at most %d arguments can be specified\n", minArgs)
+		cfg.log.err("\nInput Error: at least %d arguments must be given\n\n", minArgs)
+	} else if maxArgs >= 0 && len(args) > maxArgs {
+		cfg.log.err("\nInput Error: at most %d arguments can be given\n\n", maxArgs)
 	} else {
-		authHdr = authHeader()
 		for i := len(args); i < maxArgs; i++ {
 			args = append(args, "")
 		}
+		return args
+	}
+	cli.ShowCommandHelp(c, c.Command.Name)
+	return nil
+}
+
+func initCmd(cfg *config, c *cli.Context, minArgs, maxArgs int, authn bool) (args []string, ctx *httpContext) {
+	args = initArgs(cfg, c, minArgs, maxArgs)
+	if args != nil {
+		ctx = initCtx(cfg, authn)
 	}
 	return
 }
 
-func tgtURL(path string) string {
-	return appCfg.Targets[appCfg.CurrentTarget].Host + "/SAAS/jersey/manager/api/" + path
+func initUserCmd(cfg *config, c *cli.Context, getPwd bool) (*basicUser, *httpContext) {
+	maxArgs := 1
+	if getPwd {
+		maxArgs = 2
+	}
+	args := initArgs(cfg, c, 1, maxArgs)
+	if args == nil {
+		return nil, nil
+	}
+	user := &basicUser{Name: args[0], Given: c.String("given"),
+		Family: c.String("family"), Email: c.String("email")}
+	if getPwd {
+		user.Pwd = getArgOrPassword(cfg.log, "Password", args[1], true)
+	}
+	return user, initCtx(cfg, true)
 }
 
-func checkHealth() (output string, err error) {
-	err = httpReq("GET", tgtURL("health"), hdrMap{}, nil, &output)
-	return
+func checkTarget(cfg *config) bool {
+	ctx, output := initCtx(cfg, false), ""
+	if ctx == nil {
+		return false
+	}
+	if err := ctx.request("GET", "health", nil, &output); err != nil {
+		ctx.log.err("Error checking health of %s: \n", ctx.hostURL)
+		return false
+	}
+	ctx.log.debug("health check output:\n%s\n", output)
+	if !strings.Contains(output, "allOk") {
+		ctx.log.err("Reply from %s does not meet health check\n", ctx.hostURL)
+		return false
+	}
+	return true
 }
 
-func cmdLogin(c *cli.Context) {
-	tgt, err := curTarget()
-	if err != nil {
-		log(lerr, "Error: %v\n", err)
-		return
-	}
-	a := c.Args()
-	if len(a) < 2 {
-		log(lerr, "must supply clientID and clientSecret on the command line\n")
-		return
-	}
-	appCfg.Targets[appCfg.CurrentTarget] = target{tgt.Host, a[0], a[1]}
-	if _, err := getAuthHeader(); err != nil {
-		log(lerr, "Error: %v\n", err)
-		return
-	}
-	putAppConfig()
-	log(linfo, "clientID and clientSecret saved\n")
-}
-
-func showAuthnJson(prefix, path string, mediaType string) {
-	if authHdr := authHeader(); authHdr != "" {
-		var body string
-		if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr, mediaType), nil, &body); err != nil {
-			log(lerr, "Error: %v\n", err)
-		} else {
-			logpp(linfo, prefix, body)
-		}
-	}
-}
-
-func cmdLocalUserStore(c *cli.Context) {
-	const desc = "Local User Store configuration"
-	const path = "localuserstore"
-	const mtype = "local.userstore"
-	keyvals := make(map[string]interface{})
-	for _, arg := range c.Args() {
-		kv := strings.SplitAfterN(arg, "=", 2)
-		keyvals[strings.TrimSuffix(kv[0], "=")] = kv[1]
-	}
-	if len(keyvals) == 0 {
-		showAuthnJson(desc, path, mtype)
-	} else if authHdr := authHeader(); authHdr != "" {
-		var output string
-		if err := httpReq("PUT", tgtURL(path), InitHdrs(authHdr, mtype, mtype), keyvals, &output); err != nil {
-			log(lerr, "Error: %v\n", err)
-		} else {
-			logpp(linfo, desc, output)
-		}
-	}
-}
-
-func cmdSchema(c *cli.Context) {
-	args := c.Args()
-	if len(args) < 1 {
-		log(lerr, "schema type must be specified\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig\n")
-		return
-	}
-	vals := make(url.Values)
-	vals.Set("filter", fmt.Sprintf("name eq \"%s\"", args[0]))
-	path := fmt.Sprintf("scim/Schemas?%v", vals.Encode())
-	showAuthnJson("Schema for "+args[0], path, "")
-}
-
-func cmdBefore(c *cli.Context) (err error) {
-	debugMode = c.Bool("debug")
-	traceMode = c.Bool("trace")
-	verboseMode = c.Bool("verbose")
-	if c.Bool("json") {
-		logStyleDefault = ljson
-	}
-	return getAppConfig(c.String("config"))
-}
-
-func main() {
+func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 	var err error
-	if strings.HasSuffix(os.Args[0], "cf-wks") {
-		if err = getAppConfig(""); err != nil {
-			log(lerr, "could not get app config: %v", err)
-		} else {
-			cfplugin()
-		}
-		return
-	}
+	var cfg *config
 	app := cli.NewApp()
-	app.Name, app.Usage = "wks", "a utility to publish applications to Workspace"
-	app.Email, app.Author, app.Writer = "", "", os.Stdout
+	app.Name, app.Usage = "priam", "a utility to publish applications to Workspace"
+	app.Email, app.Author, app.Writer = "", "", infoW
 	app.Action = cli.ShowAppHelp
-	app.Before = cmdBefore
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "config",
-			Usage: "specify alternate configuration file. Default is ~/.wks.yaml",
+			Name: "config", Usage: "specify alternate configuration file. Default is ~/.priam.yaml",
 		},
-		cli.BoolFlag{
-			Name:  "debug, d",
-			Usage: "print debug output",
-		},
-		cli.BoolFlag{
-			Name:  "json, j",
-			Usage: "print output in json",
-		},
-		cli.BoolFlag{
-			Name:  "trace, t",
-			Usage: "print all requests and responses",
-		},
-		cli.BoolFlag{
-			Name:  "verbose, V",
-			Usage: "print verbose output",
-		},
+		cli.BoolFlag{Name: "debug, d", Usage: "print debug output"},
+		cli.BoolFlag{Name: "json, j", Usage: "prefer output in json rather than yaml"},
+		cli.BoolFlag{Name: "trace, t", Usage: "print all requests and responses"},
+		cli.BoolFlag{Name: "verbose, V", Usage: "print verbose output"},
+	}
+	app.Before = func(c *cli.Context) (err error) {
+		log := &logr{debugOn: c.Bool("debug"), traceOn: c.Bool("trace"),
+			style: lyaml, verboseOn: c.Bool("verbose"), errw: errorW, outw: infoW}
+		if c.Bool("json") {
+			log.style = ljson
+		}
+		fileName := c.String("config")
+		if fileName == "" {
+			fileName = filepath.Join(os.Getenv("HOME"), "/.priam.yaml")
+		}
+		if cfg = newAppConfig(log, fileName); cfg == nil {
+			return fmt.Errorf("app initialization failed\n")
+		}
+		return nil
 	}
 
 	pageFlags := []cli.Flag{
-		cli.IntFlag{
-			Name:  "count",
-			Usage: "maximum entries to get",
-		},
-		cli.StringFlag{
-			Name:  "filter",
-			Usage: "filter such as 'username eq \"joe\"' for SCIM resources",
-		},
+		cli.IntFlag{Name: "count", Usage: "maximum entries to get"},
+		cli.StringFlag{Name: "filter", Usage: "filter such as 'username eq \"joe\"' for SCIM resources"},
 	}
 
 	memberFlags := []cli.Flag{
-		cli.BoolFlag{
-			Name:  "delete, d",
-			Usage: "delete member",
-		},
+		cli.BoolFlag{Name: "delete, d", Usage: "delete member"},
 	}
 
-	userAttrFlags := []cli.Flag{
-		cli.StringFlag{
-			Name:  "email",
-			Usage: "email of the user account",
-		},
-		cli.StringFlag{
-			Name:  "family",
-			Usage: "family name of the user account",
-		},
-		cli.StringFlag{
-			Name:  "given",
-			Usage: "given name of the user account",
-		},
+	userAttrFlags := []cli.Flag{cli.StringFlag{Name: "email", Usage: "email of the user account"},
+		cli.StringFlag{Name: "family", Usage: "family name of the user account"},
+		cli.StringFlag{Name: "given", Usage: "given name of the user account"},
 	}
 
 	app.Commands = []cli.Command{
 		{
-			Name:  "app",
-			Usage: "application publishing commands",
+			Name: "app", Usage: "application publishing commands",
 			Subcommands: []cli.Command{
 				{
-					Name:        "add",
-					Usage:       "add applications to the catalog",
-					Description: "app add [manifest.yaml]",
-					Action:      cmdAppAdd,
-				},
-				{
-					Name:   "delete",
-					Usage:  "delete an app: delete <name>",
-					Action: cmdAppDel,
-				},
-				{
-					Name:   "get",
-					Usage:  "get an app: get <name>",
-					Action: cmdAppGet,
-				},
-				{
-					Name:   "list",
-					Usage:  "list all applications in the catalog",
-					Flags:  pageFlags,
-					Action: cmdAppList,
-				},
-			},
-		},
-		{
-			Name:  "entitlement",
-			Usage: "commands for entitlements",
-			Subcommands: []cli.Command{
-				{
-					Name:        "get",
-					Usage:       "get entitlements for a specific user, app, or group",
-					Description: "ent get (group|user|app) <name>",
+					Name: "add", Usage: "add applications to the catalog", ArgsUsage: "[./manifest.yaml]",
 					Action: func(c *cli.Context) {
-						cmdEntitlementGet(c)
-					},
-				},
-			},
-		},
-		{
-			Name:  "group",
-			Usage: "commands for groups",
-			Subcommands: []cli.Command{
-				{
-					Name:        "get",
-					Usage:       "get a specific group",
-					Description: "group get <name>",
-					Action: func(c *cli.Context) {
-						scimGet(c, "Groups", "displayName")
+						if args, ctx := initCmd(cfg, c, 0, 1, true); ctx != nil {
+							publishApps(ctx, args[0])
+						}
 					},
 				},
 				{
-					Name:  "list",
-					Usage: "list all groups",
+					Name: "delete", Usage: "delete an app from the catalog", ArgsUsage: "<appName>",
+					Action: func(c *cli.Context) {
+						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+							appDelete(ctx, args[0])
+						}
+					},
+				},
+				{
+					Name: "get", Usage: "get information about an app", ArgsUsage: "<appName>",
+					Action: func(c *cli.Context) {
+						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+							appGet(ctx, args[0])
+						}
+					},
+				},
+				{
+					Name: "list", Usage: "list all applications in the catalog", ArgsUsage: " ",
 					Flags: pageFlags,
 					Action: func(c *cli.Context) {
-						scimList(c, "Groups", "Groups", "displayName", "id",
-							"members", "display")
-					},
-				},
-				{
-					Name:        "member",
-					Usage:       "add or remove users from a group",
-					Description: "member <groupname> <username>",
-					Flags:       memberFlags,
-					Action: func(c *cli.Context) {
-						scimMember(c, "Groups", "displayName")
+						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+							appList(ctx, c.Int("count"), c.String("filter"))
+						}
 					},
 				},
 			},
 		},
 		{
-			Name:  "health",
-			Usage: "check workspace service health",
+			Name: "entitlement", Usage: "commands for entitlements",
+			Subcommands: []cli.Command{
+				{
+					Name: "get", ArgsUsage: "(group|user|app) <name>",
+					Usage: "gets entitlements for a specific user, app, or group",
+					Action: func(c *cli.Context) {
+						if args, ctx := initCmd(cfg, c, 2, 2, true); ctx != nil {
+							getEntitlement(ctx, args[0], args[1])
+						}
+					},
+				},
+			},
+		},
+		{
+			Name: "group", Usage: "commands for groups",
+			Subcommands: []cli.Command{
+				{
+					Name: "get", Usage: "get a specific group", ArgsUsage: "get <groupName>",
+					Action: func(c *cli.Context) {
+						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+							scimGet(ctx, "Groups", "displayName", args[0])
+						}
+					},
+				},
+				{
+					Name: "list", Usage: "list all groups", ArgsUsage: " ", Flags: pageFlags,
+					Action: func(c *cli.Context) {
+						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+							scimList(ctx, c.Int("count"), c.String("filter"),
+								"Groups", "Groups", "displayName", "id",
+								"members", "display")
+						}
+					},
+				},
+				{
+					Name: "member", Usage: "add or remove users from a group",
+					ArgsUsage: "<groupname> <username>", Flags: memberFlags,
+					Action: func(c *cli.Context) {
+						if args, ctx := initCmd(cfg, c, 2, 2, true); ctx != nil {
+							scimMember(ctx, "Groups", "displayName", args[0], args[1], c.Bool("delete"))
+						}
+					},
+				},
+			},
+		},
+		{
+			Name: "health", Usage: "check workspace service health", ArgsUsage: " ",
 			Action: func(c *cli.Context) {
-				body, err := checkHealth()
-				if err != nil {
-					log(lerr, "Error on Check Health: %v\n", err)
-				} else {
-					logpp(linfo, "Health info", body)
+				if _, ctx := initCmd(cfg, c, 0, 0, false); ctx != nil {
+					var outp interface{}
+					if err := ctx.request("GET", "health", nil, &outp); err != nil {
+						ctx.log.err("Error on Check Health: %v\n", err)
+					} else {
+						ctx.log.pp("Health info", outp)
+					}
 				}
 			},
 		},
 		{
-			Name:        "localuserstore",
-			Usage:       "gets/sets local user store configuration",
-			Description: "localuserstore [key=value]...",
-			Action:      cmdLocalUserStore,
-		},
-		{
-			Name:        "login",
-			Usage:       "currently just saves client_id and client_secret",
-			Description: "login client_id [client_secret]",
-			Action:      cmdLogin,
-		},
-		{
-			Name:  "policies",
-			Usage: "get access policies",
+			Name: "localuserstore", Usage: "gets/sets local user store configuration",
+			ArgsUsage: "[key=value]...",
 			Action: func(c *cli.Context) {
-				showAuthnJson("Access Policies", "accessPolicies", "accesspolicyset.list")
+				if args, ctx := initCmd(cfg, c, 0, -1, true); ctx != nil {
+					cmdLocalUserStore(ctx, args)
+				}
 			},
 		},
 		{
-			Name:  "role",
-			Usage: "commands for roles",
+			Name: "login", Usage: "validates and saves clientID and clientSecret",
+			ArgsUsage:   "<clientID> [clientSecret]",
+			Description: "if clientSecret is not given as an argument, user will be prompted to enter it",
+			Action: func(c *cli.Context) {
+				if a, ctx := initCmd(cfg, c, 1, 2, false); ctx != nil {
+					cfg.Targets[cfg.CurrentTarget] = target{Host: ctx.hostURL,
+						ClientID: a[0], ClientSecret: getArgOrPassword(cfg.log, "Secret", a[1], false)}
+					if ctx = initCtx(cfg, true); ctx != nil && cfg.save() {
+						cfg.log.info("clientID and clientSecret saved\n")
+					}
+				}
+			},
+		},
+		{
+			Name: "policies", Usage: "get access policies", ArgsUsage: " ",
+			Action: func(c *cli.Context) {
+				if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+					ctx.getPrintJson("Access Policies", "accessPolicies", "accesspolicyset.list")
+				}
+			},
+		},
+		{
+			Name: "role", Usage: "commands for roles",
 			Subcommands: []cli.Command{
 				{
-					Name:  "get",
-					Usage: "get specific SCIM role",
+					Name: "get", Usage: "get specific SCIM role", ArgsUsage: "<roleName>",
 					Action: func(c *cli.Context) {
-						scimGet(c, "Roles", "displayName")
+						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+							scimGet(ctx, "Roles", "displayName", args[0])
+						}
 					},
 				},
 				{
-					Name:  "list",
-					Usage: "list all roles",
-					Flags: pageFlags,
+					Name: "list", ArgsUsage: " ", Usage: "list all roles", Flags: pageFlags,
 					Action: func(c *cli.Context) {
-						scimList(c, "Roles")
+						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+							scimList(ctx, c.Int("count"), c.String("filter"), "Roles")
+						}
 					},
 				},
 				{
-					Name:        "member",
-					Usage:       "add or remove users from a role",
-					Description: "member <rolename> <username>",
-					Flags:       memberFlags,
+					Name: "member", Usage: "add or remove users from a role",
+					ArgsUsage: "<rolename> <username>", Flags: memberFlags,
 					Action: func(c *cli.Context) {
-						scimMember(c, "Roles", "displayName")
+						if args, ctx := initCmd(cfg, c, 2, 2, true); ctx != nil {
+							scimMember(ctx, "Roles", "displayName", args[0], args[1], c.Bool("delete"))
+						}
 					},
 				},
 			},
 		},
 		{
-			Name:        "target",
-			Usage:       "set or display the target workspace instance",
-			Action:      cmdTarget,
-			Description: "wks target [new target URL] [targetName]",
+			Name: "target", Usage: "set or display the target workspace instance",
+			ArgsUsage: "[newTargetURL] [targetName]",
 			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:  "force, f",
-					Usage: "force target even if workspace instance not reachable",
-				},
+				cli.BoolFlag{Name: "force, f", Usage: "force target -- don't validate URL with health check"},
+			},
+			Action: func(c *cli.Context) {
+				if args := initArgs(cfg, c, 0, 2); args != nil {
+					if c.Bool("force") {
+						cfg.target(args[0], args[1], nil)
+					} else {
+						cfg.target(args[0], args[1], checkTarget)
+					}
+				}
 			},
 		},
 		{
-			Name:        "targets",
-			Usage:       "display all target workspace instances",
-			Action:      cmdTargets,
-			Description: "wks targets",
+			Name: "targets", Usage: "display all targets", ArgsUsage: " ",
+			Action: func(c *cli.Context) {
+				if initArgs(cfg, c, 0, 0) != nil {
+					cfg.targets()
+				}
+			},
 		},
 		{
-			Name:  "user",
-			Usage: "user account commands",
+			Name: "tenant", Usage: "gets/sets tenant configuration", ArgsUsage: "[key=value]...",
+			Action: func(c *cli.Context) {
+				if args, ctx := initCmd(cfg, c, 1, -1, true); ctx != nil {
+					cmdTenantConfig(ctx, args[0], args[1:])
+				}
+			},
+		},
+		{
+			Name: "user", Usage: "user account commands",
 			Subcommands: []cli.Command{
 				{
-					Name:   "add",
-					Usage:  "create user account: add userName [password]",
-					Action: cmdAddUser,
-					Flags:  userAttrFlags,
-				},
-				{
-					Name:  "get",
-					Usage: "display user account: get userName",
+					Name: "add", Usage: "create a user account", ArgsUsage: "<userName> [password]",
+					Flags: userAttrFlags,
 					Action: func(c *cli.Context) {
-						scimGet(c, "Users", "userName")
+						if user, ctx := initUserCmd(cfg, c, true); ctx != nil {
+							cmdAddUser(ctx, user)
+						}
 					},
 				},
 				{
-					Name:  "delete",
-					Usage: "delete user account: delete userName",
+					Name: "get", Usage: "display user account", ArgsUsage: "<userName>",
 					Action: func(c *cli.Context) {
-						scimDelete(c, "Users", "userName")
+						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+							scimGet(ctx, "Users", "userName", args[0])
+						}
 					},
 				},
 				{
-					Name:  "list",
-					Usage: "list user accounts",
+					Name: "delete", Usage: "delete user account", ArgsUsage: "<userName>",
 					Action: func(c *cli.Context) {
-						scimList(c, "Users", "Users", "userName", "id",
-							"emails", "display", "roles", "groups", "name",
-							"givenName", "familyName", "value")
+						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+							scimDelete(ctx, "Users", "userName", args[0])
+						}
 					},
 				},
 				{
-					Name:   "load",
-					Usage:  "bulk load users",
-					Action: cmdLoadUsers,
+					Name: "list", Usage: "list user accounts", ArgsUsage: " ",
+					Action: func(c *cli.Context) {
+						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+							scimList(ctx, c.Int("count"), c.String("filter"),
+								"Users", "Users", "userName", "id", "emails",
+								"display", "roles", "groups", "name",
+								"givenName", "familyName", "value")
+						}
+					},
 				},
 				{
-					Name:   "password",
-					Usage:  "set a user's password: password [password]",
-					Action: cmdSetPassword,
+					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
+					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph}\n" +
+						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
+					Action: func(c *cli.Context) {
+						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+							cmdLoadUsers(ctx, args[0])
+						}
+					},
 				},
 				{
-					Name:   "update",
-					Usage:  "update user account: update userName",
-					Action: cmdUpdateUser,
-					Flags:  userAttrFlags,
+					Name: "password", Usage: "set a user's password", ArgsUsage: "<username> [password]",
+					Description: "If password is not given as an argument, user will be prompted to enter it",
+					Action: func(c *cli.Context) {
+						if args, ctx := initCmd(cfg, c, 1, 2, true); ctx != nil {
+							cmdSetPassword(ctx, args[0], getArgOrPassword(cfg.log, "Password", args[1], true))
+						}
+					},
+				},
+				{
+					Name: "update", Usage: "update user account", ArgsUsage: "<userName>",
+					Flags: userAttrFlags,
+					Action: func(c *cli.Context) {
+						if user, ctx := initUserCmd(cfg, c, false); ctx != nil {
+							cmdUpdateUser(ctx, user)
+						}
+					},
 				},
 			},
 		},
 		{
-			Name:        "schema",
-			Usage:       "get SCIM schema of specific type",
-			Description: "schema <type>\nSupported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
-			Action:      cmdSchema,
+			Name: "schema", Usage: "get SCIM schema of specific type", ArgsUsage: "<type>",
+			Description: "Supported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
+			Action: func(c *cli.Context) {
+				if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+					cmdSchema(ctx, args[0])
+				}
+			},
 		},
 	}
 
-	if err = app.Run(os.Args); err != nil {
-		log(lerr, "failed to run app: %v", err)
+	if err = app.Run(args); err != nil {
+		cfg.log.err("failed to run app: %v", err)
+	}
+}
+
+func main() {
+	if strings.HasSuffix(os.Args[0], "cf-priam") {
+		cfplugin()
+	} else {
+		priam(os.Args, os.Stdin, os.Stdout, os.Stderr)
 	}
 }

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"code.google.com/p/gopass"
 	"fmt"
-	"github.com/codegangsta/cli"
 	"net/url"
 	"strconv"
 )
@@ -30,9 +28,9 @@ type userAccount struct {
 	Password              string                                                     `json:",omitempty"`
 }
 
-func (a *userAccount) pp() {
-	log(linfo, "%v, %v %v, %v\n%v\n\n", a.UserName, a.Name.GivenName, a.Name.FamilyName,
-		a.Emails[0].Value, a.Id)
+func (a *userAccount) pp(log *logr) {
+	log.info("%v, %v %v, %v\n%v\n\n", a.UserName, a.Name.GivenName,
+		a.Name.FamilyName, a.Emails[0].Value, a.Id)
 }
 
 type memberValue struct {
@@ -48,15 +46,15 @@ type basicUser struct {
 	Name, Given, Family, Email, Pwd string `yaml:",omitempty,flow"`
 }
 
-func scimGetByName(resType, nameAttr, name, authHdr string) (item map[string]interface{}, err error) {
-	output := struct {
+func scimGetByName(ctx *httpContext, resType, nameAttr, name string) (item map[string]interface{}, err error) {
+	output := &struct {
 		Resources                              []map[string]interface{}
 		ItemsPerPage, TotalResults, StartIndex uint
 		Schemas                                []string
 	}{}
 	vals := url.Values{"count": {"10000"}, "filter": {fmt.Sprintf("%s eq \"%s\"", nameAttr, name)}}
 	path := fmt.Sprintf("scim/%v?%v", resType, vals.Encode())
-	if err = httpReq("GET", tgtURL(path), InitHdrs(authHdr, ""), nil, &output); err != nil {
+	if err = ctx.request("GET", path, nil, &output); err != nil {
 		return
 	}
 	for _, v := range output.Resources {
@@ -74,8 +72,8 @@ func scimGetByName(resType, nameAttr, name, authHdr string) (item map[string]int
 	return
 }
 
-func scimNameToID(resType, nameAttr, name, authHdr string) (string, error) {
-	if item, err := scimGetByName(resType, nameAttr, name, authHdr); err != nil {
+func scimGetID(ctx *httpContext, resType, nameAttr, name string) (string, error) {
+	if item, err := scimGetByName(ctx, resType, nameAttr, name); err != nil {
 		return "", err
 	} else if id, ok := item["id"].(string); !ok {
 		return "", fmt.Errorf("no id returned for \"%s\"", name)
@@ -84,8 +82,8 @@ func scimNameToID(resType, nameAttr, name, authHdr string) (string, error) {
 	}
 }
 
-func scimList(c *cli.Context, resType string, summaryLabels ...string) {
-	count, filter, vals := c.Int("count"), c.String("filter"), url.Values{}
+func scimList(ctx *httpContext, count int, filter string, resType string, summaryLabels ...string) {
+	vals := url.Values{}
 	if count > 0 {
 		vals.Set("filter", strconv.Itoa(count))
 	}
@@ -93,159 +91,119 @@ func scimList(c *cli.Context, resType string, summaryLabels ...string) {
 		vals.Set("filter", filter)
 	}
 	path := fmt.Sprintf("scim/%s?%v", resType, vals.Encode())
-	if authHdr := authHeader(); authHdr != "" {
-		output := make(map[string]interface{})
-		if err := httpReq("GET", tgtURL(path), InitHdrs(authHdr), nil, &output); err != nil {
-			log(lerr, "Error getting SCIM resources of type %s: %v\n", resType, err)
-		} else {
-			logppf(linfo, resType, output["Resources"], summaryLabels)
-		}
+	outp := make(map[string]interface{})
+	if err := ctx.request("GET", path, nil, &outp); err != nil {
+		ctx.log.err("Error getting SCIM resources of type %s: %v\n", resType, err)
+	} else {
+		ctx.log.ppf(resType, outp["Resources"], summaryLabels)
 	}
 }
 
-func scimPatch(resType, id, authHdr string, input interface{}) error {
-	hdrs := InitHdrs(authHdr, "", "")
-	hdrs["X-HTTP-Method-Override"] = "PATCH"
+func scimPatch(ctx *httpContext, resType, id string, input interface{}) error {
+	ctx.header("X-HTTP-Method-Override", "PATCH")
 	path := fmt.Sprintf("scim/%s/%s", resType, id)
-	return httpReq("POST", tgtURL(path), hdrs, input, nil)
+	return ctx.request("POST", path, input, nil)
 }
 
-func cmdNameToID(resType, nameAttr, name, authHdr string) string {
-	if id, err := scimNameToID(resType, nameAttr, name, authHdr); err == nil {
+func scimNameToID(ctx *httpContext, resType, nameAttr, name string) string {
+	if id, err := scimGetID(ctx, resType, nameAttr, name); err == nil {
 		return id
 	} else {
-		log(lerr, "Error getting SCIM %s ID of %s: %v\n", resType, name, err)
+		ctx.log.err("Error getting SCIM %s ID of %s: %v\n", resType, name, err)
 	}
 	return ""
 }
 
-func scimMember(c *cli.Context, resType, nameAttr string) {
-	if args, authHdr := InitCmd(c, 2, 2); authHdr != "" {
-		rid, uid := cmdNameToID(resType, nameAttr, args[0], authHdr), cmdNameToID("Users", "userName", args[1], authHdr)
-		if rid == "" || uid == "" {
-			return
-		}
-		patch := memberPatch{Schemas: []string{coreSchemaURN}, Members: []memberValue{{Value: uid, Type: "User"}}}
-		if c.Bool("delete") {
-			patch.Members[0].Operation = "delete"
-		}
-		if err := scimPatch(resType, rid, authHdr, &patch); err != nil {
-			log(lerr, "Error updating SCIM resource %s of type %s: %v\n", args[0], resType, err)
-		} else {
-			log(linfo, "Updated SCIM resource %s of type %s\n", args[0], resType)
-		}
+func scimMember(ctx *httpContext, resType, nameAttr, rname, uname string, remove bool) {
+	rid, uid := scimNameToID(ctx, resType, nameAttr, rname), scimNameToID(ctx, "Users", "userName", uname)
+	if rid == "" || uid == "" {
+		return
+	}
+	patch := memberPatch{Schemas: []string{coreSchemaURN}, Members: []memberValue{{Value: uid, Type: "User"}}}
+	if remove {
+		patch.Members[0].Operation = "delete"
+	}
+	if err := scimPatch(ctx, resType, rid, &patch); err != nil {
+		ctx.log.err("Error updating SCIM resource %s of type %s: %v\n", rname, resType, err)
+	} else {
+		ctx.log.info("Updated SCIM resource %s of type %s\n", rname, resType)
 	}
 }
 
-func scimGet(c *cli.Context, resType, nameAttr string) {
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
-		if item, err := scimGetByName(resType, nameAttr, args[0], authHdr); err != nil {
-			log(lerr, "Error getting SCIM resource named %s of type %s: %v\n", args[0], resType, err)
-		} else {
-			logpp(linfo, "", item)
-		}
+func scimGet(ctx *httpContext, resType, nameAttr, rname string) {
+	if item, err := scimGetByName(ctx, resType, nameAttr, rname); err != nil {
+		ctx.log.err("Error getting SCIM resource named %s of type %s: %v\n", rname, resType, err)
+	} else {
+		ctx.log.pp("", item)
 	}
 }
 
-func addUser(u *basicUser, authHdr string) error {
-	acct := userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
+func addUser(ctx *httpContext, u *basicUser) error {
+	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
 	acct.Password = u.Pwd
 	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
 	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
-	return httpReq("POST", tgtURL("scim/Users"), InitHdrs(authHdr, ""), &acct, &acct)
+	return ctx.request("POST", "scim/Users", acct, acct)
 }
 
-func cmdLoadUsers(c *cli.Context) {
+func cmdLoadUsers(ctx *httpContext, fileName string) {
 	var newUsers []basicUser
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
-		if err := getYamlFile(args[0], &newUsers); err != nil {
-			log(lerr, "could not read file of bulk users: %v\n", err)
-		} else {
-			for k, v := range newUsers {
-				if err := addUser(&v, authHdr); err != nil {
-					log(lerr, "Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
-				} else {
-					log(linfo, "added user %s\n", v.Name)
-				}
-			}
-		}
-	}
-}
-
-func getpwd(prompt string) string {
-	if s, err := gopass.GetPass(prompt); err != nil {
-		panic(err)
+	if err := getYamlFile(fileName, &newUsers); err != nil {
+		ctx.log.err("could not read file of bulk users: %v\n", err)
 	} else {
-		return s
-	}
-}
-
-func getArgOrPassword(arg string) string {
-	if arg != "" {
-		return arg
-	}
-	for {
-		if pwd := getpwd("Password: "); pwd == getpwd("Password again: ") {
-			return pwd
+		for k, v := range newUsers {
+			if err := addUser(ctx, &v); err != nil {
+				ctx.log.err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
+			} else {
+				ctx.log.info("added user %s\n", v.Name)
+			}
 		}
-		log(linfo, "Passwords didn't match. Try again.")
 	}
 }
 
-func cmdAddUser(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1, 2); authHdr != "" {
-		user := basicUser{Name: args[0], Given: c.String("given"), Family: c.String("family"),
-			Email: c.String("email"), Pwd: getArgOrPassword(args[1])}
-		if err := addUser(&user, authHdr); err != nil {
-			log(lerr, "Error creating user: %v\n", err)
+func cmdAddUser(ctx *httpContext, user *basicUser) {
+	if err := addUser(ctx, user); err != nil {
+		ctx.log.err("Error creating user: %v\n", err)
+	} else {
+		ctx.log.info("User successfully added\n")
+	}
+}
+
+func cmdUpdateUser(ctx *httpContext, user *basicUser) {
+	if id := scimNameToID(ctx, "Users", "userName", user.Name); id != "" {
+		acct := userAccount{Schemas: []string{coreSchemaURN}}
+		if user.Given != "" || user.Family != "" {
+			acct.Name = &nameAttr{FamilyName: user.Family, GivenName: user.Given}
+		}
+		if user.Email != "" {
+			acct.Emails = []dispValue{{Value: user.Email}}
+		}
+		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
+			ctx.log.err("Error updating user: %v\n", err)
 		} else {
-			log(linfo, "User successfully added\n")
+			ctx.log.info("User \"%s\" updated\n", user.Name)
 		}
 	}
 }
 
-func cmdUpdateUser(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
-		if id := cmdNameToID("Users", "userName", args[0], authHdr); id != "" {
-			acct := userAccount{Schemas: []string{coreSchemaURN}}
-			g, f, e := c.String("given"), c.String("family"), c.String("email")
-			if g != "" || f != "" {
-				acct.Name = &nameAttr{FamilyName: f, GivenName: g}
-			}
-			if e != "" {
-				acct.Emails = []dispValue{{Value: e}}
-			}
-			if err := scimPatch("Users", id, authHdr, &acct); err != nil {
-				log(lerr, "Error updating user: %v\n", err)
-			} else {
-				log(linfo, "User \"%s\" updated\n", args[0])
-			}
+func scimDelete(ctx *httpContext, resType, nameAttr, rname string) {
+	if id := scimNameToID(ctx, resType, nameAttr, rname); id != "" {
+		path := fmt.Sprintf("scim/%s/%s", resType, id)
+		if err := ctx.request("DELETE", path, nil, nil); err != nil {
+			ctx.log.err("Error deleting %s %s: %v\n", resType, rname, err)
+		} else {
+			ctx.log.info("%s \"%s\" deleted\n", resType, rname)
 		}
 	}
 }
 
-func scimDelete(c *cli.Context, resType, nameAttr string) {
-	if args, authHdr := InitCmd(c, 1, 1); authHdr != "" {
-		if id := cmdNameToID(resType, nameAttr, args[0], authHdr); id != "" {
-			path := fmt.Sprintf("scim/%s/%s", resType, id)
-			if err := httpReq("DELETE", tgtURL(path), InitHdrs(authHdr, ""), nil, nil); err != nil {
-				log(lerr, "Error deleting %s %s: %v\n", resType, args[0], err)
-			} else {
-				log(linfo, "%s \"%s\" deleted\n", resType, args[0])
-			}
-		}
-	}
-}
-
-func cmdSetPassword(c *cli.Context) {
-	if args, authHdr := InitCmd(c, 1, 2); authHdr != "" {
-		if id := cmdNameToID("Users", "userName", args[0], authHdr); id != "" {
-			acct := userAccount{Schemas: []string{coreSchemaURN}, Password: getArgOrPassword(args[1])}
-			if err := scimPatch("Users", id, authHdr, &acct); err != nil {
-				log(lerr, "Error updating user: %v\n", err)
-			} else {
-				log(linfo, "User \"%s\" updated\n", acct.UserName)
-			}
+func cmdSetPassword(ctx *httpContext, name, pwd string) {
+	if id := scimNameToID(ctx, "Users", "userName", name); id != "" {
+		acct := userAccount{Schemas: []string{coreSchemaURN}, Password: pwd}
+		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
+			ctx.log.err("Error updating user %s: %v\n", name, err)
+		} else {
+			ctx.log.info("User \"%s\" updated\n", acct.UserName)
 		}
 	}
 }

@@ -2,6 +2,6 @@
 
 set -ev
 go build
-cp wks cf-wks
-cf uninstall-plugin cf-wks || echo "Ignoring..."
-cf install-plugin cf-wks
+cp priam cf-priam
+cf uninstall-plugin cf-priam || echo "Ignoring..."
+cf install-plugin cf-priam

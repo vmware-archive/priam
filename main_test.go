@@ -2,122 +2,86 @@ package main
 
 import (
 	//"bytes"
+	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"io"
 	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
-var sampleCfg string = `---
-currenttarget: 1
-targets:
-  radio:
-    host: https://radio.workspace.com
-  1:
-    host: https://radio.workspaceair.com
-  staging:
-    host: https://radio.hwslabs.com
-`
-
-type context struct {
-	cfgin,        cfgout,        stdin,        stdout,        stderr string
-	expectError                                                      bool
+type tstCtx struct {
+	cfg, input, info, err string
+	printResults          bool
 }
 
-func newContext(cfg string) *context {
-	return &context{cfgin: stringOrDefault(cfg, sampleCfg)}
-}
-
-// Build a context with expected error
-func newErrorContext(cfg string) *context {
-	ctx := newContext(cfg)
-	ctx.expectError = true
+func (ctx *tstCtx) printOut() *tstCtx {
+	ctx.printResults = true
 	return ctx
 }
 
-func closeDelete(f *os.File) {
-	f.Close()
-	os.Remove(f.Name())
-}
-
-type reqInfo struct {
-	reply,        mtype,        expect string
-}
-
-func StartTestServer(paths map[string]reqInfo) *httptest.Server {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-
-		println("processing request: ", r.URL.Path)
-		if rbody, err := ioutil.ReadAll(r.Body); err != nil {
-			http.Error(w, fmt.Sprintf("error reading request body: %v", err), 404)
-		} else if info, ok := paths[r.URL.Path]; !ok {
-			http.Error(w, fmt.Sprintf("bad path: %s", r.URL.Path), 404)
-		} else if info.expect == "" || info.expect == string(rbody) {
-
-			println("   - replying with", info.reply)
-
-			w.Header().Set("Content-Type", stringOrDefault(info.mtype, "application/json"))
-
-			io.WriteString(w, info.reply)
-		}
-	}
-	return httptest.NewServer(http.HandlerFunc(handler))
+func newTstCtx(cfg string) *tstCtx {
+	sampleCfg := `---
+currenttarget: 1
+targets:
+  radio:
+    host: https://radio.example.com
+  1:
+    host: https://radio1.example.com
+  staging:
+    host: https://radio2.example.com
+`
+	return &tstCtx{cfg: stringOrDefault(cfg, sampleCfg)}
 }
 
 func tstSrvTgt(url string) string {
 	return fmt.Sprintf("---\ntargets:\n  1:\n    host: %s\n", url)
 }
 
-func runner(t *testing.T, ctx *context, args ...string) *context {
-	var err error
-	f := map[string]*os.File{"c": nil, "i": nil, "o": nil, "e": nil}
-	for k, _ := range f {
-		if f[k], err = ioutil.TempFile("", "wks-test-" + k + "-"); !assert.Nil(t, err) {
-			return nil
-		}
-		defer closeDelete(f[k])
-	}
-	for k, v := range map[string]*string{"c": &ctx.cfgin, "i": &ctx.stdin} {
-		if _, err = f[k].Write([]byte(*v)); !assert.Nil(t, err) {
-			return nil
-		}
-	}
-	orgIn, orgErr, orgOut := os.Stdin, os.Stderr, os.Stdout
+// in these tests the clientID is "john" and the client secret is "travolta"
+// Adapted from tests written by Fanny, who apparently likes John Travolta
+func tstClientCredGrant(t *testing.T, req *tstReq) *tstReply {
+	const tokenReply = `{"token_type": "Bearer", "access_token": "testvalidtoken"}`
+	const basicAuthJohnTravolta = "Basic am9objp0cmF2b2x0YQ=="
+	assert.Equal(t, basicAuthJohnTravolta, req.authorization)
+	assert.Equal(t, "grant_type=client_credentials", req.input)
+	return &tstReply{output: tokenReply}
+}
+
+func tstSrvTgtWithAuth(url string) string {
+	return tstSrvTgt(url) + "    clientid: john\n    clientsecret: travolta\n"
+}
+
+func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
+	cfgFile, err := ioutil.TempFile("", "priam-test-config")
+	assert.Nil(t, err)
 	defer func() {
-		os.Stdin, os.Stderr, os.Stdout = orgIn, orgErr, orgOut
+		cfgFile.Close()
+		os.Remove(cfgFile.Name())
 	}()
-	os.Stdin, os.Stderr, os.Stdout = f["i"], f["e"], f["o"]
-	os.Args = append([]string{"wks", "--config", f["c"].Name()}, args...)
-	main()
-	for k, v := range map[string]*string{"c": &ctx.cfgout, "o": &ctx.stdout, "e": &ctx.stderr} {
-		if _, err = f[k].Seek(0, 0); !assert.Nil(t, err) {
-			return nil
-		} else if contents, err := ioutil.ReadAll(f[k]); !assert.Nil(t, err) {
-			return nil
-		} else {
-			*v = string(contents)
-		}
-	}
-	if ctx.expectError {
-		if !assert.NotEmpty(t, ctx.stderr) {
-			return nil
-		}
-	} else {
-		if !assert.Empty(t, ctx.stderr) {
-			return nil
-		}
+	_, err = cfgFile.Write([]byte(ctx.cfg))
+	assert.Nil(t, err)
+	args = append([]string{"priam", "--config", cfgFile.Name()}, args...)
+	infoW, errW := bytes.Buffer{}, bytes.Buffer{}
+	priam(args, strings.NewReader(ctx.cfg), &infoW, &errW)
+	_, err = cfgFile.Seek(0, 0)
+	assert.Nil(t, err)
+	contents, err := ioutil.ReadAll(cfgFile)
+	assert.Nil(t, err)
+	ctx.cfg, ctx.info, ctx.err = string(contents), infoW.String(), errW.String()
+	if ctx.printResults {
+		fmt.Printf("----------------config:\n%s\n", ctx.cfg)
+		fmt.Printf("----------------info:\n%s\n", ctx.info)
+		fmt.Printf("----------------error:\n%s\n", ctx.err)
 	}
 	return ctx
 }
 
 // help usage
 func TestHelp(t *testing.T) {
-	if ctx := runner(t, newContext(""), "help"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "USAGE")
+	if ctx := runner(t, newTstCtx(""), "help"); ctx != nil {
+		assert.Contains(t, ctx.info, "USAGE")
 	}
 }
 
@@ -126,91 +90,137 @@ func TestTargetNoCurrent(t *testing.T) {
 	var targetYaml string = `---
 targets:
   radio:
-    host: https://radio.workspaceair.com
+    host: https://radio.example.com
 `
-	if ctx := runner(t, newContext(targetYaml), "target"); ctx != nil {
-		assert.Contains(t, ctx.cfgout, "radio.workspaceair.com")
+	if ctx := runner(t, newTstCtx(targetYaml), "target"); ctx != nil {
+		assert.Contains(t, ctx.cfg, "radio.example.com")
 	}
 }
 
 // should use the current target if one is set
 func TestTargetCurrent(t *testing.T) {
-	if ctx := runner(t, newContext(""), "target"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "radio.workspaceair.com")
+	if ctx := runner(t, newTstCtx(""), "target"); ctx != nil {
+		assert.Contains(t, ctx.info, "radio1.example.com")
 	}
 }
 
-// should fail gracefully if the config file does not exist
+// should fail gracefully if no config exists
 func TestTargetNoConfig(t *testing.T) {
-	if ctx := runner(t, newContext(" "), "target"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "no target set")
-	}
-}
-
-// should fail gracefully if no appConfig exists
-func TestTargetNoConfig(t *testing.T) {
-	if ctx := runner(t, newContext(" "), "target"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "no target set")
+	if ctx := runner(t, newTstCtx(" "), "target"); ctx != nil {
+		assert.Contains(t, ctx.info, "no target set")
 	}
 }
 
 // should not require access to server if target forced
 func TestTargetForced(t *testing.T) {
-	if ctx := runner(t, newContext(""), "target", "-f", "https://bad.example.com"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "bad.example.com")
+	if ctx := runner(t, newTstCtx(""), "target", "-f", "https://bad.example.com"); ctx != nil {
+		assert.Contains(t, ctx.info, "bad.example.com")
 	}
 }
 
 // should add https to target url if needed
 func TestTargetAddHttps(t *testing.T) {
-	if ctx := runner(t, newContext(""), "target", "-f", "bad.example.com"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "https://bad.example.com")
+	if ctx := runner(t, newTstCtx(""), "target", "-f", "bad.example.com"); ctx != nil {
+		assert.Contains(t, ctx.info, "https://bad.example.com")
 	}
 }
 
 func TestTargets(t *testing.T) {
-	if ctx := runner(t, newContext(""), "-d", "targets"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "staging")
-		assert.Contains(t, ctx.stdout, "radio")
-		assert.Contains(t, ctx.stdout, "https://radio.workspaceair.com")
+	if ctx := runner(t, newTstCtx(""), "-d", "targets"); ctx != nil {
+		assert.Contains(t, ctx.info, "staging")
+		assert.Contains(t, ctx.info, "radio")
+		assert.Contains(t, ctx.info, "https://radio.example.com")
 	}
 }
 
 func TestHealth(t *testing.T) {
-	paths := map[string]reqInfo{"/SAAS/jersey/manager/api/health": reqInfo{reply: "allOk"}}
-	srv := StartTestServer(paths)
-	if ctx := runner(t, newContext(tstSrvTgt(srv.URL)), "health"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "allOk")
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		assert.Empty(t, req.input)
+		return &tstReply{output: `{"allOk":true}`, contentType: "application/json"}
+	}
+	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": h}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "health"); ctx != nil {
+		assert.Contains(t, ctx.info, "allOk")
+	}
+}
+
+// -- Login
+func TestCanNotLoginWithNoTarget(t *testing.T) {
+	if ctx := runner(t, newTstCtx(" "), "login", "c", "s"); ctx != nil {
+		assert.Contains(t, ctx.err, "no target set")
+	}
+}
+
+func TestCanNotLoginWithTargetSetButNoOauthCreds(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "login"); ctx != nil {
+		assert.Contains(t, ctx.err, "at least 1 arguments must be given")
+	}
+}
+
+func TestCanHandleBadLoginReply(t *testing.T) {
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		assert.NotEmpty(t, req.input)
+		return &tstReply{output: "crap"}
+	}
+	paths := map[string]tstHandler{"POST" + vidmTokenPath: h}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
+		assert.Contains(t, ctx.err, "invalid")
+	}
+}
+
+func TestCanLogin(t *testing.T) {
+	paths := map[string]tstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
+		assert.Contains(t, ctx.cfg, "clientid: john")
+		assert.Contains(t, ctx.cfg, "clientsecret: travolta")
+		assert.Contains(t, ctx.info, "clientID and clientSecret saved")
 	}
 }
 
 // -- Entitlements methods
 
 func TestGetEntitlementWithNoArgsShowsHelp(t *testing.T) {
-	if ctx := runner(t, newContext(""), "entitlement"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "USAGE")
+	if ctx := runner(t, newTstCtx(""), "entitlement"); ctx != nil {
+		assert.Contains(t, ctx.info, "USAGE")
 	}
 }
 
 func TestGetEntitlementWithNoTypeShowsError(t *testing.T) {
-	if ctx := runner(t, newErrorContext(""), "entitlement", "get"); ctx != nil {
-		assert.Contains(t, ctx.stderr, "at least 2 arguments must be specified")
+	if ctx := runner(t, newTstCtx(" "), "entitlement", "get"); ctx != nil {
+		assert.Contains(t, ctx.err, "at least 2 arguments must be given")
 	}
 }
 
 func TestGetEntitlementWithNoNameShowsError(t *testing.T) {
 	types := [...]string{"user", "app", "group"}
 	for i := range types {
-		if ctx := runner(t, newErrorContext(""), "entitlement", "get", types[i]); ctx != nil {
-			assert.Contains(t, ctx.stderr, "at least 2 arguments must be specified")
+		if ctx := runner(t, newTstCtx(" "), "entitlement", "get", types[i]); ctx != nil {
+			assert.Contains(t, ctx.err, "at least 2 arguments must be given")
 		}
 	}
 }
 
-// common method to test entitlement
-func checkGetEntitlementReturnsError(t *testing.T, entity string) {
-	if ctx := runner(t, newErrorContext(""), "entitlement", "get", entity, "foo"); ctx != nil {
-		assert.Contains(t, ctx.stderr, "error: invalid_client")
+// common method to test getting basic entitlements
+func checkGetEntitlementReturns(t *testing.T, entity, rType, rID string) {
+	entH := func(t *testing.T, req *tstReq) *tstReply {
+		outp := `{"items": [{ "Entitlements" : "bar"}]}`
+		return &tstReply{output: outp, contentType: "application/json"}
+	}
+	idH := func(t *testing.T, req *tstReq) *tstReply {
+		outp := fmt.Sprintf(`{"resources": [{ "userName" : "foo", "displayName" : "foo", "id": "%s"}]}`, rID)
+		return &tstReply{output: outp, contentType: "application/json"}
+	}
+	entPath := "entitlements/definitions/" + strings.ToLower(rType) + "/" + rID
+	paths := map[string]tstHandler{
+		"GET" + vidmBasePath + "scim/" + rType: idH,
+		"GET" + vidmBasePath + entPath:         entH,
+		"POST" + vidmTokenPath:                 tstClientCredGrant}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "entitlement", "get", entity, "foo"); ctx != nil {
+		assert.Contains(t, ctx.info, "Entitlements: bar")
 	}
 
 }
@@ -218,52 +228,21 @@ func checkGetEntitlementReturnsError(t *testing.T, entity string) {
 // Don't know how to mock functions (and avoid global)
 // So just check we will get an error
 func TestGetEntitlementForUser(t *testing.T) {
-	checkGetEntitlementReturnsError(t, "user")
+	checkGetEntitlementReturns(t, "user", "Users", "testid67")
 }
 
 func TestGetEntitlementForGroup(t *testing.T) {
-	checkGetEntitlementReturnsError(t, "group")
+	checkGetEntitlementReturns(t, "group", "Groups", "testid67")
 }
 
 func TestGetEntitlementForApp(t *testing.T) {
-	checkGetEntitlementReturnsError(t, "app")
+	checkGetEntitlementReturns(t, "app", "catalogitems", "foo")
 }
-
-
-// -- Login
-func TestCanNotLoginWithNoTarget(t *testing.T) {
-	if ctx := runner(t, newErrorContext(" "), "login"); ctx != nil {
-		assert.Contains(t, ctx.stderr, "Error: no target set")
-	}
-}
-
-func TestCanNotLoginWithTargetSetButNoOauthCreds(t *testing.T) {
-	if ctx := runner(t, newErrorContext(sampleCfg), "login"); ctx != nil {
-		assert.Contains(t, ctx.stderr, "must supply clientID and clientSecret on the command line")
-	}
-}
-
-func TestCanHandleBadLoginReply(t *testing.T) {
-	paths := map[string]reqInfo{"/SAAS/API/1.0/oauth2/token": reqInfo{reply: "crap"}}
-	srv := StartTestServer(paths)
-	if ctx := runner(t, newErrorContext(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
-		assert.Contains(t, ctx.stderr, "invalid")
-	}
-}
-
-func TestCanLogin(t *testing.T) {
-	paths := map[string]reqInfo{"/SAAS/API/1.0/oauth2/token": reqInfo{reply: `{"access_token" : "ABC", "token_type" : "TestTokenType"}`}}
-	srv := StartTestServer(paths)
-	if ctx := runner(t, newContext(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
-		assert.Contains(t, ctx.stdout, "clientID and clientSecret saved")
-	}
-}
-
 
 // -- common CLI checks
 
 func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
-	if ctx := runner(t, newErrorContext(sampleCfg), "app", "get", "too", "many", "args"); ctx != nil {
-		assert.Contains(t, ctx.stderr, "at most 1 arguments can be specified")
+	if ctx := runner(t, newTstCtx(""), "app", "get", "too", "many", "args"); ctx != nil {
+		assert.Contains(t, ctx.err, "at most 1 arguments can be given")
 	}
 }

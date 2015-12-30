@@ -24,8 +24,8 @@ Install it:
 
 get help:
 
-    wks help
+    priam help
 
 get help on specific command (for example, 'target'):
 
-    wks help target
+    priam help target
