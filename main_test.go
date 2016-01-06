@@ -85,6 +85,19 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+// help user load usage includes password and does not require target
+func TestHelpUserLoad(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "user", "help", "load"); ctx != nil {
+		assert.Contains(t, ctx.info, "password:")
+	}
+}
+
+func TestHelpUserLoadOption(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "user", "load", "-h"); ctx != nil {
+		assert.Contains(t, ctx.info, "password:")
+	}
+}
+
 // should pick a target if none is set
 func TestTargetNoCurrent(t *testing.T) {
 	var targetYaml string = `---
