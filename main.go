@@ -111,15 +111,22 @@ func checkTarget(cfg *config) bool {
 }
 
 func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
+	appName := filepath.Base(args[0])
+	if strings.HasPrefix(appName, "cf-") {
+		defaultCfgFile := filepath.Join(os.Getenv("HOME"), fmt.Sprintf(".%s.yaml", appName[3:]))
+		cfplugin(appName, defaultCfgFile)
+		return
+	}
 	var err error
 	var cfg *config
-	app := cli.NewApp()
-	app.Name, app.Usage = "priam", "a utility to publish applications to Workspace"
+	cli.HelpFlag.Usage = "show help for given command or subcommand"
+	app, defaultCfgFile := cli.NewApp(), fmt.Sprintf(".%s.yaml", appName)
+	app.Name, app.Usage = appName, "a utility to interact with VMware Identity Manager"
 	app.Email, app.Author, app.Writer = "", "", infoW
 	app.Action = cli.ShowAppHelp
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name: "config", Usage: "specify alternate configuration file. Default is ~/.priam.yaml",
+			Name: "config", Usage: "specify alternate configuration file. Default is ~/" + defaultCfgFile,
 		},
 		cli.BoolFlag{Name: "debug, d", Usage: "print debug output"},
 		cli.BoolFlag{Name: "json, j", Usage: "prefer output in json rather than yaml"},
@@ -134,7 +141,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		}
 		fileName := c.String("config")
 		if fileName == "" {
-			fileName = filepath.Join(os.Getenv("HOME"), "/.priam.yaml")
+			fileName = filepath.Join(os.Getenv("HOME"), defaultCfgFile)
 		}
 		if cfg = newAppConfig(log, fileName); cfg == nil {
 			return fmt.Errorf("app initialization failed\n")
@@ -433,9 +440,5 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 }
 
 func main() {
-	if strings.HasSuffix(os.Args[0], "cf-priam") {
-		cfplugin()
-	} else {
-		priam(os.Args, os.Stdin, os.Stdout, os.Stderr)
-	}
+	priam(os.Args, os.Stdin, os.Stdout, os.Stderr)
 }

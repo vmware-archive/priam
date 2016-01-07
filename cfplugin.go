@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"github.com/cloudfoundry/cli/plugin"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
-type CfPriam struct{}
+type CfPriam struct{ name, defaultConfigFile string }
 
 const publishUsage string = "publish [-n] [-f MANIFEST_PATH]"
 const defaultManifest string = "./manifest.yaml"
 
 func (c *CfPriam) GetMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
-		Name:    "cf-priam",
+		Name:    c.name,
 		Version: plugin.VersionType{Major: 0, Minor: 0, Build: 1},
 		Commands: []plugin.Command{
 			{
@@ -38,8 +37,8 @@ func (c *CfPriam) GetMetadata() plugin.PluginMetadata {
 	}
 }
 
-func cfplugin() {
-	plugin.Start(new(CfPriam))
+func cfplugin(name, defaultConfigFile string) {
+	plugin.Start(&CfPriam{name, defaultConfigFile})
 }
 
 func (c *CfPriam) Run(cliConnection plugin.CliConnection, args []string) {
@@ -72,7 +71,7 @@ func (c *CfPriam) Publish(cliConn plugin.CliConnection, args []string) {
 	// when cf execs a plugin it sets stdin and stdout but not stderr
 	log := &logr{traceOn: *trace, errw: os.Stdout, outw: os.Stdout}
 
-	if cfg := newAppConfig(log, filepath.Join(os.Getenv("HOME"), ".priam.yaml")); cfg != nil {
+	if cfg := newAppConfig(log, c.defaultConfigFile); cfg != nil {
 		if ctx := initCtx(cfg, true); ctx != nil {
 			publishApps(ctx, *manifile)
 		}

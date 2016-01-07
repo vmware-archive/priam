@@ -203,7 +203,7 @@ func cmdSetPassword(ctx *httpContext, name, pwd string) {
 		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
 			ctx.log.err("Error updating user %s: %v\n", name, err)
 		} else {
-			ctx.log.info("User \"%s\" updated\n", acct.UserName)
+			ctx.log.info("User \"%s\" updated\n", name)
 		}
 	}
 }

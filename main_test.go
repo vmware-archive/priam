@@ -12,8 +12,8 @@ import (
 )
 
 type tstCtx struct {
-	cfg, input, info, err string
-	printResults          bool
+	appName, cfg, input, info, err string
+	printResults                   bool
 }
 
 func (ctx *tstCtx) printOut() *tstCtx {
@@ -32,7 +32,7 @@ targets:
   staging:
     host: https://radio2.example.com
 `
-	return &tstCtx{cfg: stringOrDefault(cfg, sampleCfg)}
+	return &tstCtx{appName: "testapp", cfg: stringOrDefault(cfg, sampleCfg)}
 }
 
 func tstSrvTgt(url string) string {
@@ -62,7 +62,7 @@ func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
 	}()
 	_, err = cfgFile.Write([]byte(ctx.cfg))
 	assert.Nil(t, err)
-	args = append([]string{"priam", "--config", cfgFile.Name()}, args...)
+	args = append([]string{ctx.appName, "--config", cfgFile.Name()}, args...)
 	infoW, errW := bytes.Buffer{}, bytes.Buffer{}
 	priam(args, strings.NewReader(ctx.cfg), &infoW, &errW)
 	_, err = cfgFile.Seek(0, 0)
@@ -95,6 +95,14 @@ func TestHelpUserLoad(t *testing.T) {
 func TestHelpUserLoadOption(t *testing.T) {
 	if ctx := runner(t, newTstCtx(""), "user", "load", "-h"); ctx != nil {
 		assert.Contains(t, ctx.info, "password:")
+	}
+}
+
+func TestAppAnyName(t *testing.T) {
+	ctx, name := newTstCtx(""), "welcome_back_kotter"
+	ctx.appName = name
+	if ctx := runner(t, ctx, "-h"); ctx != nil {
+		assert.Contains(t, ctx.info, name)
 	}
 }
 

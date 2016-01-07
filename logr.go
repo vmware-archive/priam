@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"gopkg.in/yaml.v2"
@@ -23,6 +24,18 @@ type logr struct {
 
 func newLogr() *logr {
 	return &logr{false, false, false, lyaml, os.Stderr, os.Stdout}
+}
+
+func newBufferedLogr() *logr {
+	return &logr{false, false, false, lyaml, &bytes.Buffer{}, &bytes.Buffer{}}
+}
+
+func (l *logr) infoString() string {
+	return l.outw.(*bytes.Buffer).String()
+}
+
+func (l *logr) errString() string {
+	return l.errw.(*bytes.Buffer).String()
 }
 
 func (l *logr) info(format string, args ...interface{}) {
