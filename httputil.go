@@ -42,7 +42,7 @@ func newHttpContext(log *logr, hostURL, basePath, baseMediaType string) *httpCon
 }
 
 func (ctx *httpContext) fullMediaType(shortType string) string {
-	if strings.Contains(shortType, "/") {
+	if shortType == "" || strings.Contains(shortType, "/") {
 		return shortType
 	} else if shortType == "json" {
 		return "application/json"
@@ -51,7 +51,11 @@ func (ctx *httpContext) fullMediaType(shortType string) string {
 }
 
 func (ctx *httpContext) header(name, value string) *httpContext {
-	ctx.headers[name] = value
+	if value == "" {
+		delete(ctx.headers, name)
+	} else {
+		ctx.headers[name] = value
+	}
 	return ctx
 }
 

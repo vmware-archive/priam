@@ -126,7 +126,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 	app.Action = cli.ShowAppHelp
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name: "config", Usage: "specify alternate configuration file. Default is ~/" + defaultCfgFile,
+			Name: "config", Usage: "specify configuration file. Default: ~/" + defaultCfgFile,
 		},
 		cli.BoolFlag{Name: "debug, d", Usage: "print debug output"},
 		cli.BoolFlag{Name: "json, j", Usage: "prefer output in json rather than yaml"},
