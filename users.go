@@ -143,6 +143,7 @@ func addUser(ctx *httpContext, u *basicUser) error {
 	acct.Password = u.Pwd
 	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
 	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
+	ctx.log.pp("add user: ", acct)
 	return ctx.request("POST", "scim/Users", acct, acct)
 }
 

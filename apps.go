@@ -103,20 +103,6 @@ func getAppByUuid(ctx *httpContext, uuid, mtype string) (app map[string]interfac
 	return
 }
 
-func maybeEntitle(ctx *httpContext, itemID, subjName, subjType, nameAttr, appName string) {
-	if subjName != "" {
-		subjID, err := scimGetID(ctx, strings.Title(subjType+"s"), nameAttr, subjName)
-		if err == nil {
-			err = entitleSubject(ctx, subjID, strings.ToUpper(subjType+"s"), itemID)
-		}
-		if err != nil {
-			ctx.log.err("Could not entitle %s \"%s\" to app \"%s\", error: %v\n", subjType, subjName, appName, err)
-		} else {
-			ctx.log.info("Entitled %s \"%s\" to app \"%s\".\n", subjType, subjName, appName)
-		}
-	}
-}
-
 func publishApps(ctx *httpContext, manifile string) {
 	if manifile == "" {
 		manifile = "manifest.yaml"

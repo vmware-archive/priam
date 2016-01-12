@@ -72,15 +72,6 @@ func toStringWithStyle(ls logStyle, input interface{}) string {
 	return string(outp)
 }
 
-func hasString(s string, a []string) bool {
-	for _, v := range a {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
 func (l *logr) filter(indent, label, sep string, info interface{}, filter []string) {
 	const indenter, arrayPrefix string = "  ", "- "
 	if label != "" && label != arrayPrefix && !hasString(label, filter) {

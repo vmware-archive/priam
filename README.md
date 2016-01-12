@@ -1,7 +1,7 @@
 Start of command line client for VMware Workspace in Go.
 
 Build it:
-
+    go get -u
     go build
 
 Test it (basic or with code coverage):

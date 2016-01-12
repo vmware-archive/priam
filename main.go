@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
-	vidmBasePath      = "/SAAS/jersey/manager/api/"
+	vidmTokenPath = "/SAAS/API/1.0/oauth2/token"
+	vidmBasePath = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
 )
 
@@ -29,7 +29,7 @@ func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
 		return arg
 	}
 	for {
-		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
+		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt + " again: ") {
 			return pwd
 		}
 		log.info(prompt + "s didn't match. Try again.")
@@ -52,24 +52,27 @@ func initCtx(cfg *config, authn bool) *httpContext {
 	return ctx
 }
 
-func initArgs(cfg *config, c *cli.Context, minArgs, maxArgs int) []string {
+func initArgs(cfg *config, c *cli.Context, minArgs, maxArgs int, validateArgs func([]string) bool) []string {
 	args := c.Args()
 	if len(args) < minArgs {
 		cfg.log.err("\nInput Error: at least %d arguments must be given\n\n", minArgs)
 	} else if maxArgs >= 0 && len(args) > maxArgs {
 		cfg.log.err("\nInput Error: at most %d arguments can be given\n\n", maxArgs)
 	} else {
+
 		for i := len(args); i < maxArgs; i++ {
 			args = append(args, "")
 		}
-		return args
+		if validateArgs == nil || validateArgs(args) {
+			return args
+		}
 	}
 	cli.ShowCommandHelp(c, c.Command.Name)
 	return nil
 }
 
-func initCmd(cfg *config, c *cli.Context, minArgs, maxArgs int, authn bool) (args []string, ctx *httpContext) {
-	args = initArgs(cfg, c, minArgs, maxArgs)
+func initCmd(cfg *config, c *cli.Context, minArgs, maxArgs int, authn bool, validateArgs func([]string) bool) (args []string, ctx *httpContext) {
+	args = initArgs(cfg, c, minArgs, maxArgs, validateArgs)
 	if args != nil {
 		ctx = initCtx(cfg, authn)
 	}
@@ -81,7 +84,7 @@ func initUserCmd(cfg *config, c *cli.Context, getPwd bool) (*basicUser, *httpCon
 	if getPwd {
 		maxArgs = 2
 	}
-	args := initArgs(cfg, c, 1, maxArgs)
+	args := initArgs(cfg, c, 1, maxArgs, nil)
 	if args == nil {
 		return nil, nil
 	}
@@ -170,7 +173,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "add", Usage: "add applications to the catalog", ArgsUsage: "[./manifest.yaml]",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 0, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 0, 1, true, nil); ctx != nil {
 							publishApps(ctx, args[0])
 						}
 					},
@@ -178,7 +181,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "delete", Usage: "delete an app from the catalog", ArgsUsage: "<appName>",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							appDelete(ctx, args[0])
 						}
 					},
@@ -186,7 +189,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "get", Usage: "get information about an app", ArgsUsage: "<appName>",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							appGet(ctx, args[0])
 						}
 					},
@@ -195,7 +198,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 					Name: "list", Usage: "list all applications in the catalog", ArgsUsage: " ",
 					Flags: pageFlags,
 					Action: func(c *cli.Context) {
-						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							appList(ctx, c.Int("count"), c.String("filter"))
 						}
 					},
@@ -209,7 +212,13 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 					Name: "get", ArgsUsage: "(group|user|app) <name>",
 					Usage: "gets entitlements for a specific user, app, or group",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 2, 2, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 2, 2, true, func(args []string) bool {
+							res := hasString(args[0], []string{"group", "user", "app"})
+							if !res {
+								cfg.log.err("First parameter of 'get' must be user, group or app\n")
+							}
+							return res
+						}); ctx != nil {
 							getEntitlement(ctx, args[0], args[1])
 						}
 					},
@@ -222,7 +231,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "get", Usage: "get a specific group", ArgsUsage: "get <groupName>",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							scimGet(ctx, "Groups", "displayName", args[0])
 						}
 					},
@@ -230,7 +239,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "list", Usage: "list all groups", ArgsUsage: " ", Flags: pageFlags,
 					Action: func(c *cli.Context) {
-						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							scimList(ctx, c.Int("count"), c.String("filter"),
 								"Groups", "Groups", "displayName", "id",
 								"members", "display")
@@ -241,7 +250,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 					Name: "member", Usage: "add or remove users from a group",
 					ArgsUsage: "<groupname> <username>", Flags: memberFlags,
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 2, 2, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
 							scimMember(ctx, "Groups", "displayName", args[0], args[1], c.Bool("delete"))
 						}
 					},
@@ -251,7 +260,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		{
 			Name: "health", Usage: "check workspace service health", ArgsUsage: " ",
 			Action: func(c *cli.Context) {
-				if _, ctx := initCmd(cfg, c, 0, 0, false); ctx != nil {
+				if _, ctx := initCmd(cfg, c, 0, 0, false, nil); ctx != nil {
 					var outp interface{}
 					if err := ctx.request("GET", "health", nil, &outp); err != nil {
 						ctx.log.err("Error on Check Health: %v\n", err)
@@ -265,7 +274,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 			Name: "localuserstore", Usage: "gets/sets local user store configuration",
 			ArgsUsage: "[key=value]...",
 			Action: func(c *cli.Context) {
-				if args, ctx := initCmd(cfg, c, 0, -1, true); ctx != nil {
+				if args, ctx := initCmd(cfg, c, 0, -1, true, nil); ctx != nil {
 					cmdLocalUserStore(ctx, args)
 				}
 			},
@@ -275,7 +284,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 			ArgsUsage:   "<clientID> [clientSecret]",
 			Description: "if clientSecret is not given as an argument, user will be prompted to enter it",
 			Action: func(c *cli.Context) {
-				if a, ctx := initCmd(cfg, c, 1, 2, false); ctx != nil {
+				if a, ctx := initCmd(cfg, c, 1, 2, false, nil); ctx != nil {
 					cfg.Targets[cfg.CurrentTarget] = target{Host: ctx.hostURL,
 						ClientID: a[0], ClientSecret: getArgOrPassword(cfg.log, "Secret", a[1], false)}
 					if ctx = initCtx(cfg, true); ctx != nil && cfg.save() {
@@ -287,7 +296,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		{
 			Name: "policies", Usage: "get access policies", ArgsUsage: " ",
 			Action: func(c *cli.Context) {
-				if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+				if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 					ctx.getPrintJson("Access Policies", "accessPolicies", "accesspolicyset.list")
 				}
 			},
@@ -298,7 +307,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "get", Usage: "get specific SCIM role", ArgsUsage: "<roleName>",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							scimGet(ctx, "Roles", "displayName", args[0])
 						}
 					},
@@ -306,7 +315,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "list", ArgsUsage: " ", Usage: "list all roles", Flags: pageFlags,
 					Action: func(c *cli.Context) {
-						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							scimList(ctx, c.Int("count"), c.String("filter"), "Roles")
 						}
 					},
@@ -315,7 +324,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 					Name: "member", Usage: "add or remove users from a role",
 					ArgsUsage: "<rolename> <username>", Flags: memberFlags,
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 2, 2, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
 							scimMember(ctx, "Roles", "displayName", args[0], args[1], c.Bool("delete"))
 						}
 					},
@@ -329,7 +338,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				cli.BoolFlag{Name: "force, f", Usage: "force target -- don't validate URL with health check"},
 			},
 			Action: func(c *cli.Context) {
-				if args := initArgs(cfg, c, 0, 2); args != nil {
+				if args := initArgs(cfg, c, 0, 2, nil); args != nil {
 					if c.Bool("force") {
 						cfg.target(args[0], args[1], nil)
 					} else {
@@ -341,7 +350,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		{
 			Name: "targets", Usage: "display all targets", ArgsUsage: " ",
 			Action: func(c *cli.Context) {
-				if initArgs(cfg, c, 0, 0) != nil {
+				if initArgs(cfg, c, 0, 0, nil) != nil {
 					cfg.targets()
 				}
 			},
@@ -349,7 +358,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		{
 			Name: "tenant", Usage: "gets/sets tenant configuration", ArgsUsage: "[key=value]...",
 			Action: func(c *cli.Context) {
-				if args, ctx := initCmd(cfg, c, 1, -1, true); ctx != nil {
+				if args, ctx := initCmd(cfg, c, 1, -1, true, nil); ctx != nil {
 					cmdTenantConfig(ctx, args[0], args[1:])
 				}
 			},
@@ -369,7 +378,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "get", Usage: "display user account", ArgsUsage: "<userName>",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							scimGet(ctx, "Users", "userName", args[0])
 						}
 					},
@@ -377,7 +386,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "delete", Usage: "delete user account", ArgsUsage: "<userName>",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							scimDelete(ctx, "Users", "userName", args[0])
 						}
 					},
@@ -385,7 +394,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "list", Usage: "list user accounts", ArgsUsage: " ",
 					Action: func(c *cli.Context) {
-						if _, ctx := initCmd(cfg, c, 0, 0, true); ctx != nil {
+						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							scimList(ctx, c.Int("count"), c.String("filter"),
 								"Users", "Users", "userName", "id", "emails",
 								"display", "roles", "groups", "name",
@@ -396,9 +405,9 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
 					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, password: changeme}\n" +
-						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
+					"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							cmdLoadUsers(ctx, args[0])
 						}
 					},
@@ -407,7 +416,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 					Name: "password", Usage: "set a user's password", ArgsUsage: "<username> [password]",
 					Description: "If password is not given as an argument, user will be prompted to enter it",
 					Action: func(c *cli.Context) {
-						if args, ctx := initCmd(cfg, c, 1, 2, true); ctx != nil {
+						if args, ctx := initCmd(cfg, c, 1, 2, true, nil); ctx != nil {
 							cmdSetPassword(ctx, args[0], getArgOrPassword(cfg.log, "Password", args[1], true))
 						}
 					},
@@ -427,7 +436,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 			Name: "schema", Usage: "get SCIM schema of specific type", ArgsUsage: "<type>",
 			Description: "Supported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
 			Action: func(c *cli.Context) {
-				if args, ctx := initCmd(cfg, c, 1, 1, true); ctx != nil {
+				if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 					cmdSchema(ctx, args[0])
 				}
 			},

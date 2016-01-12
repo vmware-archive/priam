@@ -37,3 +37,13 @@ func caseEqual(s string, i interface{}) bool {
 	}
 	return false
 }
+
+// Returns true if the given string is one of the strings in the given array, false otherwise
+func hasString(s string, a []string) bool {
+	for _, v := range a {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}

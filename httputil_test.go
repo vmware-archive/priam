@@ -26,7 +26,7 @@ func StartTstServer(t *testing.T, paths map[string]tstHandler) *httptest.Server 
 		if rbody, err := ioutil.ReadAll(r.Body); err != nil {
 			http.Error(w, fmt.Sprintf("error reading request body: %v", err), 404)
 		} else if handler, ok := paths[r.Method+r.URL.Path]; !ok {
-			http.Error(w, "bad path", 404)
+			http.Error(w, fmt.Sprintf("unknown path: %v", r.Method+r.URL.Path), 404)
 		} else {
 			reply := handler(t, &tstReq{r.Header.Get("Accept"),
 				r.Header.Get("Content-Type"), r.Header.Get("Authorization"),

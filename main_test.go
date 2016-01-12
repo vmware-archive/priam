@@ -201,65 +201,6 @@ func TestCanLogin(t *testing.T) {
 	}
 }
 
-// -- Entitlements methods
-
-func TestGetEntitlementWithNoArgsShowsHelp(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "entitlement"); ctx != nil {
-		assert.Contains(t, ctx.info, "USAGE")
-	}
-}
-
-func TestGetEntitlementWithNoTypeShowsError(t *testing.T) {
-	if ctx := runner(t, newTstCtx(" "), "entitlement", "get"); ctx != nil {
-		assert.Contains(t, ctx.err, "at least 2 arguments must be given")
-	}
-}
-
-func TestGetEntitlementWithNoNameShowsError(t *testing.T) {
-	types := [...]string{"user", "app", "group"}
-	for i := range types {
-		if ctx := runner(t, newTstCtx(" "), "entitlement", "get", types[i]); ctx != nil {
-			assert.Contains(t, ctx.err, "at least 2 arguments must be given")
-		}
-	}
-}
-
-// common method to test getting basic entitlements
-func checkGetEntitlementReturns(t *testing.T, entity, rType, rID string) {
-	entH := func(t *testing.T, req *tstReq) *tstReply {
-		outp := `{"items": [{ "Entitlements" : "bar"}]}`
-		return &tstReply{output: outp, contentType: "application/json"}
-	}
-	idH := func(t *testing.T, req *tstReq) *tstReply {
-		outp := fmt.Sprintf(`{"resources": [{ "userName" : "foo", "displayName" : "foo", "id": "%s"}]}`, rID)
-		return &tstReply{output: outp, contentType: "application/json"}
-	}
-	entPath := "entitlements/definitions/" + strings.ToLower(rType) + "/" + rID
-	paths := map[string]tstHandler{
-		"GET" + vidmBasePath + "scim/" + rType: idH,
-		"GET" + vidmBasePath + entPath:         entH,
-		"POST" + vidmTokenPath:                 tstClientCredGrant}
-	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "entitlement", "get", entity, "foo"); ctx != nil {
-		assert.Contains(t, ctx.info, "Entitlements: bar")
-	}
-
-}
-
-// Don't know how to mock functions (and avoid global)
-// So just check we will get an error
-func TestGetEntitlementForUser(t *testing.T) {
-	checkGetEntitlementReturns(t, "user", "Users", "testid67")
-}
-
-func TestGetEntitlementForGroup(t *testing.T) {
-	checkGetEntitlementReturns(t, "group", "Groups", "testid67")
-}
-
-func TestGetEntitlementForApp(t *testing.T) {
-	checkGetEntitlementReturns(t, "app", "catalogitems", "foo")
-}
-
 // -- common CLI checks
 
 func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
