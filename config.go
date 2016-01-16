@@ -82,7 +82,7 @@ func (cfg *config) target(url, name string, checkURL func(*config) bool) {
 		return
 	}
 
-	// if url is already a key, just use it
+	// if url is already a key and no name is given, assume url is a name
 	if cfg.Targets[url].Host != "" {
 		cfg.CurrentTarget = url
 		if cfg.save() {
@@ -96,21 +96,16 @@ func (cfg *config) target(url, name string, checkURL func(*config) bool) {
 	}
 
 	// if an existing target uses url and no name is given, just set it (no check)
-	reuseTarget := ""
 	if name == "" {
 		for k, v := range cfg.Targets {
-			if v.Host == name {
-				reuseTarget = k
-				break
+			if v.Host == url {
+				cfg.CurrentTarget = k
+				if cfg.save() {
+					cfg.printTarget("new")
+				}
+				return
 			}
 		}
-	}
-	if reuseTarget != "" {
-		cfg.CurrentTarget = reuseTarget
-		if cfg.save() {
-			cfg.printTarget("new")
-		}
-		return
 	}
 
 	if name != "" {

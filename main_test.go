@@ -147,10 +147,28 @@ func TestTargetAddHttps(t *testing.T) {
 }
 
 func TestTargets(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "-d", "targets"); ctx != nil {
+	if ctx := runner(t, newTstCtx(""), "targets"); ctx != nil {
 		assert.Contains(t, ctx.info, "staging")
 		assert.Contains(t, ctx.info, "radio")
 		assert.Contains(t, ctx.info, "https://radio.example.com")
+	}
+}
+
+func TestReuseExistingTargetHostWithoutName(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "target", "radio2.example.com"); ctx != nil {
+		assert.Contains(t, ctx.info, "new target is: staging, https://radio2.example.com")
+	}
+}
+
+func TestReuseExistingTargetByName(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "target", "staging"); ctx != nil {
+		assert.Contains(t, ctx.info, "new target is: staging, https://radio2.example.com")
+	}
+}
+
+func TestAddNewTargetWithName(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "target", "radio2.example.com", "sassoon"); ctx != nil {
+		assert.Contains(t, ctx.info, "new target is: sassoon, https://radio2.example.com")
 	}
 }
 
