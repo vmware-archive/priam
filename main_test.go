@@ -167,7 +167,7 @@ func TestReuseExistingTargetByName(t *testing.T) {
 }
 
 func TestAddNewTargetWithName(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "target", "radio2.example.com", "sassoon"); ctx != nil {
+	if ctx := runner(t, newTstCtx(""), "target", "-f", "radio2.example.com", "sassoon"); ctx != nil {
 		assert.Contains(t, ctx.info, "new target is: sassoon, https://radio2.example.com")
 	}
 }
