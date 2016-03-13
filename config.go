@@ -38,13 +38,15 @@ func putYamlFile(filename string, input interface{}) error {
 }
 
 func newAppConfig(log *logr, fileName string) *config {
-	appCfg := &config{log: log, fileName: fileName}
-	if err := getYamlFile(fileName, appCfg); err != nil {
-		if !os.IsNotExist(err) {
-			log.err("could not read config file %s, error: %v\n", fileName, err)
-			return nil
-		}
+	appCfg := &config{}
+	if err := getYamlFile(fileName, appCfg); err != nil && !os.IsNotExist(err) {
+		log.err("could not read config file %s, error: %v\n", fileName, err)
+		return nil
 	}
+
+	// get yaml file clears all fields, so these must be set after unmarshaling
+	appCfg.log, appCfg.fileName = log, fileName
+
 	if appCfg.CurrentTarget != "" &&
 		appCfg.Targets[appCfg.CurrentTarget] != (target{}) {
 		return appCfg
