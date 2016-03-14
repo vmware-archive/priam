@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io"
 	"os"
+	"strings"
 )
 
 type logStyle int
@@ -72,34 +73,70 @@ func toStringWithStyle(ls logStyle, input interface{}) string {
 	return string(outp)
 }
 
-func (l *logr) filter(indent, label, sep string, info interface{}, filter []string) {
-	const indenter, arrayPrefix string = "  ", "- "
-	if label != "" && label != arrayPrefix && !hasString(label, filter) {
-		return
+// helper function for filter()
+func parseIndent(p string) int {
+	lines := strings.Split(p, "\n")
+	lastLine := lines[len(lines)-1]
+	if strings.HasSuffix(lastLine, "- ") {
+		return len(lastLine) - 2
 	}
+	if i := strings.IndexFunc(lastLine, func(r rune) bool { return r != ' ' }); i >= 0 {
+		return i
+	}
+	return 0
+}
+
+// when JSON or YAML data are parsed into a general interface{}, they
+// produce a nested object of interface{}, []interface{} and
+// map[string]interface{} -- arrays and maps of various types of data.
+// This method takes such an object and pretty-prints it somewhat like
+// YAML, but it filters and orders the output.
+//
+// prefix is one of more lines to be printed before a selected object
+// info is the object of parsed JSON or YAML
+// filter is an array of strings. Only map elements with keys in the
+// filter will be printed. Sibling map elements will be printed in the
+// order of the keys in the filter. To print a nested key, the keys of
+// the parent elements must be included.
+//
+// returns true if something was printed
+//
+func (l *logr) filter(prefix string, info interface{}, filter []string) (printed bool) {
+	nextPrefix := ""
 	switch inf := info.(type) {
 	case []interface{}:
-		l.info("%s%s%s\n", indent, label, sep)
 		for _, v := range inf {
-			l.filter(indent, arrayPrefix, "", v, filter)
+			if printed {
+				nextPrefix = fmt.Sprintf("%*s- ", parseIndent(nextPrefix), "")
+			} else if strings.HasSuffix(prefix, ": ") {
+				nextPrefix = fmt.Sprintf("%s\n%*s- ", prefix, parseIndent(prefix)+2, "")
+			} else {
+				nextPrefix = prefix + "- "
+			}
+			if l.filter(nextPrefix, v, filter) {
+				printed = true
+			}
 		}
 	case map[string]interface{}:
-		if label != arrayPrefix {
-			l.info("%s%s%s\n", indent, label, sep)
-			label = indenter
-		}
 		for _, k := range filter {
 			if v, ok := inf[k]; ok {
-				l.filter(indent+label, k, ":", v, filter)
-				if label == arrayPrefix {
-					label = indenter
+				if printed {
+					nextPrefix = fmt.Sprintf("%*s%s: ", parseIndent(nextPrefix), "", k)
+				} else if strings.HasSuffix(prefix, ": ") {
+					nextPrefix = fmt.Sprintf("%s\n%*s%s: ", prefix, parseIndent(prefix)+2, "", k)
+				} else {
+					nextPrefix = fmt.Sprintf("%s%s: ", prefix, k)
+				}
+				if l.filter(nextPrefix, v, filter) {
+					printed = true
 				}
 			}
 		}
 	default:
-		l.info("%s%s%s %v\n", indent, label, sep, inf)
+		l.info("%s%v\n", prefix, inf)
+		printed = true
 	}
-
+	return
 }
 
 func (l *logr) pp(prefix string, input interface{}) {
@@ -114,6 +151,7 @@ func (l *logr) ppf(title string, info interface{}, filter []string) {
 	if l.verboseOn || len(filter) == 0 {
 		l.pp(title, info)
 	} else {
-		l.filter("", title, ":", info, filter)
+		l.info("---- %s ----\n", title)
+		l.filter("", info, filter)
 	}
 }
