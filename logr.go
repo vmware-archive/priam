@@ -80,10 +80,7 @@ func parseIndent(p string) int {
 	if strings.HasSuffix(lastLine, "- ") {
 		return len(lastLine) - 2
 	}
-	if i := strings.IndexFunc(lastLine, func(r rune) bool { return r != ' ' }); i >= 0 {
-		return i
-	}
-	return 0
+	return strings.IndexFunc(lastLine, func(r rune) bool { return r != ' ' })
 }
 
 // when JSON or YAML data are parsed into a general interface{}, they
@@ -140,11 +137,7 @@ func (l *logr) filter(prefix string, info interface{}, filter []string) (printed
 }
 
 func (l *logr) pp(prefix string, input interface{}) {
-	if s := toStringWithStyle(l.style, input); s == "" {
-		l.info("%s is empty.\n", prefix)
-	} else {
-		l.info("%s\n%s\n", prefix, s)
-	}
+	l.info("---- %s ----\n%s", prefix, toStringWithStyle(l.style, input))
 }
 
 func (l *logr) ppf(title string, info interface{}, filter []string) {
