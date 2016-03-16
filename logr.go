@@ -100,33 +100,27 @@ func parseIndent(p string) int {
 //
 func (l *logr) filter(prefix string, info interface{}, filter []string) (printed bool) {
 	nextPrefix := ""
+	printValue := func(key, sep string, value interface{}) {
+		if printed {
+			nextPrefix = fmt.Sprintf("%*s%s%s", parseIndent(nextPrefix), "", key, sep)
+		} else if strings.HasSuffix(prefix, ": ") {
+			nextPrefix = fmt.Sprintf("%s\n%*s%s%s", prefix, parseIndent(prefix)+2, "", key, sep)
+		} else {
+			nextPrefix = fmt.Sprintf("%s%s%s", prefix, key, sep)
+		}
+		if l.filter(nextPrefix, value, filter) {
+			printed = true
+		}
+	}
 	switch inf := info.(type) {
 	case []interface{}:
 		for _, v := range inf {
-			if printed {
-				nextPrefix = fmt.Sprintf("%*s- ", parseIndent(nextPrefix), "")
-			} else if strings.HasSuffix(prefix, ": ") {
-				nextPrefix = fmt.Sprintf("%s\n%*s- ", prefix, parseIndent(prefix)+2, "")
-			} else {
-				nextPrefix = prefix + "- "
-			}
-			if l.filter(nextPrefix, v, filter) {
-				printed = true
-			}
+			printValue("", "- ", v)
 		}
 	case map[string]interface{}:
 		for _, k := range filter {
 			if v, ok := inf[k]; ok {
-				if printed {
-					nextPrefix = fmt.Sprintf("%*s%s: ", parseIndent(nextPrefix), "", k)
-				} else if strings.HasSuffix(prefix, ": ") {
-					nextPrefix = fmt.Sprintf("%s\n%*s%s: ", prefix, parseIndent(prefix)+2, "", k)
-				} else {
-					nextPrefix = fmt.Sprintf("%s%s: ", prefix, k)
-				}
-				if l.filter(nextPrefix, v, filter) {
-					printed = true
-				}
+				printValue(k, ": ", v)
 			}
 		}
 	default:
