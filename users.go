@@ -28,11 +28,6 @@ type userAccount struct {
 	Password              string                                                     `json:",omitempty"`
 }
 
-func (a *userAccount) pp(log *logr) {
-	log.info("%v, %v %v, %v\n%v\n\n", a.UserName, a.Name.GivenName,
-		a.Name.FamilyName, a.Emails[0].Value, a.Id)
-}
-
 type memberValue struct {
 	Value, Type, Operation string `json:",omitempty"`
 }
@@ -81,11 +76,12 @@ func scimGetID(ctx *httpContext, resType, nameAttr, name string) (string, error)
 		return id, nil
 	}
 }
-
+// @param count the number of records to return
+// @param summaryLabels keys to filter the results of what to display
 func scimList(ctx *httpContext, count int, filter string, resType string, summaryLabels ...string) {
 	vals := url.Values{}
 	if count > 0 {
-		vals.Set("filter", strconv.Itoa(count))
+		vals.Set("count", strconv.Itoa(count))
 	}
 	if filter != "" {
 		vals.Set("filter", filter)
@@ -180,7 +176,7 @@ func cmdUpdateUser(ctx *httpContext, user *basicUser) {
 			acct.Emails = []dispValue{{Value: user.Email}}
 		}
 		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
-			ctx.log.err("Error updating user: %v\n", err)
+			ctx.log.err("Error updating user \"%s\": %v\n", user.Name, err)
 		} else {
 			ctx.log.info("User \"%s\" updated\n", user.Name)
 		}

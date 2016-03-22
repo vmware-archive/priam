@@ -404,7 +404,7 @@ func priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				},
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
-					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, password: changeme}\n" +
+					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, pwd: changeme}\n" +
 					"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {

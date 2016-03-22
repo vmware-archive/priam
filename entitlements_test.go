@@ -64,12 +64,12 @@ func TestGetEntitlementForUnknownUserEntitlement(t *testing.T) {
 		return &tstReply{status: 404, statusMsg: "test: foo does not exist"}
 	}
 	idH := func(t *testing.T, req *tstReq) *tstReply {
-		output := fmt.Sprintf(`{"resources": [{ "userName" : "foo", "displayName" : "foo", "id": "%s"}]}`, "test-fail")
+		output := fmt.Sprintf(`{"Resources": [{ "userName" : "foo", "displayName" : "foo", "id": "%s"}]}`, "test-fail")
 		return &tstReply{output: output, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
 		"POST" + vidmTokenPath:                 tstClientCredGrant,
-		"GET" + vidmBasePath + "scim/Users":     idH,
+		"GET" + vidmBasePath + "scim/Users?count=10000&filter=userName+eq+%22foo%22":     idH,
 		"GET" + vidmBasePath + "entitlements/definitions/users/test-fail":  entErrorReply}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "entitlement", "get", "user", "foo"); ctx != nil {
@@ -88,7 +88,7 @@ func TestCreateEntitlementForUser(t *testing.T) {
 		return &tstReply{output: output, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"GET/scim/Users" : idH,
+		"GET/scim/Users?count=10000&filter=userName+eq+%22patrick%22" : idH,
 		"POST/entitlements/definitions":  entReply}
 	srv := StartTstServer(t, paths)
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
@@ -124,7 +124,8 @@ func checkGetEntitlementReturns(t *testing.T, entity, rType, rID string) {
 	}
 	entPath := "entitlements/definitions/" + strings.ToLower(rType) + "/" + rID
 	paths := map[string]tstHandler{
-		"GET" + vidmBasePath + "scim/" + rType: idH,
+		"GET" + vidmBasePath + "scim/Users?count=10000&filter=userName+eq+%22foo%22": idH,
+		"GET" + vidmBasePath + "scim/Groups?count=10000&filter=displayName+eq+%22foo%22": idH,
 		"GET" + vidmBasePath + entPath:         entH,
 		"POST" + vidmTokenPath:                 tstClientCredGrant}
 	srv := StartTstServer(t, paths)

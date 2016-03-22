@@ -11,7 +11,7 @@ func TestGetSchemaWithNoMediaType(t *testing.T) {
 		output := `{"attributes": [{ "name" : "id"}, {"name": "userName"}]}`
 		return &tstReply{output: output}
 	}
-	srv := StartTstServer(t, map[string]tstHandler{"GET/scim/Schemas": h})
+	srv := StartTstServer(t, map[string]tstHandler{"GET/scim/Schemas?filter=name+eq+%22User%22": h})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	cmdSchema(ctx, "User")
 	assert.Empty(t, ctx.log.errString())
