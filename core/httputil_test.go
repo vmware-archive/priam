@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"fmt"
@@ -66,12 +66,12 @@ func ErrorHandler(status int, message string) func(t *testing.T, req *tstReq) *t
 }
 
 // Assert context info contains the given string
-func assertOnlyInfoContains(t *testing.T, ctx *httpContext, expected string) {
+func assertOnlyInfoContains(t *testing.T, ctx *HttpContext, expected string) {
 	assert.Empty(t, ctx.log.errString(), "Error message should be empty")
 	assert.Contains(t, ctx.log.infoString(), expected, "INFO log message should contain '" + expected + "'")
 }
 
 // Assert context error contains the given string
-func assertErrorContains(t *testing.T, ctx *httpContext, expected string) {
+func assertErrorContains(t *testing.T, ctx *HttpContext, expected string) {
 	assert.Contains(t, ctx.log.errString(), expected, "ERROR log message should contain '" + expected + "'")
 }

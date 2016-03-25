@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"github.com/stretchr/testify/assert"
@@ -97,8 +97,8 @@ func TestCreateEntitlementForUser(t *testing.T) {
 	assert.Contains(t, ctx.log.infoString(), `Entitled user "patrick" to app "dance"`)
 }
 
-// Test user.
-// @todo test group.
+ // Test user.
+ // @todo test group as well.
 func TestCreateEntitlementFailedForUnknownUser(t *testing.T) {
 	errorReply := func(t *testing.T, req *tstReq) *tstReply {
 		return &tstReply{status: 404, contentType: "application/json"}

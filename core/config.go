@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ func newAppConfig(log *logr, fileName string) *config {
 		return nil
 	}
 
-	// get yaml file clears all fields, so these must be set after unmarshaling
+	// get yaml file clears all fields, so these must be set after unmarshalling
 	appCfg.log, appCfg.fileName = log, fileName
 
 	if appCfg.CurrentTarget != "" &&

@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"code.google.com/p/go-uuid/uuid"
@@ -37,7 +37,7 @@ type itemResponse struct {
 	Items []map[string]interface{} `json:",omitempty" yaml:",omitempty"`
 }
 
-func accessPolicyId(ctx *httpContext, name string) string {
+func accessPolicyId(ctx *HttpContext, name string) string {
 	outp := &itemResponse{}
 	ctx.accept("accesspolicyset.list")
 	if err := ctx.request("GET", "accessPolicies", nil, &outp); err != nil {
@@ -57,7 +57,7 @@ func accessPolicyId(ctx *httpContext, name string) string {
 
 // input name, uuid
 // output uuid of existing app with the input uuid or uuid of first app with name
-func checkAppExists(ctx *httpContext, name, uuid string) (outid string, err error) {
+func checkAppExists(ctx *HttpContext, name, uuid string) (outid string, err error) {
 	outp := &itemResponse{}
 	ctx.accept("catalog.summary.list").contentType("catalog.search")
 	if err = ctx.request("POST", "catalogitems/search?pageSize=10000", "{}", &outp); err == nil {
@@ -74,7 +74,7 @@ func checkAppExists(ctx *httpContext, name, uuid string) (outid string, err erro
 	return
 }
 
-func getAppUuid(ctx *httpContext, name string) (uuid, mtype string, err error) {
+func getAppUuid(ctx *HttpContext, name string) (uuid, mtype string, err error) {
 	inp, outp := fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(name)), new(itemResponse)
 	ctx.accept("catalog.summary.list").contentType("catalog.search")
 	if err = ctx.request("POST", "catalogitems/search?pageSize=10000", &inp, &outp); err == nil {
@@ -97,13 +97,13 @@ func getAppUuid(ctx *httpContext, name string) (uuid, mtype string, err error) {
 	return
 }
 
-func getAppByUuid(ctx *httpContext, uuid, mtype string) (app map[string]interface{}, err error) {
+func getAppByUuid(ctx *HttpContext, uuid, mtype string) (app map[string]interface{}, err error) {
 	app = make(map[string]interface{})
 	err = ctx.accept(mtype).request("GET", fmt.Sprintf("catalogitems/%s", uuid), nil, &app)
 	return
 }
 
-func publishApps(ctx *httpContext, manifile string) {
+func publishApps(ctx *HttpContext, manifile string) {
 	if manifile == "" {
 		manifile = "manifest.yaml"
 	}
@@ -163,7 +163,7 @@ func publishApps(ctx *httpContext, manifile string) {
 	}
 }
 
-func appDelete(ctx *httpContext, name string) {
+func appDelete(ctx *HttpContext, name string) {
 	if uuid, _, err := getAppUuid(ctx, name); err != nil {
 		ctx.log.err("Error getting app info by name: %v\n", err)
 	} else if err := ctx.request("DELETE", fmt.Sprintf("catalogitems/%s", uuid), nil, nil); err != nil {
@@ -173,7 +173,7 @@ func appDelete(ctx *httpContext, name string) {
 	}
 }
 
-func appGet(ctx *httpContext, name string) {
+func appGet(ctx *HttpContext, name string) {
 	if uuid, mtype, err := getAppUuid(ctx, name); err != nil {
 		ctx.log.err("Error getting app info by name: %v\n", err)
 	} else if app, err := getAppByUuid(ctx, uuid, mtype); err != nil {
@@ -183,7 +183,7 @@ func appGet(ctx *httpContext, name string) {
 	}
 }
 
-func appList(ctx *httpContext, count int, filter string) {
+func appList(ctx *HttpContext, count int, filter string) {
 	summaryFields := []string{"Apps", "name", "description", "catalogItemType", "uuid"}
 	if count == 0 {
 		count = 1000

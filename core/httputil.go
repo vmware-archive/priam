@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-type httpContext struct {
+type HttpContext struct {
 	log     *logr
 	hostURL string
 
@@ -36,12 +36,12 @@ type httpContext struct {
 	client        http.Client
 }
 
-func newHttpContext(log *logr, hostURL, basePath, baseMediaType string) *httpContext {
-	return &httpContext{log: log, hostURL: hostURL, basePath: basePath,
+func newHttpContext(log *logr, hostURL, basePath, baseMediaType string) *HttpContext {
+	return &HttpContext{log: log, hostURL: hostURL, basePath: basePath,
 		baseMediaType: baseMediaType, headers: make(map[string]string)}
 }
 
-func (ctx *httpContext) fullMediaType(shortType string) string {
+func (ctx *HttpContext) fullMediaType(shortType string) string {
 	if shortType == "" || strings.Contains(shortType, "/") {
 		return shortType
 	} else if shortType == "json" {
@@ -50,7 +50,7 @@ func (ctx *httpContext) fullMediaType(shortType string) string {
 	return ctx.baseMediaType + shortType + "+json"
 }
 
-func (ctx *httpContext) header(name, value string) *httpContext {
+func (ctx *HttpContext) header(name, value string) *HttpContext {
 	if value == "" {
 		delete(ctx.headers, name)
 	} else {
@@ -59,19 +59,19 @@ func (ctx *httpContext) header(name, value string) *httpContext {
 	return ctx
 }
 
-func (ctx *httpContext) accept(s string) *httpContext {
+func (ctx *HttpContext) accept(s string) *HttpContext {
 	return ctx.header("Accept", ctx.fullMediaType(s))
 }
 
-func (ctx *httpContext) contentType(s string) *httpContext {
+func (ctx *HttpContext) contentType(s string) *HttpContext {
 	return ctx.header("Content-Type", ctx.fullMediaType(s))
 }
 
-func (ctx *httpContext) authorization(s string) *httpContext {
+func (ctx *HttpContext) authorization(s string) *HttpContext {
 	return ctx.header("Authorization", s)
 }
 
-func (ctx *httpContext) traceHeaders(prefix string, hdrs *http.Header) {
+func (ctx *HttpContext) traceHeaders(prefix string, hdrs *http.Header) {
 	if ctx.log.traceOn {
 		ctx.log.trace("%s:\n", prefix)
 		for k, av := range *hdrs {
@@ -114,7 +114,7 @@ func formatReply(ls logStyle, contentType string, body []byte) string {
 	return toStringWithStyle(ls, parsedBody)
 }
 
-func (ctx *httpContext) request(method, path string, input, output interface{}) error {
+func (ctx *HttpContext) request(method, path string, input, output interface{}) error {
 	body, err := toJson(input)
 	if err != nil {
 		return err
@@ -168,7 +168,7 @@ func (ctx *httpContext) request(method, path string, input, output interface{}) 
 	return err
 }
 
-func (ctx *httpContext) fileUploadRequest(method, path, key, mediaType string, content []byte, fileName string, outp interface{}) error {
+func (ctx *HttpContext) fileUploadRequest(method, path, key, mediaType string, content []byte, fileName string, outp interface{}) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return err
@@ -207,13 +207,13 @@ func (ctx *httpContext) fileUploadRequest(method, path, key, mediaType string, c
 }
 
 // sets the ctx.authHeader with basic auth
-func (ctx *httpContext) basicAuth(name, pwd string) *httpContext {
+func (ctx *HttpContext) basicAuth(name, pwd string) *HttpContext {
 	return ctx.authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd)))
 }
 
 // sets the ctx.authHeader with an access token suitable for the
 // authorization header in the form "Bearer xxxxxxx"
-func (ctx *httpContext) clientCredsGrant(path, clientID, clientSecret string) (err error) {
+func (ctx *HttpContext) clientCredsGrant(path, clientID, clientSecret string) (err error) {
 	tokenInfo := struct {
 		Access_token, Token_type, Refresh_token, Scope string
 		Expires_in                                     int
@@ -226,7 +226,7 @@ func (ctx *httpContext) clientCredsGrant(path, clientID, clientSecret string) (e
 	return
 }
 
-func (ctx *httpContext) getPrintJson(prefix, path, mediaType string) {
+func (ctx *HttpContext) getPrintJson(prefix, path, mediaType string) {
 	var outp interface{}
 	if err := ctx.accept(mediaType).request("GET", path, nil, &outp); err != nil {
 		ctx.log.err("Error: %v\n", err)

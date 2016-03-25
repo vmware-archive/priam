@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"github.com/stretchr/testify/assert"
@@ -7,8 +7,13 @@ import (
 
 const (
 	DEFAULT_USERNAME = "john"
-	DEFAULT_GET_URL = "GET/scim/Users?count=10000&filter=userName+eq+%22" + DEFAULT_USERNAME + "%22"
-	DEFAULT_POST_URL = "POST/scim/Users/12345"
+	DEFAULT_GROUP_NAME = "saturday-night-fever"
+
+	DEFAULT_GET_USER_URL = "GET/scim/Users?count=10000&filter=userName+eq+%22" + DEFAULT_USERNAME + "%22"
+	DEFAULT_POST_USER_URL = "POST/scim/Users/12345"
+
+	DEFAULT_GET_GROUP_URL = "GET/scim/Groups?count=10000&filter=displayName+eq+%22" + DEFAULT_GROUP_NAME + "%22"
+	YAML_USERS_FILE = "../resources/newusers.yaml"
 )
 
 var aBasicUser = func() *basicUser { return &basicUser{Name: "john", Given: "travolta" }}
@@ -21,6 +26,13 @@ func scimDefaultUserHandler() func(t *testing.T, req *tstReq) *tstReply {
 	}
 }
 
+func scimDefaultGroupHandler() func(t *testing.T, req *tstReq) *tstReply {
+	return func(t *testing.T, req *tstReq) *tstReply {
+		output := `{"Resources": [{ "displayName" : "` + DEFAULT_GROUP_NAME + `", "id": "6789"}]}`
+		return &tstReply{output: output, contentType: "application/json"}
+	}
+}
+
 // Tests
 func TestSetPassword(t *testing.T) {
 	pwdH := func(t *testing.T, req *tstReq) *tstReply {
@@ -29,7 +41,7 @@ func TestSetPassword(t *testing.T) {
 	}
 	srv := StartTstServer(t, map[string]tstHandler{
 		"POST/scim/Users/12345": pwdH,
-		DEFAULT_GET_URL: scimDefaultUserHandler()})
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	cmdSetPassword(ctx, "john", "travolta")
 	assertOnlyInfoContains(t, ctx, `User "john" updated`)
@@ -38,7 +50,7 @@ func TestSetPassword(t *testing.T) {
 func TestSetPasswordFailsIfScimPatchFails(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		"POST/scim/Users/12345": ErrorHandler(404, "error set password"),
-		DEFAULT_GET_URL: scimDefaultUserHandler()})
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	cmdSetPassword(ctx, "john", "travolta")
 	assertErrorContains(t, ctx, "Error updating user john: 404 Not Found\nerror set password")
@@ -47,7 +59,7 @@ func TestSetPasswordFailsIfScimPatchFails(t *testing.T) {
 func TestScimGetByNameWhenUserDoesNotExistReturnsError(t *testing.T) {
 	errMessage := "test: john does not exist"
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL : ErrorHandler(404, errMessage)})
+		DEFAULT_GET_USER_URL : ErrorHandler(404, errMessage)})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	_, err := scimGetByName(ctx, "Users", "userName", "john")
 	if assert.Error(t, err, "Should have returned an error") {
@@ -62,7 +74,7 @@ func TestScimGetByNameWhenMultipleUsersReturnsError(t *testing.T) {
 	}
 
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: multipleUsersHandler})
+		DEFAULT_GET_USER_URL: multipleUsersHandler})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	_, err := scimGetByName(ctx, "Users", "userName", "john")
 	if assert.Error(t, err, "Should have returned an error") {
@@ -86,7 +98,7 @@ func TestScimGetIdWithNoIdReturnsError(t *testing.T) {
 		return &tstReply{output: output, contentType: "application/json"}
 	}
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: noIdHandler})
+		DEFAULT_GET_USER_URL: noIdHandler})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	_, err := scimGetID(ctx, "Users", "userName", "john")
 	if assert.Error(t, err, "Should have returned an error") {
@@ -98,8 +110,8 @@ func TestScimListWithCountAndFilter(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		"GET/scim/Users?count=3&filter=myfilter": scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	scimList(ctx, 3, "myfilter", "Users")
-	assertOnlyInfoContains(t, ctx, `id: "12345"`)
+	new(SCIMUsersService).ListEntities(ctx, 3, "myfilter")
+	assertOnlyInfoContains(t, ctx, `id: 12345`)
 }
 
 func TestScimListFilteredByLabel(t *testing.T) {
@@ -123,23 +135,23 @@ func TestScimListReturnsErrorOnInvalidRequest(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		"GET/scim/Users?filter=myfilter": ErrorHandler(404, "error scim list")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	scimList(ctx, 0, "myfilter", "Users")
+	new(SCIMUsersService).ListEntities(ctx, 0, "myfilter")
 	assertErrorContains(t, ctx, "Error getting SCIM resources of type Users: 404 Not Found\nerror scim list\n")
 }
 
 func TestScimGetNameExists(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler()})
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	scimGet(ctx, "Users", "userName", "john")
+	new(SCIMUsersService).DisplayEntity(ctx, "john")
 	assertOnlyInfoContains(t, ctx, "userName: john")
 }
 
 func TestScimGetWhenNameDoesNotExist(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: ErrorHandler(404, "error scim get")})
+		DEFAULT_GET_USER_URL: ErrorHandler(404, "error scim get")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	scimGet(ctx, "Users", "userName", "john")
+	new(SCIMUsersService).DisplayEntity(ctx, "john")
 	assertErrorContains(t, ctx, "Error getting SCIM resource named john of type Users: 404 Not Found\nerror scim get\n")
 }
 
@@ -147,18 +159,19 @@ func TestScimAddUser(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		"POST/scim/Users": scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdAddUser(ctx, aBasicUser())
+	new(SCIMUsersService).AddEntity(ctx, aBasicUser())
 	assertOnlyInfoContains(t, ctx, "username: john")
-	assertOnlyInfoContains(t, ctx, "User successfully added")
+	assertOnlyInfoContains(t, ctx, "---- add user:  ----")
 }
 
 func TestScimAddUserReturnsErrorOnScimError(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		"POST/scim/Users": ErrorHandler(404, "error scim add")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdAddUser(ctx, aBasicUser())
-	assertErrorContains(t, ctx, "Error creating user: 404 Not Found\nerror scim add\n")
-
+	err := new(SCIMUsersService).AddEntity(ctx, aBasicUser())
+	if assert.Error(t, err, "Should have returned an error") {
+		assert.Contains(t, err.Error(), "404 Not Found\nerror scim add\n")
+	}
 }
 
 func TestScimUpdateUserFailedIfUserDoesNotExist(t *testing.T) {
@@ -170,7 +183,7 @@ func TestScimUpdateUserFailedIfUserDoesNotExist(t *testing.T) {
 
 func TestScimUpdateUserFailedIfPatchCommandFails(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler(),
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
 		// response does not matter, only body could be tested
 		"POST/scim/Users/12345": ErrorHandler(404, "error scim patch")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
@@ -181,7 +194,7 @@ func TestScimUpdateUserFailedIfPatchCommandFails(t *testing.T) {
 // Helper for testing SCIM update
 func scimUpdateDefaultUserWith(t *testing.T, updatedUser *basicUser) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler(),
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
 		// response does not matter, only body could be tested
 		"POST/scim/Users/12345": scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
@@ -210,7 +223,7 @@ func TestScimDeleteFailsIfUserDoesNotExist(t *testing.T) {
 
 func TestScimDeleteFailsIfDeleteCommandFails(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler(),
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
 		"DELETE/scim/Users/12345": ErrorHandler(404, "error scim delete")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	scimDelete(ctx, "Users", "userName", "john")
@@ -219,17 +232,17 @@ func TestScimDeleteFailsIfDeleteCommandFails(t *testing.T) {
 
 func TestScimDelete(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler(),
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
 		// response does not matter as long as this is 20x
 		"DELETE/scim/Users/12345": scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	scimDelete(ctx, "Users", "userName", "john")
+	new(SCIMUsersService).DeleteEntity(ctx, "john")
 	assertOnlyInfoContains(t, ctx, `Users "john" deleted`)
 }
 
 func TestScimMemberReturnsWhenNoResourceId(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: ErrorHandler(404, "error scim members")})
+		DEFAULT_GET_USER_URL: ErrorHandler(404, "error scim members")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	scimMember(ctx, "Users", "userName", "john", "john", false)
 	assertErrorContains(t, ctx, "Error getting SCIM Users ID of john")
@@ -237,8 +250,8 @@ func TestScimMemberReturnsWhenNoResourceId(t *testing.T) {
 
 func TestAddScimMember(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler(),
-		DEFAULT_POST_URL: scimDefaultUserHandler()})
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
+		DEFAULT_POST_USER_URL: scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	scimMember(ctx, "Users", "userName", "john", "john", false)
 	assertOnlyInfoContains(t, ctx, "Updated SCIM resource john of type Users\n")
@@ -246,8 +259,8 @@ func TestAddScimMember(t *testing.T) {
 
 func TestRemoveScimMember(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler(),
-		DEFAULT_POST_URL: scimDefaultUserHandler()})
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
+		DEFAULT_POST_USER_URL: scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	scimMember(ctx, "Users", "userName", "john", "john", true)
 	assertOnlyInfoContains(t, ctx, "Updated SCIM resource john of type Users\n")
@@ -255,8 +268,8 @@ func TestRemoveScimMember(t *testing.T) {
 
 func TestRemoveScimMemberReturnsErrorIfScimPatchFailed(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_URL: scimDefaultUserHandler(),
-		DEFAULT_POST_URL: ErrorHandler(404, "error scim patch members")})
+		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
+		DEFAULT_POST_USER_URL: ErrorHandler(404, "error scim patch members")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	scimMember(ctx, "Users", "userName", "john", "john", true)
 	assertErrorContains(t, ctx, "Error updating SCIM resource john of type Users")
@@ -266,7 +279,7 @@ func TestLoadUsersFromYaml(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		"POST/scim/Users": scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdLoadUsers(ctx, "newusers.yaml")
+	new(SCIMUsersService).LoadEntities(ctx, YAML_USERS_FILE)
 	assertOnlyInfoContains(t, ctx, "added user joe1")
 }
 
@@ -274,13 +287,33 @@ func TestLoadUsersFromYamlFailedIfAddUserFailed(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		"POST/scim/Users": ErrorHandler(404, "error scim add user")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdLoadUsers(ctx, "newusers.yaml")
+	new(SCIMUsersService).LoadEntities(ctx, YAML_USERS_FILE)
 	assertErrorContains(t, ctx, "Error adding user, line 2, name joe1: 404 Not Found")
 }
 
 func TestLoadUsersFromYamlFailedIfYamlFileDoesNotExist(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdLoadUsers(ctx, "newusers-does-not-exist.yaml")
+	new(SCIMUsersService).LoadEntities(ctx, "newusers-does-not-exist.yaml")
 	assertErrorContains(t, ctx, "could not read file of bulk users")
+}
+
+// Tests for GROUPS
+// @todo To be put in groups_test.go?
+
+func TestGetGroup(t *testing.T) {
+	srv := StartTstServer(t, map[string]tstHandler{
+		DEFAULT_GET_GROUP_URL: scimDefaultGroupHandler()})
+	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
+	new(SCIMGroupsService).DisplayEntity(ctx, DEFAULT_GROUP_NAME)
+	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_GROUP_NAME)
+}
+
+func TestListGroups(t *testing.T) {
+	srv := StartTstServer(t, map[string]tstHandler{
+		"GET/scim/Groups?count=3&filter=myfilter": scimDefaultGroupHandler()})
+	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
+	new(SCIMGroupsService).ListEntities(ctx, 3, "myfilter")
+	assertOnlyInfoContains(t, ctx, `id: 6789`)
+	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_GROUP_NAME)
 }

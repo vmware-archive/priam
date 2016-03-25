@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func cmdLocalUserStore(ctx *httpContext, args []string) {
+func cmdLocalUserStore(ctx *HttpContext, args []string) {
 	const desc = "Local User Store configuration"
 	const path = "localuserstore"
 	const mtype = "local.userstore"
@@ -27,7 +27,7 @@ func cmdLocalUserStore(ctx *httpContext, args []string) {
 	}
 }
 
-func cmdTenantConfig(ctx *httpContext, name string, nvpairs []string) {
+func cmdTenantConfig(ctx *HttpContext, name string, nvpairs []string) {
 	const desc = "Tenant configuration"
 	const mtype = "tenants.tenant.config.list"
 	path := fmt.Sprintf("tenants/tenant/%s/config", name)
@@ -53,7 +53,7 @@ func cmdTenantConfig(ctx *httpContext, name string, nvpairs []string) {
 	}
 }
 
-func cmdSchema(ctx *httpContext, name string) {
+func cmdSchema(ctx *HttpContext, name string) {
 	vals := make(url.Values)
 	vals.Set("filter", fmt.Sprintf("name eq \"%s\"", name))
 	path := fmt.Sprintf("scim/Schemas?%v", vals.Encode())

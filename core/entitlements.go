@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ const fmtEntitlement = `
 }`
 
 // Create entitlement for the given user or group
-func maybeEntitle(ctx *httpContext, itemID, subjName, subjType, nameAttr, appName string) {
+func maybeEntitle(ctx *HttpContext, itemID, subjName, subjType, nameAttr, appName string) {
 	if subjName != "" {
 		subjID, err := scimGetID(ctx, strings.Title(subjType + "s"), nameAttr, subjName)
 		if err == nil {
@@ -34,7 +34,7 @@ func maybeEntitle(ctx *httpContext, itemID, subjName, subjType, nameAttr, appNam
 	}
 }
 
-func entitleSubject(ctx *httpContext, subjectId, subjectType, itemID string) error {
+func entitleSubject(ctx *HttpContext, subjectId, subjectType, itemID string) error {
 	inp := fmt.Sprintf(fmtEntitlement, itemID, subjectType, subjectId)
 	ctx.accept("bulk.sync.response").contentType("entitlements.definition.bulk")
 	return ctx.request("POST", "entitlements/definitions", inp, nil)
@@ -42,7 +42,7 @@ func entitleSubject(ctx *httpContext, subjectId, subjectType, itemID string) err
 
 // Get entitlement for the given user whose username is 'name'
 // rtypeName has been validated before and is one of 'user', 'group' or 'app'
-func getEntitlement(ctx *httpContext, rtypeName, name string) {
+func getEntitlement(ctx *HttpContext, rtypeName, name string) {
 	var resType, id string
 	body := make(map[string]interface{})
 	switch rtypeName {
