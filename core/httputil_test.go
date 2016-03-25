@@ -23,11 +23,12 @@ type tstHandler func(t *testing.T, req *tstReq) *tstReply
 
 func StartTstServer(t *testing.T, paths map[string]tstHandler) *httptest.Server {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		//fmt.Printf("Request URL=%+v\n", r.URL)
+		//fmt.Printf("Request URL=%s%+v\n", r.Method, r.URL)
 		if rbody, err := ioutil.ReadAll(r.Body); err != nil {
 			http.Error(w, fmt.Sprintf("error reading request body: %v", err), 404)
-		} else if handler, ok := paths[r.Method+r.URL.String()]; !ok {
-			http.Error(w, fmt.Sprintf("unknown path: %v", r.Method+r.URL.String()), 404)
+		} else if handler, ok := paths[r.Method + r.URL.String()]; !ok {
+			http.Error(w, fmt.Sprintf("unknown path: %v", r.Method + r.URL.String()), 404)
+			t.Errorf("unknown path: %v", r.Method + r.URL.String())
 		} else {
 			reply := handler(t, &tstReq{r.Header.Get("Accept"),
 				r.Header.Get("Content-Type"), r.Header.Get("Authorization"),
@@ -65,10 +66,10 @@ func TestHttpGet(t *testing.T) {
 // Assert context info contains the given string
 func assertOnlyInfoContains(t *testing.T, ctx *HttpContext, expected string) {
 	assert.Empty(t, ctx.log.errString(), "Error message should be empty")
-	assert.Contains(t, ctx.log.infoString(), expected, "INFO log message should contain '"+expected+"'")
+	assert.Contains(t, ctx.log.infoString(), expected, "INFO log message should contain '" + expected + "'")
 }
 
 // Assert context error contains the given string
 func assertErrorContains(t *testing.T, ctx *HttpContext, expected string) {
-	assert.Contains(t, ctx.log.errString(), expected, "ERROR log message should contain '"+expected+"'")
+	assert.Contains(t, ctx.log.errString(), expected, "ERROR log message should contain '" + expected + "'")
 }

@@ -176,7 +176,8 @@ func TestScimAddUserReturnsErrorOnScimError(t *testing.T) {
 }
 
 func TestScimUpdateUserFailedIfUserDoesNotExist(t *testing.T) {
-	srv := StartTstServer(t, map[string]tstHandler{})
+	srv := StartTstServer(t, map[string]tstHandler{
+		DEFAULT_GET_USER_URL: ErrorHandler(404, "not found")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Name: "john", Given: "wayne" })
 	assertErrorContains(t, ctx, "Error getting SCIM Users ID of john: 404 Not Found")
@@ -220,7 +221,8 @@ func TestScimUpdateUserEmail(t *testing.T) {
 }
 
 func TestScimDeleteFailsIfUserDoesNotExist(t *testing.T) {
-	srv := StartTstServer(t, map[string]tstHandler{})
+	srv := StartTstServer(t, map[string]tstHandler{
+		DEFAULT_GET_USER_URL:      ErrorHandler(404, "test error")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	scimDelete(ctx, "Users", "userName", "john")
 	assertErrorContains(t, ctx, "Error getting SCIM Users ID of john: 404 Not Found")

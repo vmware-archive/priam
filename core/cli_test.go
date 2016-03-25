@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/mock"
 	"io/ioutil"
 	"strings"
@@ -73,7 +74,7 @@ func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
 		fmt.Printf("----------------info:\n%s\n", ctx.info)
 		fmt.Printf("----------------error:\n%s\n", ctx.err)
 	}
-	assert.NotNil(t, ctx)
+	require.NotNil(t, ctx)
 	return ctx
 }
 
@@ -418,7 +419,6 @@ func TestCanGetSchema(t *testing.T) {
 
 func canGetSchemaFor(t *testing.T, schemaType string) {
 	h := func(t *testing.T, req *tstReq) *tstReply {
-		assert.Empty(t, req.input)
 		return &tstReply{output: `{ "attributes": [], "name": "test", "schema": "urn:scim:schemas:core:1.0"}`, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
@@ -433,7 +433,6 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 // - User store
 func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
 	h := func(t *testing.T, req *tstReq) *tstReply {
-		assert.Empty(t, req.input)
 		return &tstReply{output: `{
 
 	"name": "Test Local Users",
@@ -454,4 +453,25 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
 	assert.Contains(t, ctx.info, "name: Test Local Users")
 	assert.Contains(t, ctx.info, "showLocalUserStore: true")
 	assert.Contains(t, ctx.info, "uuid: \"123\"")
+}
+
+func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		return &tstReply{output: `{"showLocalUserStore": false}`, contentType: "application/json"}}
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"PUT/SAAS/jersey/manager/api/localuserstore" : h}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
+	assert.Contains(t, ctx.info, "---- Local User Store configuration ----")
+	assert.Contains(t, ctx.info, `{"showLocalUserStore": false}`)
+}
+
+func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"PUT/SAAS/jersey/manager/api/localuserstore" : ErrorHandler(500, "error test")}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
+	assert.Contains(t, ctx.err, "error test")
 }

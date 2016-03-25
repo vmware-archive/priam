@@ -2,7 +2,7 @@ package main
 
 import (
 	"os"
-	"wks/core"
+	"priam/core"
 )
 
 func main() {

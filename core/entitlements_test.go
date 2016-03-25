@@ -52,7 +52,7 @@ func TestGetEntitlementForUnknownScimUser(t *testing.T) {
 	}
 	paths := map[string]tstHandler{
 		"POST" + vidmTokenPath:              tstClientCredGrant,
-		"GET" + vidmBasePath + "scim/Users": errorReply}
+		"GET" + vidmBasePath + "scim/Users?count=10000&filter=userName+eq+%22foo%22": errorReply}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "entitlement", "get", "user", "foo"); ctx != nil {
 		assert.Contains(t, ctx.err, "Error getting SCIM Users ID of foo: 404 Not Found")
@@ -104,7 +104,7 @@ func TestCreateEntitlementFailedForUnknownUser(t *testing.T) {
 		return &tstReply{status: 404, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"GET/scim/Users": errorReply}
+		"GET/scim/Users?count=10000&filter=userName+eq+%22patrick%22": errorReply}
 	srv := StartTstServer(t, paths)
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	maybeEntitle(ctx, "baby", "patrick", "user", "userName", "dance")
