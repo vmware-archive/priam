@@ -3,17 +3,18 @@ package core
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"fmt"
 )
 
 const (
-	DEFAULT_USERNAME   = "john"
+	DEFAULT_USERNAME = "john"
 	DEFAULT_GROUP_NAME = "saturday-night-fever"
 
-	DEFAULT_GET_USER_URL  = "GET/scim/Users?count=10000&filter=userName+eq+%22" + DEFAULT_USERNAME + "%22"
+	DEFAULT_GET_USER_URL = "GET/scim/Users?count=10000&filter=userName+eq+%22" + DEFAULT_USERNAME + "%22"
 	DEFAULT_POST_USER_URL = "POST/scim/Users/12345"
 
 	DEFAULT_GET_GROUP_URL = "GET/scim/Groups?count=10000&filter=displayName+eq+%22" + DEFAULT_GROUP_NAME + "%22"
-	YAML_USERS_FILE       = "../resources/newusers.yaml"
+	YAML_USERS_FILE = "../resources/newusers.yaml"
 )
 
 var aBasicUser = func() *basicUser { return &basicUser{Name: "john", Given: "travolta"} }
@@ -43,7 +44,7 @@ func TestSetPassword(t *testing.T) {
 		"POST/scim/Users/12345": pwdH,
 		DEFAULT_GET_USER_URL:    scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdSetPassword(ctx, "john", "travolta")
+	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Pwd: "travolta"})
 	assertOnlyInfoContains(t, ctx, `User "john" updated`)
 }
 
@@ -52,8 +53,8 @@ func TestSetPasswordFailsIfScimPatchFails(t *testing.T) {
 		"POST/scim/Users/12345": ErrorHandler(404, "error set password"),
 		DEFAULT_GET_USER_URL:    scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdSetPassword(ctx, "john", "travolta")
-	assertErrorContains(t, ctx, "Error updating user john: 404 Not Found\nerror set password")
+	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Pwd: "travolta"})
+	assertErrorContains(t, ctx, "Error updating user \"john\": 404 Not Found\nerror set password")
 }
 
 func TestScimGetByNameWhenUserDoesNotExistReturnsError(t *testing.T) {
@@ -177,7 +178,7 @@ func TestScimAddUserReturnsErrorOnScimError(t *testing.T) {
 func TestScimUpdateUserFailedIfUserDoesNotExist(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdUpdateUser(ctx, &basicUser{Name: "john", Given: "wayne"})
+	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Name: "john", Given: "wayne" })
 	assertErrorContains(t, ctx, "Error getting SCIM Users ID of john: 404 Not Found")
 }
 
@@ -187,31 +188,35 @@ func TestScimUpdateUserFailedIfPatchCommandFails(t *testing.T) {
 		// response does not matter, only body could be tested
 		"POST/scim/Users/12345": ErrorHandler(404, "error scim patch")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdUpdateUser(ctx, &basicUser{Name: "john", Given: "johnny"})
+	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Name: "john", Given: "johnny" })
 	assertErrorContains(t, ctx, `Error updating user "john": 404 Not Found`)
 }
 
 // Helper for testing SCIM update
-func scimUpdateDefaultUserWith(t *testing.T, updatedUser *basicUser) {
+func scimUpdateDefaultUserWith(t *testing.T, name string, updatedUser *basicUser) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		DEFAULT_GET_USER_URL: scimDefaultUserHandler(),
 		// response does not matter, only body could be tested
 		"POST/scim/Users/12345": scimDefaultUserHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdUpdateUser(ctx, updatedUser)
-	assertOnlyInfoContains(t, ctx, `User "john" updated`)
+	new(SCIMUsersService).UpdateEntity(ctx, name, updatedUser)
+	assertOnlyInfoContains(t, ctx, fmt.Sprintf("User \"%s\" updated", name))
+}
+
+func TestScimUpdateUserName(t *testing.T) {
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "newjohn", Given: "johnny" })
 }
 
 func TestScimUpdateUserGivenName(t *testing.T) {
-	scimUpdateDefaultUserWith(t, &basicUser{Name: "john", Given: "johnny"})
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Given: "johnny" })
 }
 
 func TestScimUpdateUserFamilyName(t *testing.T) {
-	scimUpdateDefaultUserWith(t, &basicUser{Name: "john", Family: "wayne"})
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Family: "wayne" })
 }
 
 func TestScimUpdateUserEmail(t *testing.T) {
-	scimUpdateDefaultUserWith(t, &basicUser{Name: "john", Email: "j@travolta.com"})
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Email: "j@travolta.com" })
 }
 
 func TestScimDeleteFailsIfUserDoesNotExist(t *testing.T) {
@@ -306,7 +311,7 @@ func TestGetGroup(t *testing.T) {
 		DEFAULT_GET_GROUP_URL: scimDefaultGroupHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	new(SCIMGroupsService).DisplayEntity(ctx, DEFAULT_GROUP_NAME)
-	assertOnlyInfoContains(t, ctx, "displayName: "+DEFAULT_GROUP_NAME)
+	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_GROUP_NAME)
 }
 
 func TestListGroups(t *testing.T) {
@@ -315,5 +320,5 @@ func TestListGroups(t *testing.T) {
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	new(SCIMGroupsService).ListEntities(ctx, 3, "myfilter")
 	assertOnlyInfoContains(t, ctx, `id: 6789`)
-	assertOnlyInfoContains(t, ctx, "displayName: "+DEFAULT_GROUP_NAME)
+	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_GROUP_NAME)
 }

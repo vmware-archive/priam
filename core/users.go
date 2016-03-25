@@ -79,6 +79,10 @@ func (userService SCIMUsersService) AddEntity(ctx *HttpContext, entity interface
 	return scimAddUser(ctx, entity.(*basicUser))
 }
 
+func (userService SCIMUsersService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
+	scimUpdateUser(ctx, name, entity.(*basicUser))
+}
+
 func (userService SCIMUsersService) ListEntities(ctx *HttpContext, count int, filter string) {
 	scimList(ctx, count, filter,
 		"Users", "Users", "userName", "id", "emails",
@@ -116,6 +120,11 @@ func (groupService SCIMGroupsService) DeleteEntity(ctx *HttpContext, username st
 	ctx.log.err("Not implemented.")
 }
 
+func (groupService SCIMGroupsService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
+	// not implemented
+	ctx.log.err("Not implemented.")
+}
+
 // -- SCIM common code
 
 func scimAddUser(ctx *HttpContext, u *basicUser) error {
@@ -126,6 +135,28 @@ func scimAddUser(ctx *HttpContext, u *basicUser) error {
 	ctx.log.pp("add user: ", acct)
 	return ctx.request("POST", "scim/Users", acct, acct)
 }
+
+func scimUpdateUser(ctx *HttpContext, name string, u *basicUser) {
+	if id := scimNameToID(ctx, "Users", "userName", name); id != "" {
+		acct := userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
+		if u.Pwd != "" {
+			acct.Password = u.Pwd
+		}
+		if u.Given != "" || u.Family != "" {
+			acct.Name = &nameAttr{FamilyName: u.Family, GivenName: u.Given}
+		}
+		if u.Email != "" {
+			acct.Emails = []dispValue{{Value: u.Email}}
+		}
+
+		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
+			ctx.log.err("Error updating user \"%s\": %v\n", name, err)
+		} else {
+			ctx.log.info("User \"%s\" updated\n", name)
+		}
+	}
+}
+
 
 func scimGetByName(ctx *HttpContext, resType, nameAttr, name string) (item map[string]interface{}, err error) {
 	output := &struct {
@@ -220,24 +251,6 @@ func scimGet(ctx *HttpContext, resType, nameAttr, rname string) {
 	}
 }
 
-func cmdUpdateUser(ctx *HttpContext, user *basicUser) {
-	if id := scimNameToID(ctx, "Users", "userName", user.Name); id != "" {
-		acct := userAccount{Schemas: []string{coreSchemaURN}}
-		if user.Given != "" || user.Family != "" {
-			acct.Name = &nameAttr{FamilyName: user.Family, GivenName: user.Given}
-		}
-		if user.Email != "" {
-			acct.Emails = []dispValue{{Value: user.Email}}
-		}
-		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
-			ctx.log.err("Error updating user \"%s\": %v\n", user.Name, err)
-		} else {
-			ctx.log.info("User \"%s\" updated\n", user.Name)
-		}
-	}
-}
-
-
 func scimDelete(ctx *HttpContext, resType, nameAttr, rname string) {
 	if id := scimNameToID(ctx, resType, nameAttr, rname); id != "" {
 		path := fmt.Sprintf("scim/%s/%s", resType, id)
@@ -245,17 +258,6 @@ func scimDelete(ctx *HttpContext, resType, nameAttr, rname string) {
 			ctx.log.err("Error deleting %s %s: %v\n", resType, rname, err)
 		} else {
 			ctx.log.info("%s \"%s\" deleted\n", resType, rname)
-		}
-	}
-}
-
-func cmdSetPassword(ctx *HttpContext, name, pwd string) {
-	if id := scimNameToID(ctx, "Users", "userName", name); id != "" {
-		acct := userAccount{Schemas: []string{coreSchemaURN}, Password: pwd}
-		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
-			ctx.log.err("Error updating user %s: %v\n", name, err)
-		} else {
-			ctx.log.info("User \"%s\" updated\n", name)
 		}
 	}
 }

@@ -9,6 +9,10 @@ type DirectoryService interface {
 	// Display an entity
 	DisplayEntity(ctx *HttpContext, name string)
 
+	// Update the given entity referenced by the name parameter.
+	// Only the fields existing in the given entity will be updated.
+	UpdateEntity(ctx *HttpContext, name string, entity interface{})
+
 	// Delete the given entity
 	DeleteEntity(ctx *HttpContext, name string)
 

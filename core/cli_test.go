@@ -73,6 +73,7 @@ func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
 		fmt.Printf("----------------info:\n%s\n", ctx.info)
 		fmt.Printf("----------------error:\n%s\n", ctx.err)
 	}
+	assert.NotNil(t, ctx)
 	return ctx
 }
 
@@ -189,6 +190,14 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestExitIfHealthFails(t *testing.T) {
+	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": ErrorHandler(404, "test health")}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "health"); ctx != nil {
+		assert.Contains(t, ctx.err, "test health")
+	}
+}
+
 // -- Login
 func TestCanNotLoginWithNoTarget(t *testing.T) {
 	if ctx := runner(t, newTstCtx(" "), "login", "c", "s"); ctx != nil {
@@ -250,7 +259,7 @@ func testCliCommand(t *testing.T, args ...string) *tstCtx {
 	return runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), args...)
 }
 
-// Helper to setup mock for users service
+// Helper to setup mock for the user service
 func setupUsersServiceMock() *MockDirectoryService {
 	usersServiceMock := new(MockDirectoryService)
 	usersService = usersServiceMock
@@ -302,4 +311,147 @@ func TestCanListUsersWithFilter(t *testing.T) {
 	usersServiceMock.On("ListEntities", mock.Anything, 0, "filter").Return()
 	testCliCommand(t, "user", "list", "--filter", "filter")
 	usersServiceMock.AssertExpectations(t)
+}
+
+func TestCanUpdateUserPassword(t *testing.T) {
+	newpassword := "friendsforever"
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &basicUser{Pwd: newpassword}).Return()
+	testCliCommand(t, "user", "password", "elsa", newpassword)
+	usersServiceMock.AssertExpectations(t)
+}
+
+func TestCanUpdateUserInfo(t *testing.T) {
+	newemail := "elsa@arendelle.com"
+	newgiven := "elsa"
+	newfamily := "frozen"
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &basicUser{Name: "elsa", Family: newfamily, Email:newemail, Given:newgiven}).Return()
+	testCliCommand(t, "user", "update", "elsa", "--given", newgiven, "--family", newfamily, "--email", newemail)
+	usersServiceMock.AssertExpectations(t)
+}
+
+func TestLoadUsersFromYamlFile(t *testing.T) {
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("LoadEntities", mock.Anything, YAML_USERS_FILE).Return()
+	testCliCommand(t, "user", "load", YAML_USERS_FILE)
+	usersServiceMock.AssertExpectations(t)
+}
+
+// - Groups
+
+// Helper to setup mock for the user service
+func setupGroupsServiceMock() *MockDirectoryService {
+	groupsServiceMock := new(MockDirectoryService)
+	groupsService = groupsServiceMock
+	return groupsServiceMock
+}
+
+func TestCanGetGroup(t *testing.T) {
+	groupsServiceMock := setupGroupsServiceMock()
+	groupsServiceMock.On("DisplayEntity", mock.Anything, "friendsforever").Return(nil)
+	testCliCommand(t, "group", "get", "friendsforever")
+	groupsServiceMock.AssertExpectations(t)
+}
+
+func TestCanListGroups(t *testing.T) {
+	groupsServiceMock := setupGroupsServiceMock()
+	groupsServiceMock.On("ListEntities", mock.Anything, 0, "").Return(nil)
+	testCliCommand(t, "group", "list")
+	groupsServiceMock.AssertExpectations(t)
+}
+
+func TestCanListGroupsWithCount(t *testing.T) {
+	groupsServiceMock := setupGroupsServiceMock()
+	groupsServiceMock.On("ListEntities", mock.Anything, 13, "").Return(nil)
+	testCliCommand(t, "group", "list", "--count", "13")
+	groupsServiceMock.AssertExpectations(t)
+}
+
+func TestCanListGroupsWithFilter(t *testing.T) {
+	groupsServiceMock := setupGroupsServiceMock()
+	groupsServiceMock.On("ListEntities", mock.Anything, 0, "myfilter").Return(nil)
+	testCliCommand(t, "group", "list", "--filter", "myfilter")
+	groupsServiceMock.AssertExpectations(t)
+}
+
+// - Policies
+
+func TestCanListAccessPolicies(t *testing.T) {
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		assert.Empty(t, req.input)
+		return &tstReply{output: `{"items": [ {"name": "default_access_policy_set"} ]}`, contentType: "application/json"}
+	}
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/accessPolicies" : h}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "policies")
+	assert.NotNil(t, ctx);
+	assert.Contains(t, ctx.info, "---- Access Policies ----\nitems:\n- name: default_access_policy_set")
+}
+
+// - Schema
+func TestCannotGetSchemaIfNoTypeSpecified(t *testing.T) {
+	ctx := testCliCommand(t, "schema")
+	assert.NotNil(t, ctx);
+	assert.Contains(t, ctx.err, "Input Error: at least 1 arguments must be given")
+}
+
+func TestCannotGetSchemaforUnknownType(t *testing.T) {
+	unknownSchema := "olaf"
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + unknownSchema + "%22" : ErrorHandler(404, "test schema")}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", unknownSchema)
+	assert.NotNil(t, ctx);
+	assert.Contains(t, ctx.err, "test schema")
+}
+
+func TestCanGetSchema(t *testing.T) {
+	for _, schemaType := range []string{"User", "Group", "Role", "PasswordState", "ServiceProviderConfig"} {
+		t.Logf("Get schema for '%s'", schemaType)
+		canGetSchemaFor(t, schemaType)
+	}
+}
+
+func canGetSchemaFor(t *testing.T, schemaType string) {
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		assert.Empty(t, req.input)
+		return &tstReply{output: `{ "attributes": [], "name": "test", "schema": "urn:scim:schemas:core:1.0"}`, contentType: "application/json"}
+	}
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22" : h}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", schemaType)
+	assert.Contains(t, ctx.info, "---- Schema for " + schemaType + " ----\nattributes:")
+}
+
+
+// - User store
+func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		assert.Empty(t, req.input)
+		return &tstReply{output: `{
+
+	"name": "Test Local Users",
+	"showLocalUserStore": true,
+	"syncClient": null,
+	"userDomainInfo": {},
+    "userStoreNameUsedForAuth": false,
+	"uuid": "123"
+		}`,
+			contentType: "application/json"}}
+
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/localuserstore" : h}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore")
+	assert.Contains(t, ctx.info, "---- Local User Store configuration ----")
+	assert.Contains(t, ctx.info, "name: Test Local Users")
+	assert.Contains(t, ctx.info, "showLocalUserStore: true")
+	assert.Contains(t, ctx.info, "uuid: \"123\"")
 }

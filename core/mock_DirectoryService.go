@@ -25,6 +25,11 @@ func (_m *MockDirectoryService) DisplayEntity(ctx *HttpContext, name string) {
 	_m.Called(ctx, name)
 }
 
+// UpdateEntity provides a mock function with given fields: ctx, name, entity
+func (_m *MockDirectoryService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
+	_m.Called(ctx, name, entity)
+}
+
 // DeleteEntity provides a mock function with given fields: ctx, name
 func (_m *MockDirectoryService) DeleteEntity(ctx *HttpContext, name string) {
 	_m.Called(ctx, name)

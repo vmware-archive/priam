@@ -153,7 +153,6 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		if cfg = newAppConfig(log, fileName); cfg == nil {
 			return fmt.Errorf("app initialization failed\n")
 		}
-		//fmt.Printf("LOG = %#v", cfg)
 		return nil
 	}
 
@@ -423,7 +422,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 					Description: "If password is not given as an argument, user will be prompted to enter it",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 2, true, nil); ctx != nil {
-							cmdSetPassword(ctx, args[0], getArgOrPassword(cfg.log, "Password", args[1], true))
+							usersService.UpdateEntity(ctx, args[0], &basicUser{Pwd: getArgOrPassword(cfg.log, "Password", args[1], true)})
 						}
 					},
 				},
@@ -432,7 +431,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 					Flags: userAttrFlags,
 					Action: func(c *cli.Context) {
 						if user, ctx := initUserCmd(cfg, c, false); ctx != nil {
-							cmdUpdateUser(ctx, user)
+							usersService.UpdateEntity(ctx, user.Name, user)
 						}
 					},
 				},
