@@ -2,14 +2,13 @@ package core
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"io/ioutil"
-	"os"
 	"strings"
 	"testing"
-	"github.com/stretchr/testify/mock"
-	"errors"
 )
 
 type UsersServiceMock struct {
@@ -59,18 +58,12 @@ func tstSrvTgtWithAuth(url string) string {
 }
 
 func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
-	cfgFile, err := ioutil.TempFile("", "priam-test-config")
-	assert.Nil(t, err)
-	defer func() {
-		cfgFile.Close()
-		os.Remove(cfgFile.Name())
-	}()
-	_, err = cfgFile.Write([]byte(ctx.cfg))
-	assert.Nil(t, err)
+	cfgFile := WriteTempFile(t, ctx.cfg)
+	defer CleanupTempFile(cfgFile)
 	args = append([]string{ctx.appName, "--config", cfgFile.Name()}, args...)
 	infoW, errW := bytes.Buffer{}, bytes.Buffer{}
 	Priam(args, strings.NewReader(ctx.cfg), &infoW, &errW)
-	_, err = cfgFile.Seek(0, 0)
+	_, err := cfgFile.Seek(0, 0)
 	assert.Nil(t, err)
 	contents, err := ioutil.ReadAll(cfgFile)
 	assert.Nil(t, err)
@@ -252,7 +245,7 @@ func TestCanNotIssueUserCommandWithTooManyArguments(t *testing.T) {
 // @param args the list of arguments for the command
 // @return The mock for users service.
 func testCliCommand(t *testing.T, args ...string) *tstCtx {
-	paths := map[string]tstHandler{"POST" + vidmTokenPath:    tstClientCredGrant}
+	paths := map[string]tstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
 	srv := StartTstServer(t, paths)
 	return runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), args...)
 }
@@ -266,7 +259,7 @@ func setupUsersServiceMock() *MockDirectoryService {
 
 func TestCanAddUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("AddEntity", mock.Anything, &basicUser{Name:"elsa", Given:"", Family:"", Email:"", Pwd:"frozen"}).Return(nil)
+	usersServiceMock.On("AddEntity", mock.Anything, &basicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(nil)
 	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
 		assert.Contains(t, ctx.info, "User 'elsa' successfully added")
 	}
@@ -276,7 +269,7 @@ func TestCanAddUser(t *testing.T) {
 func TestDisplayErrorWhenAddUserFails(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("AddEntity",
-		mock.Anything, &basicUser{Name:"elsa", Given:"", Family:"", Email:"", Pwd:"frozen"}).Return(errors.New("test"))
+		mock.Anything, &basicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(errors.New("test"))
 	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
 		assert.Contains(t, ctx.err, "Error creating user 'elsa': test")
 	}

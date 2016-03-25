@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	vidmTokenPath = "/SAAS/API/1.0/oauth2/token"
-	vidmBasePath = "/SAAS/jersey/manager/api/"
+	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
+	vidmBasePath      = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
 )
 
@@ -33,7 +33,7 @@ func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
 		return arg
 	}
 	for {
-		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt + " again: ") {
+		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
 			return pwd
 		}
 		log.info(prompt + "s didn't match. Try again.")
@@ -153,7 +153,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		if cfg = newAppConfig(log, fileName); cfg == nil {
 			return fmt.Errorf("app initialization failed\n")
 		}
-		fmt.Printf("LOG = %#v", cfg)
+		//fmt.Printf("LOG = %#v", cfg)
 		return nil
 	}
 
@@ -411,7 +411,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
 					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, pwd: changeme}\n" +
-					"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
+						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.LoadEntities(ctx, args[0])

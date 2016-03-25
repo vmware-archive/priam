@@ -3,7 +3,7 @@ package core
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
-	"io/ioutil"
+	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,36 +33,22 @@ func TestYamlMarshalError(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-func initConfigFileTest(t *testing.T) (assrt *assert.Assertions, cfgFile *os.File, cleanup func(), log *logr) {
-	assrt, log = assert.New(t), newBufferedLogr()
-	var err error
-	cfgFile, err = ioutil.TempFile("", "priam-test-config")
-	assrt.Nil(err)
-	cleanup = func() {
-		cfgFile.Close()
-		os.Remove(cfgFile.Name())
-	}
-	_, err = cfgFile.Write([]byte("---\n"))
-	assrt.Nil(err)
-	return
-}
-
 // creates and inits a config file, removes read privilege,
 // calls newAppConfig, tests error
 func TestErrorReadingConfigFile(t *testing.T) {
-	assert, cfgFile, cleanup, log := initConfigFileTest(t)
-	defer cleanup()
-	assert.Nil(cfgFile.Chmod(0))
+	assert, log, cfgFile := assert.New(t), newBufferedLogr(), WriteTempFile(t, "---\n")
+	defer CleanupTempFile(cfgFile)
+	require.Nil(t, cfgFile.Chmod(0))
 	assert.Nil(newAppConfig(log, cfgFile.Name()))
 	assert.Contains(log.errString(), "could not read config file "+cfgFile.Name())
 }
 
 func TestErrorWritingConfigFile(t *testing.T) {
-	assert, cfgFile, cleanup, log := initConfigFileTest(t)
-	defer cleanup()
+	assert, log, cfgFile := assert.New(t), newBufferedLogr(), WriteTempFile(t, "---\n")
+	defer CleanupTempFile(cfgFile)
 	cfg := newAppConfig(log, cfgFile.Name())
 	assert.NotNil(cfg)
-	assert.Nil(cfgFile.Chmod(0))
+	require.Nil(t, cfgFile.Chmod(0))
 	assert.False(cfg.save())
 	assert.Contains(log.errString(), "could not write config file "+cfgFile.Name())
 }

@@ -186,7 +186,7 @@ func appGet(ctx *HttpContext, name string) {
 func appList(ctx *HttpContext, count int, filter string) {
 	summaryFields := []string{"Apps", "name", "description", "catalogItemType", "uuid"}
 	if count == 0 {
-		count = 1000
+		count = 10000
 	}
 	path, input := fmt.Sprintf("catalogitems/search?pageSize=%v", count), "{}"
 	if filter != "" {

@@ -27,8 +27,13 @@ func newLogr() *logr {
 	return &logr{false, false, false, lyaml, os.Stderr, os.Stdout}
 }
 
+func (l *logr) clearBuffers() *logr {
+	l.errw, l.outw = &bytes.Buffer{}, &bytes.Buffer{}
+	return l
+}
+
 func newBufferedLogr() *logr {
-	return &logr{false, false, false, lyaml, &bytes.Buffer{}, &bytes.Buffer{}}
+	return (&logr{false, false, false, lyaml, nil, nil}).clearBuffers()
 }
 
 func (l *logr) infoString() string {
@@ -74,13 +79,17 @@ func toStringWithStyle(ls logStyle, input interface{}) string {
 }
 
 // helper function for filter()
-func parseIndent(p string) int {
+func parseIndent(p string) (index int) {
 	lines := strings.Split(p, "\n")
 	lastLine := lines[len(lines)-1]
 	if strings.HasSuffix(lastLine, "- ") {
 		return len(lastLine) - 2
 	}
-	return strings.IndexFunc(lastLine, func(r rune) bool { return r != ' ' })
+	index = strings.IndexFunc(lastLine, func(r rune) bool { return r != ' ' })
+	if index < 0 {
+		index = 0
+	}
+	return
 }
 
 // when JSON or YAML data are parsed into a general interface{}, they
@@ -99,23 +108,30 @@ func parseIndent(p string) int {
 // returns true if something was printed
 //
 func (l *logr) filter(prefix string, info interface{}, filter []string) (printed bool) {
-	nextPrefix := ""
+	thisPrefix, nextPrefix, indent := "", "", parseIndent(prefix)
 	printValue := func(key, sep string, value interface{}) {
 		if printed {
-			nextPrefix = fmt.Sprintf("%*s%s%s", parseIndent(nextPrefix), "", key, sep)
-		} else if strings.HasSuffix(prefix, ": ") {
-			nextPrefix = fmt.Sprintf("%s\n%*s%s%s", prefix, parseIndent(prefix)+2, "", key, sep)
+			thisPrefix = fmt.Sprintf("%s%s%s", nextPrefix, key, sep)
 		} else {
-			nextPrefix = fmt.Sprintf("%s%s%s", prefix, key, sep)
+			if strings.HasSuffix(prefix, ": ") {
+				indent = parseIndent(prefix) + 2
+				thisPrefix = fmt.Sprintf("%s\n%*s%s%s", prefix, indent, "", key, sep)
+			} else {
+				if strings.HasSuffix(prefix, "- ") {
+					indent = parseIndent(prefix) + 2
+				}
+				thisPrefix = fmt.Sprintf("%s%s%s", prefix, key, sep)
+			}
+			nextPrefix = fmt.Sprintf("%*s", indent, "")
 		}
-		if l.filter(nextPrefix, value, filter) {
+		if l.filter(thisPrefix, value, filter) {
 			printed = true
 		}
 	}
 	switch inf := info.(type) {
 	case []interface{}:
 		for _, v := range inf {
-			printValue("", "- ", v)
+			printValue("-", " ", v)
 		}
 	case map[string]interface{}:
 		for _, k := range filter {

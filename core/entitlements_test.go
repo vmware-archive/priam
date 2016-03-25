@@ -1,10 +1,10 @@
 package core
 
 import (
-	"github.com/stretchr/testify/assert"
-	"testing"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"strings"
+	"testing"
 )
 
 func TestGetEntitlementWithNoArgsShowsHelp(t *testing.T) {
@@ -51,8 +51,8 @@ func TestGetEntitlementForUnknownScimUser(t *testing.T) {
 		return &tstReply{status: 404, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:                 tstClientCredGrant,
-		"GET" + vidmBasePath + "scim/Users":     errorReply}
+		"POST" + vidmTokenPath:              tstClientCredGrant,
+		"GET" + vidmBasePath + "scim/Users": errorReply}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "entitlement", "get", "user", "foo"); ctx != nil {
 		assert.Contains(t, ctx.err, "Error getting SCIM Users ID of foo: 404 Not Found")
@@ -68,9 +68,9 @@ func TestGetEntitlementForUnknownUserEntitlement(t *testing.T) {
 		return &tstReply{output: output, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:                 tstClientCredGrant,
-		"GET" + vidmBasePath + "scim/Users?count=10000&filter=userName+eq+%22foo%22":     idH,
-		"GET" + vidmBasePath + "entitlements/definitions/users/test-fail":  entErrorReply}
+		"POST" + vidmTokenPath:                                                       tstClientCredGrant,
+		"GET" + vidmBasePath + "scim/Users?count=10000&filter=userName+eq+%22foo%22": idH,
+		"GET" + vidmBasePath + "entitlements/definitions/users/test-fail":            entErrorReply}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "entitlement", "get", "user", "foo"); ctx != nil {
 		assert.Contains(t, ctx.err, "Error: 404 Not Found")
@@ -88,8 +88,8 @@ func TestCreateEntitlementForUser(t *testing.T) {
 		return &tstReply{output: output, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"GET/scim/Users?count=10000&filter=userName+eq+%22patrick%22" : idH,
-		"POST/entitlements/definitions":  entReply}
+		"GET/scim/Users?count=10000&filter=userName+eq+%22patrick%22": idH,
+		"POST/entitlements/definitions":                               entReply}
 	srv := StartTstServer(t, paths)
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	maybeEntitle(ctx, "baby", "patrick", "user", "userName", "dance")
@@ -104,7 +104,7 @@ func TestCreateEntitlementFailedForUnknownUser(t *testing.T) {
 		return &tstReply{status: 404, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"GET/scim/Users" : errorReply}
+		"GET/scim/Users": errorReply}
 	srv := StartTstServer(t, paths)
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	maybeEntitle(ctx, "baby", "patrick", "user", "userName", "dance")
@@ -124,10 +124,10 @@ func checkGetEntitlementReturns(t *testing.T, entity, rType, rID string) {
 	}
 	entPath := "entitlements/definitions/" + strings.ToLower(rType) + "/" + rID
 	paths := map[string]tstHandler{
-		"GET" + vidmBasePath + "scim/Users?count=10000&filter=userName+eq+%22foo%22": idH,
+		"GET" + vidmBasePath + "scim/Users?count=10000&filter=userName+eq+%22foo%22":     idH,
 		"GET" + vidmBasePath + "scim/Groups?count=10000&filter=displayName+eq+%22foo%22": idH,
-		"GET" + vidmBasePath + entPath:         entH,
-		"POST" + vidmTokenPath:                 tstClientCredGrant}
+		"GET" + vidmBasePath + entPath:                                                   entH,
+		"POST" + vidmTokenPath:                                                           tstClientCredGrant}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "entitlement", "get", entity, "foo"); ctx != nil {
 		assert.Contains(t, ctx.info, "Entitlements: bar")
