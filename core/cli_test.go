@@ -1,7 +1,6 @@
-package main
+package core
 
 import (
-	//"bytes"
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
@@ -9,7 +8,13 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"github.com/stretchr/testify/mock"
+	"errors"
 )
+
+type UsersServiceMock struct {
+	mock.Mock
+}
 
 type tstCtx struct {
 	appName, cfg, input, info, err string
@@ -64,7 +69,7 @@ func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
 	assert.Nil(t, err)
 	args = append([]string{ctx.appName, "--config", cfgFile.Name()}, args...)
 	infoW, errW := bytes.Buffer{}, bytes.Buffer{}
-	priam(args, strings.NewReader(ctx.cfg), &infoW, &errW)
+	Priam(args, strings.NewReader(ctx.cfg), &infoW, &errW)
 	_, err = cfgFile.Seek(0, 0)
 	assert.Nil(t, err)
 	contents, err := ioutil.ReadAll(cfgFile)
@@ -81,6 +86,13 @@ func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
 // help usage
 func TestHelp(t *testing.T) {
 	if ctx := runner(t, newTstCtx(""), "help"); ctx != nil {
+		assert.Contains(t, ctx.info, "USAGE")
+	}
+}
+
+// unknown flag should not crash the app
+func TestUnknownFlagOption(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "--unknowflag", "2", "user", "list"); ctx != nil {
 		assert.Contains(t, ctx.info, "USAGE")
 	}
 }
@@ -225,4 +237,76 @@ func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
 	if ctx := runner(t, newTstCtx(""), "app", "get", "too", "many", "args"); ctx != nil {
 		assert.Contains(t, ctx.err, "at most 1 arguments can be given")
 	}
+}
+
+// -- user commands
+func TestCanNotIssueUserCommandWithTooManyArguments(t *testing.T) {
+	for _, command := range []string{"add", "update", "list", "get", "delete", "load", "password"} {
+		if ctx := runner(t, newTstCtx(""), "user", command, "too", "many", "args"); ctx != nil {
+			assert.Contains(t, ctx.err, "Input Error: at most")
+		}
+	}
+}
+
+// Helper function to start the test HTTP server and run the given command
+// @param args the list of arguments for the command
+// @return The mock for users service.
+func testCliCommand(t *testing.T, args ...string) *tstCtx {
+	paths := map[string]tstHandler{"POST" + vidmTokenPath:    tstClientCredGrant}
+	srv := StartTstServer(t, paths)
+	return runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), args...)
+}
+
+// Helper to setup mock for users service
+func setupUsersServiceMock() *MockDirectoryService {
+	usersServiceMock := new(MockDirectoryService)
+	usersService = usersServiceMock
+	return usersServiceMock
+}
+
+func TestCanAddUser(t *testing.T) {
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("AddEntity", mock.Anything, &basicUser{Name:"elsa", Given:"", Family:"", Email:"", Pwd:"frozen"}).Return(nil)
+	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
+		assert.Contains(t, ctx.info, "User 'elsa' successfully added")
+	}
+	usersServiceMock.AssertExpectations(t)
+}
+
+func TestDisplayErrorWhenAddUserFails(t *testing.T) {
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("AddEntity",
+		mock.Anything, &basicUser{Name:"elsa", Given:"", Family:"", Email:"", Pwd:"frozen"}).Return(errors.New("test"))
+	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
+		assert.Contains(t, ctx.err, "Error creating user 'elsa': test")
+	}
+	usersServiceMock.AssertExpectations(t)
+}
+
+func TestCanGetUser(t *testing.T) {
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("DisplayEntity", mock.Anything, "elsa").Return()
+	testCliCommand(t, "user", "get", "elsa")
+	usersServiceMock.AssertExpectations(t)
+}
+
+func TestCanDeleteUser(t *testing.T) {
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("DeleteEntity", mock.Anything, "elsa").Return()
+	testCliCommand(t, "user", "delete", "elsa")
+	usersServiceMock.AssertExpectations(t)
+}
+
+func TestCanListUsersWithCount(t *testing.T) {
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("ListEntities", mock.Anything, 10, "").Return()
+	testCliCommand(t, "user", "list", "--count", "10")
+	usersServiceMock.AssertExpectations(t)
+}
+
+func TestCanListUsersWithFilter(t *testing.T) {
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("ListEntities", mock.Anything, 0, "filter").Return()
+	testCliCommand(t, "user", "list", "--filter", "filter")
+	usersServiceMock.AssertExpectations(t)
 }

@@ -1,12 +1,28 @@
-package main
+package core
 
 import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"errors"
 )
 
+// SCIM implementation of the users service
+type SCIMUsersService struct {
+
+}
+
+// SCIM implementation of the groups service
+type SCIMGroupsService struct {
+
+}
+
 const coreSchemaURN = "urn:scim:schemas:core:1.0"
+
+// Define user information
+type basicUser struct {
+	Name, Given, Family, Email, Pwd string `yaml:",omitempty,flow"`
+}
 
 type dispValue struct {
 	Display, Value string `json:",omitempty"`
@@ -37,11 +53,81 @@ type memberPatch struct {
 	Members []memberValue `json:",omitempty"`
 }
 
-type basicUser struct {
-	Name, Given, Family, Email, Pwd string `yaml:",omitempty,flow"`
+// -- USERS
+// @todo to put in users.go
+
+func (userService SCIMUsersService) DisplayEntity(ctx *HttpContext, username string) {
+	scimGet(ctx, "Users", "userName", username)
 }
 
-func scimGetByName(ctx *httpContext, resType, nameAttr, name string) (item map[string]interface{}, err error) {
+func (userService SCIMUsersService) LoadEntities(ctx *HttpContext, fileName string) {
+	var newUsers []basicUser
+	if err := getYamlFile(fileName, &newUsers); err != nil {
+		ctx.log.err("could not read file of bulk users: %v\n", err)
+	} else {
+		for k, v := range newUsers {
+			if err := userService.AddEntity(ctx, &v); err != nil {
+				ctx.log.err("Error adding user, line %d, name %s: %v\n", k + 1, v.Name, err)
+			} else {
+				ctx.log.info("added user %s\n", v.Name)
+			}
+		}
+	}
+}
+
+func (userService SCIMUsersService) AddEntity(ctx *HttpContext, entity interface{}) error {
+	return scimAddUser(ctx, entity.(*basicUser))
+}
+
+func (userService SCIMUsersService) ListEntities(ctx *HttpContext, count int, filter string) {
+	scimList(ctx, count, filter,
+		"Users", "Users", "userName", "id", "emails",
+		"display", "roles", "groups", "name",
+		"givenName", "familyName", "value")
+}
+
+func (userService SCIMUsersService) DeleteEntity(ctx *HttpContext, username string) {
+	scimDelete(ctx, "Users", "userName", username)
+}
+
+// -- GROUPS
+// @todo to put in groups.go
+
+func (groupService SCIMGroupsService) DisplayEntity(ctx *HttpContext, name string) {
+	scimGet(ctx, "Groups", "displayName", name)
+}
+
+func (groupService SCIMGroupsService) LoadEntities(ctx *HttpContext, fileName string) {
+	// not implemented
+	ctx.log.err("Not implemented.")
+}
+
+func (groupService SCIMGroupsService) AddEntity(ctx *HttpContext, entity interface{}) error {
+	// not implemented
+	return errors.New("Not implemented")
+}
+
+func (groupService SCIMGroupsService) ListEntities(ctx *HttpContext, count int, filter string) {
+	scimList(ctx, count, filter, "Groups", "Groups", "displayName", "id", "members", "display")
+}
+
+func (groupService SCIMGroupsService) DeleteEntity(ctx *HttpContext, username string) {
+	// not implemented
+	ctx.log.err("Not implemented.")
+}
+
+// -- SCIM common code
+
+func scimAddUser(ctx *HttpContext, u *basicUser) error {
+	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
+	acct.Password = u.Pwd
+	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
+	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name + "@example.com")}}
+	ctx.log.pp("add user: ", acct)
+	return ctx.request("POST", "scim/Users", acct, acct)
+}
+
+func scimGetByName(ctx *HttpContext, resType, nameAttr, name string) (item map[string]interface{}, err error) {
 	output := &struct {
 		Resources                              []map[string]interface{}
 		ItemsPerPage, TotalResults, StartIndex uint
@@ -67,7 +153,7 @@ func scimGetByName(ctx *httpContext, resType, nameAttr, name string) (item map[s
 	return
 }
 
-func scimGetID(ctx *httpContext, resType, nameAttr, name string) (string, error) {
+func scimGetID(ctx *HttpContext, resType, nameAttr, name string) (string, error) {
 	if item, err := scimGetByName(ctx, resType, nameAttr, name); err != nil {
 		return "", err
 	} else if id, ok := item["id"].(string); !ok {
@@ -78,7 +164,7 @@ func scimGetID(ctx *httpContext, resType, nameAttr, name string) (string, error)
 }
 // @param count the number of records to return
 // @param summaryLabels keys to filter the results of what to display
-func scimList(ctx *httpContext, count int, filter string, resType string, summaryLabels ...string) {
+func scimList(ctx *HttpContext, count int, filter string, resType string, summaryLabels ...string) {
 	vals := url.Values{}
 	if count > 0 {
 		vals.Set("count", strconv.Itoa(count))
@@ -95,13 +181,13 @@ func scimList(ctx *httpContext, count int, filter string, resType string, summar
 	}
 }
 
-func scimPatch(ctx *httpContext, resType, id string, input interface{}) error {
+func scimPatch(ctx *HttpContext, resType, id string, input interface{}) error {
 	ctx.header("X-HTTP-Method-Override", "PATCH")
 	path := fmt.Sprintf("scim/%s/%s", resType, id)
 	return ctx.request("POST", path, input, nil)
 }
 
-func scimNameToID(ctx *httpContext, resType, nameAttr, name string) string {
+func scimNameToID(ctx *HttpContext, resType, nameAttr, name string) string {
 	if id, err := scimGetID(ctx, resType, nameAttr, name); err == nil {
 		return id
 	} else {
@@ -110,7 +196,7 @@ func scimNameToID(ctx *httpContext, resType, nameAttr, name string) string {
 	return ""
 }
 
-func scimMember(ctx *httpContext, resType, nameAttr, rname, uname string, remove bool) {
+func scimMember(ctx *HttpContext, resType, nameAttr, rname, uname string, remove bool) {
 	rid, uid := scimNameToID(ctx, resType, nameAttr, rname), scimNameToID(ctx, "Users", "userName", uname)
 	if rid == "" || uid == "" {
 		return
@@ -126,7 +212,7 @@ func scimMember(ctx *httpContext, resType, nameAttr, rname, uname string, remove
 	}
 }
 
-func scimGet(ctx *httpContext, resType, nameAttr, rname string) {
+func scimGet(ctx *HttpContext, resType, nameAttr, rname string) {
 	if item, err := scimGetByName(ctx, resType, nameAttr, rname); err != nil {
 		ctx.log.err("Error getting SCIM resource named %s of type %s: %v\n", rname, resType, err)
 	} else {
@@ -134,39 +220,7 @@ func scimGet(ctx *httpContext, resType, nameAttr, rname string) {
 	}
 }
 
-func addUser(ctx *httpContext, u *basicUser) error {
-	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
-	acct.Password = u.Pwd
-	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
-	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
-	ctx.log.pp("add user: ", acct)
-	return ctx.request("POST", "scim/Users", acct, acct)
-}
-
-func cmdLoadUsers(ctx *httpContext, fileName string) {
-	var newUsers []basicUser
-	if err := getYamlFile(fileName, &newUsers); err != nil {
-		ctx.log.err("could not read file of bulk users: %v\n", err)
-	} else {
-		for k, v := range newUsers {
-			if err := addUser(ctx, &v); err != nil {
-				ctx.log.err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
-			} else {
-				ctx.log.info("added user %s\n", v.Name)
-			}
-		}
-	}
-}
-
-func cmdAddUser(ctx *httpContext, user *basicUser) {
-	if err := addUser(ctx, user); err != nil {
-		ctx.log.err("Error creating user: %v\n", err)
-	} else {
-		ctx.log.info("User successfully added\n")
-	}
-}
-
-func cmdUpdateUser(ctx *httpContext, user *basicUser) {
+func cmdUpdateUser(ctx *HttpContext, user *basicUser) {
 	if id := scimNameToID(ctx, "Users", "userName", user.Name); id != "" {
 		acct := userAccount{Schemas: []string{coreSchemaURN}}
 		if user.Given != "" || user.Family != "" {
@@ -183,7 +237,8 @@ func cmdUpdateUser(ctx *httpContext, user *basicUser) {
 	}
 }
 
-func scimDelete(ctx *httpContext, resType, nameAttr, rname string) {
+
+func scimDelete(ctx *HttpContext, resType, nameAttr, rname string) {
 	if id := scimNameToID(ctx, resType, nameAttr, rname); id != "" {
 		path := fmt.Sprintf("scim/%s/%s", resType, id)
 		if err := ctx.request("DELETE", path, nil, nil); err != nil {
@@ -194,7 +249,7 @@ func scimDelete(ctx *httpContext, resType, nameAttr, rname string) {
 	}
 }
 
-func cmdSetPassword(ctx *httpContext, name, pwd string) {
+func cmdSetPassword(ctx *HttpContext, name, pwd string) {
 	if id := scimNameToID(ctx, "Users", "userName", name); id != "" {
 		acct := userAccount{Schemas: []string{coreSchemaURN}, Password: pwd}
 		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
@@ -204,3 +259,4 @@ func cmdSetPassword(ctx *httpContext, name, pwd string) {
 		}
 	}
 }
+
