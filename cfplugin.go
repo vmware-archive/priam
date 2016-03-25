@@ -1,4 +1,4 @@
-package core
+package main
 
 import (
 	"flag"
@@ -6,6 +6,7 @@ import (
 	"github.com/cloudfoundry/cli/plugin"
 	"os"
 	"strings"
+	"priam/core"
 )
 
 type CfPriam struct{ name, defaultConfigFile string }
@@ -69,13 +70,7 @@ func (c *CfPriam) Publish(cliConn plugin.CliConnection, args []string) {
 	}
 
 	// when cf execs a plugin it sets stdin and stdout but not stderr
-	log := &logr{traceOn: *trace, errw: os.Stdout, outw: os.Stdout}
-
-	if cfg := newAppConfig(log, c.defaultConfigFile); cfg != nil {
-		if ctx := initCtx(cfg, true); ctx != nil {
-			publishApps(ctx, *manifile)
-		}
-	}
+	core.PriamCfPublish(*trace, c.defaultConfigFile, *manifile, os.Stdout, os.Stdout)
 }
 
 func (c *CfPriam) Unpublish(args []string) {

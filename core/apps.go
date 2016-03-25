@@ -179,7 +179,7 @@ func appGet(ctx *HttpContext, name string) {
 	} else if app, err := getAppByUuid(ctx, uuid, mtype); err != nil {
 		ctx.log.err("Error getting app info by uuid: %v\n", err)
 	} else {
-		ctx.log.pp("App "+name, app)
+		ctx.log.pp("App " + name, app)
 	}
 }
 

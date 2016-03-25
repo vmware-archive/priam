@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
-	vidmBasePath      = "/SAAS/jersey/manager/api/"
+	vidmTokenPath = "/SAAS/API/1.0/oauth2/token"
+	vidmBasePath = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
 )
 
@@ -33,7 +33,7 @@ func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
 		return arg
 	}
 	for {
-		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
+		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt + " again: ") {
 			return pwd
 		}
 		log.info(prompt + "s didn't match. Try again.")
@@ -118,14 +118,9 @@ func checkTarget(cfg *config) bool {
 }
 
 func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
-	appName := filepath.Base(args[0])
-	if strings.HasPrefix(appName, "cf-") {
-		defaultCfgFile := filepath.Join(os.Getenv("HOME"), fmt.Sprintf(".%s.yaml", appName[3:]))
-		cfplugin(appName, defaultCfgFile)
-		return
-	}
 	var err error
 	var cfg *config
+	appName := filepath.Base(args[0])
 	cli.HelpFlag.Usage = "show help for given command or subcommand"
 	app, defaultCfgFile := cli.NewApp(), fmt.Sprintf(".%s.yaml", appName)
 	app.Name, app.Usage = appName, "a utility to interact with VMware Identity Manager"
@@ -410,7 +405,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
 					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, pwd: changeme}\n" +
-						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
+					"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.LoadEntities(ctx, args[0])
