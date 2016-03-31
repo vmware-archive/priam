@@ -124,7 +124,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 	cli.HelpFlag.Usage = "show help for given command or subcommand"
 	app, defaultCfgFile := cli.NewApp(), fmt.Sprintf(".%s.yaml", appName)
 	app.Name, app.Usage = appName, "a utility to interact with VMware Identity Manager"
-	app.Email, app.Author, app.Writer = "", "", infoW
+	app.Email, app.Author, app.Writer, app.Version = "", "", infoW, "1.0.0"
 	app.Action = cli.ShowAppHelp
 	app.Flags = []cli.Flag{
 		cli.StringFlag{

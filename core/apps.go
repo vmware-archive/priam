@@ -2,9 +2,18 @@ package core
 
 import (
 	"code.google.com/p/go-uuid/uuid"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// this type is only used for testing. the test code implements the
+// json.Marshaler interface so that it can return an error
+type jsonMarshalTester string
+
+func (jsonMarshalTester) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("json marshal error")
+}
 
 type priamApp struct {
 	Name                  string                 `json:"name,omitempty" yaml:"name,omitempty"`
@@ -18,6 +27,7 @@ type priamApp struct {
 	AccessPolicy          string                 `json:"accessPolicy,omitempty" yaml:"accessPolicy,omitempty"`
 	AccessPolicySetUuid   string                 `json:"accessPolicySetUuid,omitempty" yaml:"accessPolicySetUuid,omitempty"`
 	CatalogItemType       string                 `json:"catalogItemType,omitempty" yaml:"catalogItemType,omitempty"`
+	JsonTester            jsonMarshalTester      `json:"jsonTester,omitempty" yaml:"jsonTester,omitempty"`
 	Labels                []string               `json:"labels,omitempty" yaml:"labels,omitempty"`
 	AuthInfo              map[string]interface{} `json:"authInfo,omitempty" yaml:"authInfo,omitempty"`
 }
@@ -114,8 +124,12 @@ func publishApps(ctx *HttpContext, manifile string) {
 	}
 	for _, v := range manifest.Applications {
 		var w = &v.Workspace
+		if w.Name == "" {
+			w.Name = v.Name
+		}
 		if w.AccessPolicySetUuid == "" {
 			if w.AccessPolicySetUuid = accessPolicyId(ctx, w.AccessPolicy); w.AccessPolicySetUuid == "" {
+				ctx.log.err("Skipping app %s\n", w.Name)
 				continue
 			}
 			w.AccessPolicy = ""
@@ -123,9 +137,6 @@ func publishApps(ctx *HttpContext, manifile string) {
 			ctx.log.err("Invalid manifest for %s: both accessPolicy \"%s\" and AccessPolicySetUuid \"%s\" cannot be specified\n",
 				w.Name, w.AccessPolicy, w.AccessPolicySetUuid)
 			continue
-		}
-		if w.Name == "" {
-			w.Name = v.Name
 		}
 		method, path, errVerb, successVerb := "POST", "catalogitems", "adding", "added"
 		id, err := checkAppExists(ctx, w.Name, w.Uuid)

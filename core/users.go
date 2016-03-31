@@ -1,21 +1,17 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
-	"errors"
 )
 
 // SCIM implementation of the users service
-type SCIMUsersService struct {
-
-}
+type SCIMUsersService struct{}
 
 // SCIM implementation of the groups service
-type SCIMGroupsService struct {
-
-}
+type SCIMGroupsService struct{}
 
 const coreSchemaURN = "urn:scim:schemas:core:1.0"
 
@@ -67,7 +63,7 @@ func (userService SCIMUsersService) LoadEntities(ctx *HttpContext, fileName stri
 	} else {
 		for k, v := range newUsers {
 			if err := userService.AddEntity(ctx, &v); err != nil {
-				ctx.log.err("Error adding user, line %d, name %s: %v\n", k + 1, v.Name, err)
+				ctx.log.err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
 			} else {
 				ctx.log.info("added user %s\n", v.Name)
 			}
@@ -131,7 +127,7 @@ func scimAddUser(ctx *HttpContext, u *basicUser) error {
 	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
 	acct.Password = u.Pwd
 	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
-	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name + "@example.com")}}
+	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
 	ctx.log.pp("add user: ", acct)
 	return ctx.request("POST", "scim/Users", acct, acct)
 }
@@ -156,7 +152,6 @@ func scimUpdateUser(ctx *HttpContext, name string, u *basicUser) {
 		}
 	}
 }
-
 
 func scimGetByName(ctx *HttpContext, resType, nameAttr, name string) (item map[string]interface{}, err error) {
 	output := &struct {
@@ -193,6 +188,7 @@ func scimGetID(ctx *HttpContext, resType, nameAttr, name string) (string, error)
 		return id, nil
 	}
 }
+
 // @param count the number of records to return
 // @param summaryLabels keys to filter the results of what to display
 func scimList(ctx *HttpContext, count int, filter string, resType string, summaryLabels ...string) {
@@ -261,4 +257,3 @@ func scimDelete(ctx *HttpContext, resType, nameAttr, rname string) {
 		}
 	}
 }
-
