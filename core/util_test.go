@@ -32,3 +32,9 @@ func CleanupTempFile(f *os.File) {
 	f.Close()
 	os.Remove(f.Name())
 }
+
+func GetTempFile(t *testing.T, fileName string) string {
+	contents, err := ioutil.ReadFile(fileName)
+	require.Nil(t, err)
+	return string(contents)
+}

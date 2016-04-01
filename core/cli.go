@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 )
 
 const (
-	vidmTokenPath = "/SAAS/API/1.0/oauth2/token"
-	vidmBasePath = "/SAAS/jersey/manager/api/"
+	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
+	vidmBasePath      = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
 )
 
@@ -33,7 +32,7 @@ func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
 		return arg
 	}
 	for {
-		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt + " again: ") {
+		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
 			return pwd
 		}
 		log.info(prompt + "s didn't match. Try again.")
@@ -117,18 +116,17 @@ func checkTarget(cfg *config) bool {
 	return true
 }
 
-func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
+func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW io.Writer) {
 	var err error
 	var cfg *config
-	appName := filepath.Base(args[0])
 	cli.HelpFlag.Usage = "show help for given command or subcommand"
-	app, defaultCfgFile := cli.NewApp(), fmt.Sprintf(".%s.yaml", appName)
-	app.Name, app.Usage = appName, "a utility to interact with VMware Identity Manager"
+	app := cli.NewApp()
+	app.Name, app.Usage = filepath.Base(args[0]), "a utility to interact with VMware Identity Manager"
 	app.Email, app.Author, app.Writer, app.Version = "", "", infoW, "1.0.0"
 	app.Action = cli.ShowAppHelp
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name: "config", Usage: "specify configuration file. Default: ~/" + defaultCfgFile,
+			Name: "config", Usage: "specify config file. Def: " + defaultCfgFile,
 		},
 		cli.BoolFlag{Name: "debug, d", Usage: "print debug output"},
 		cli.BoolFlag{Name: "json, j", Usage: "prefer output in json rather than yaml"},
@@ -143,7 +141,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 		}
 		fileName := c.String("config")
 		if fileName == "" {
-			fileName = filepath.Join(os.Getenv("HOME"), defaultCfgFile)
+			fileName = defaultCfgFile
 		}
 		if cfg = newAppConfig(log, fileName); cfg == nil {
 			return fmt.Errorf("app initialization failed\n")
@@ -334,13 +332,19 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 			ArgsUsage: "[newTargetURL] [targetName]",
 			Flags: []cli.Flag{
 				cli.BoolFlag{Name: "force, f", Usage: "force target -- don't validate URL with health check"},
+				cli.BoolFlag{Name: "delete, d", Usage: "delete specified or current target"},
+				cli.BoolFlag{Name: "delete-all", Usage: "delete all targets"},
 			},
 			Action: func(c *cli.Context) {
 				if args := initArgs(cfg, c, 0, 2, nil); args != nil {
-					if c.Bool("force") {
-						cfg.target(args[0], args[1], nil)
+					if c.Bool("delete-all") {
+						cfg.clear()
+					} else if c.Bool("delete") {
+						cfg.deleteTarget(args[0], args[1])
+					} else if c.Bool("force") {
+						cfg.setTarget(args[0], args[1], nil)
 					} else {
-						cfg.target(args[0], args[1], checkTarget)
+						cfg.setTarget(args[0], args[1], checkTarget)
 					}
 				}
 			},
@@ -349,7 +353,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 			Name: "targets", Usage: "display all targets", ArgsUsage: " ",
 			Action: func(c *cli.Context) {
 				if initArgs(cfg, c, 0, 0, nil) != nil {
-					cfg.targets()
+					cfg.listTargets()
 				}
 			},
 		},
@@ -405,7 +409,7 @@ func Priam(args []string, infoR io.Reader, infoW, errorW io.Writer) {
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
 					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, pwd: changeme}\n" +
-					"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
+						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.LoadEntities(ctx, args[0])

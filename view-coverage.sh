@@ -1,4 +1,6 @@
 #! /bin/bash
+set -e
+cd "$( dirname "${BASH_SOURCE[0]}" )"
 
 go get github.com/vektra/mockery/.../
 go get

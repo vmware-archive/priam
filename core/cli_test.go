@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"strings"
 	"testing"
@@ -61,9 +61,9 @@ func tstSrvTgtWithAuth(url string) string {
 func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
 	cfgFile := WriteTempFile(t, ctx.cfg)
 	defer CleanupTempFile(cfgFile)
-	args = append([]string{ctx.appName, "--config", cfgFile.Name()}, args...)
+	args = append([]string{ctx.appName}, args...)
 	infoW, errW := bytes.Buffer{}, bytes.Buffer{}
-	Priam(args, strings.NewReader(ctx.cfg), &infoW, &errW)
+	Priam(args, cfgFile.Name(), strings.NewReader(ctx.cfg), &infoW, &errW)
 	_, err := cfgFile.Seek(0, 0)
 	assert.Nil(t, err)
 	contents, err := ioutil.ReadAll(cfgFile)
@@ -154,10 +154,19 @@ func TestTargetAddHttps(t *testing.T) {
 }
 
 func TestTargets(t *testing.T) {
+	expectedSorted := `name: 1
+host: https://radio1.example.com
+
+name: radio
+host: https://radio.example.com
+
+name: staging
+host: https://radio2.example.com
+
+current target is: 1, https://radio1.example.com
+`
 	if ctx := runner(t, newTstCtx(""), "targets"); ctx != nil {
-		assert.Contains(t, ctx.info, "staging")
-		assert.Contains(t, ctx.info, "radio")
-		assert.Contains(t, ctx.info, "https://radio.example.com")
+		assert.Equal(t, expectedSorted, ctx.info)
 	}
 }
 
@@ -327,7 +336,7 @@ func TestCanUpdateUserInfo(t *testing.T) {
 	newgiven := "elsa"
 	newfamily := "frozen"
 	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &basicUser{Name: "elsa", Family: newfamily, Email:newemail, Given:newgiven}).Return()
+	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &basicUser{Name: "elsa", Family: newfamily, Email: newemail, Given: newgiven}).Return()
 	testCliCommand(t, "user", "update", "elsa", "--given", newgiven, "--family", newfamily, "--email", newemail)
 	usersServiceMock.AssertExpectations(t)
 }
@@ -384,29 +393,29 @@ func TestCanListAccessPolicies(t *testing.T) {
 		return &tstReply{output: `{"items": [ {"name": "default_access_policy_set"} ]}`, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"GET/SAAS/jersey/manager/api/accessPolicies" : h}
+		"POST" + vidmTokenPath:                       tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/accessPolicies": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "policies")
-	assert.NotNil(t, ctx);
+	assert.NotNil(t, ctx)
 	assert.Contains(t, ctx.info, "---- Access Policies ----\nitems:\n- name: default_access_policy_set")
 }
 
 // - Schema
 func TestCannotGetSchemaIfNoTypeSpecified(t *testing.T) {
 	ctx := testCliCommand(t, "schema")
-	assert.NotNil(t, ctx);
+	assert.NotNil(t, ctx)
 	assert.Contains(t, ctx.err, "Input Error: at least 1 arguments must be given")
 }
 
 func TestCannotGetSchemaforUnknownType(t *testing.T) {
 	unknownSchema := "olaf"
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + unknownSchema + "%22" : ErrorHandler(404, "test schema")}
+		"POST" + vidmTokenPath:                                                                tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + unknownSchema + "%22": ErrorHandler(404, "test schema")}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", unknownSchema)
-	assert.NotNil(t, ctx);
+	assert.NotNil(t, ctx)
 	assert.Contains(t, ctx.err, "test schema")
 }
 
@@ -422,13 +431,12 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 		return &tstReply{output: `{ "attributes": [], "name": "test", "schema": "urn:scim:schemas:core:1.0"}`, contentType: "application/json"}
 	}
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22" : h}
+		"POST" + vidmTokenPath:                                                             tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", schemaType)
-	assert.Contains(t, ctx.info, "---- Schema for " + schemaType + " ----\nattributes:")
+	assert.Contains(t, ctx.info, "---- Schema for "+schemaType+" ----\nattributes:")
 }
-
 
 // - User store
 func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
@@ -442,11 +450,12 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
     "userStoreNameUsedForAuth": false,
 	"uuid": "123"
 		}`,
-			contentType: "application/json"}}
+			contentType: "application/json"}
+	}
 
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"GET/SAAS/jersey/manager/api/localuserstore" : h}
+		"POST" + vidmTokenPath:                       tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore")
 	assert.Contains(t, ctx.info, "---- Local User Store configuration ----")
@@ -457,10 +466,11 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
 
 func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{"showLocalUserStore": false}`, contentType: "application/json"}}
+		return &tstReply{output: `{"showLocalUserStore": false}`, contentType: "application/json"}
+	}
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"PUT/SAAS/jersey/manager/api/localuserstore" : h}
+		"POST" + vidmTokenPath:                       tstClientCredGrant,
+		"PUT/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
 	assert.Contains(t, ctx.info, "---- Local User Store configuration ----")
@@ -469,8 +479,8 @@ func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 
 func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"PUT/SAAS/jersey/manager/api/localuserstore" : ErrorHandler(500, "error test")}
+		"POST" + vidmTokenPath:                       tstClientCredGrant,
+		"PUT/SAAS/jersey/manager/api/localuserstore": ErrorHandler(500, "error test")}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
 	assert.Contains(t, ctx.err, "error test")

@@ -33,13 +33,10 @@ type priamApp struct {
 }
 
 type manifestApp struct {
-	Name      string
-	Memory    string
-	Instances int
-	Path      string
-	BuildPack string
-	Env       map[string]string
-	Workspace priamApp
+	Name, Memory, Path, BuildPack string
+	Instances                     int
+	Env                           map[string]string
+	Workspace                     priamApp
 }
 
 type itemResponse struct {
@@ -190,12 +187,11 @@ func appGet(ctx *HttpContext, name string) {
 	} else if app, err := getAppByUuid(ctx, uuid, mtype); err != nil {
 		ctx.log.err("Error getting app info by uuid: %v\n", err)
 	} else {
-		ctx.log.pp("App " + name, app)
+		ctx.log.pp("App "+name, app)
 	}
 }
 
 func appList(ctx *HttpContext, count int, filter string) {
-	summaryFields := []string{"Apps", "name", "description", "catalogItemType", "uuid"}
 	if count == 0 {
 		count = 10000
 	}
@@ -208,6 +204,6 @@ func appList(ctx *HttpContext, count int, filter string) {
 	if err := ctx.request("POST", path, input, &body); err != nil {
 		ctx.log.err("Error: %v\n", err)
 	} else {
-		ctx.log.ppf("Apps", body["items"], summaryFields)
+		ctx.log.ppf("Apps", body["items"], "Apps", "name", "description", "catalogItemType", "uuid")
 	}
 }

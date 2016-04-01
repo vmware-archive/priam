@@ -5,6 +5,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -69,6 +70,14 @@ func (cfg *config) save() bool {
 	return true
 }
 
+func (cfg *config) clear() {
+	cfg.CurrentTarget = ""
+	cfg.Targets = nil
+	if cfg.save() {
+		cfg.log.info("all targets deleted.\n")
+	}
+}
+
 func (cfg *config) printTarget(prefix string) {
 	if cfg.CurrentTarget == "" {
 		cfg.log.info("no target set\n")
@@ -78,59 +87,111 @@ func (cfg *config) printTarget(prefix string) {
 	}
 }
 
-func (cfg *config) target(url, name string, checkURL func(*config) bool) {
+func (cfg *config) clearTarget(name string) {
+	if cfg.CurrentTarget == name {
+		cfg.CurrentTarget = ""
+	}
+	delete(cfg.Targets, name)
+	if cfg.save() {
+		cfg.log.info("deleted target %s.\n", name)
+	}
+}
+
+func (cfg *config) hasTarget(name string) bool {
+	_, ok := cfg.Targets[name]
+	return ok
+}
+
+func ensureFullURL(url string) string {
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return url
+	}
+	return "https://" + url
+}
+
+// findTarget attempts to find an existing target based on user input. User
+// may specify a target as a url followed by an optional name, or with no input
+// to specify the current target. findTarget returns the name of any existing
+// target.
+func (cfg *config) findTarget(url, name string) string {
+	fullURL := ensureFullURL(url)
+	if name == "" {
+		// if url is already a key and no name is given, assume url is a name
+		if cfg.hasTarget(url) {
+			return url
+		}
+
+		// no name given, look up first target that matches url
+		for k, v := range cfg.Targets {
+			if v.Host == fullURL {
+				return k
+			}
+		}
+	} else {
+		tgt, ok := cfg.Targets[name]
+		if ok && tgt.Host == fullURL {
+			return name
+		}
+
+	}
+	return ""
+}
+
+func (cfg *config) deleteTarget(url, name string) {
+	if url == "" {
+		if cfg.CurrentTarget == "" {
+			cfg.log.info("nothing deleted, no target set\n")
+		} else {
+			cfg.clearTarget(cfg.CurrentTarget)
+		}
+	} else if tgt := cfg.findTarget(url, name); tgt == "" {
+		cfg.log.info("nothing deleted, no such target found\n")
+	} else {
+		cfg.clearTarget(tgt)
+	}
+}
+
+func (cfg *config) setTarget(url, name string, checkURL func(*config) bool) {
 	if url == "" {
 		cfg.printTarget("current")
 		return
 	}
 
-	// if url is already a key and no name is given, assume url is a name
-	if cfg.Targets[url].Host != "" {
-		cfg.CurrentTarget = url
+	if tgt := cfg.findTarget(url, name); tgt != "" {
+		// found existing target
+		cfg.CurrentTarget = tgt
 		if cfg.save() {
 			cfg.printTarget("new")
 		}
 		return
 	}
 
-	if !strings.HasPrefix(url, "http:") && !strings.HasPrefix(url, "https:") {
-		url = "https://" + url
-	}
-
-	// if an existing target uses url and no name is given, just set it (no check)
+	// if no name given, make one up.
 	if name == "" {
-		for k, v := range cfg.Targets {
-			if v.Host == url {
-				cfg.CurrentTarget = k
-				if cfg.save() {
-					cfg.printTarget("new")
-				}
-				return
-			}
-		}
-	}
-
-	if name != "" {
-		cfg.CurrentTarget = name
-	} else {
-		// didn't specify a target name, make one up.
 		for i := 0; ; i++ {
 			k := fmt.Sprintf("%v", i)
-			if cfg.Targets[k].Host == "" {
-				cfg.CurrentTarget = k
+			if !cfg.hasTarget(k) {
+				name = k
 				break
 			}
 		}
 	}
-	cfg.Targets[cfg.CurrentTarget] = target{Host: url}
+
+	cfg.CurrentTarget = name
+	cfg.Targets[cfg.CurrentTarget] = target{Host: ensureFullURL(url)}
 	if (checkURL == nil || checkURL(cfg)) && cfg.save() {
 		cfg.printTarget("new")
 	}
 }
 
-func (cfg *config) targets() {
-	for k, v := range cfg.Targets {
-		cfg.log.info("name: %s\nhost: %s\n\n", k, v.Host)
+func (cfg *config) listTargets() {
+	var keys []string
+	for k := range cfg.Targets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		cfg.log.info("name: %s\nhost: %s\n\n", k, cfg.Targets[k].Host)
 	}
 	cfg.printTarget("current")
 }

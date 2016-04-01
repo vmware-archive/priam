@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/cloudfoundry/cli/plugin"
 	"os"
-	"strings"
 	"priam/core"
+	"strings"
 )
 
 type CfPriam struct{ name, defaultConfigFile string }
@@ -69,7 +69,8 @@ func (c *CfPriam) Publish(cliConn plugin.CliConnection, args []string) {
 		fmt.Println(strings.Join(output, "\n"))
 	}
 
-	// when cf execs a plugin it sets stdin and stdout but not stderr
+	// when cf execs a plugin it sets stdin and stdout but not stderr, so pass
+	// stdout for outw and errw
 	core.PriamCfPublish(*trace, c.defaultConfigFile, *manifile, os.Stdout, os.Stdout)
 }
 

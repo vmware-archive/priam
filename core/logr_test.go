@@ -51,7 +51,7 @@ func TestFilteredJsonPrettyPrint(t *testing.T) {
 	var jsonObj interface{}
 	assert.Nil(t, json.Unmarshal([]byte(cradle), &jsonObj))
 	log := newBufferedLogr()
-	log.ppf("cradle", jsonObj, ppfFilter)
+	log.ppf("cradle", jsonObj, ppfFilter...)
 	assert.Equal(t, log.infoString(), filteredPpfOutput)
 }
 
@@ -64,7 +64,7 @@ func TestFilteredJsonArrayPrettyPrint(t *testing.T) {
 	var jsonObj interface{}
 	assert.Nil(t, json.Unmarshal([]byte(`[{"mona": "monzano","asa":"breed","bokonon": ""}]`), &jsonObj))
 	log := newBufferedLogr()
-	log.ppf("names", jsonObj, []string{"mona", "asa", "bokonon"})
+	log.ppf("names", jsonObj, "mona", "asa", "bokonon")
 	assert.Equal(t, expected, log.infoString())
 }
 
@@ -73,7 +73,7 @@ func TestVerboseFilteredJsonPrettyPrint(t *testing.T) {
 	assert.Nil(t, json.Unmarshal([]byte(cradle), &jsonObj))
 	log := newBufferedLogr()
 	log.verboseOn = true
-	log.ppf("cradle", jsonObj, ppfFilter)
+	log.ppf("cradle", jsonObj, ppfFilter...)
 	assert.Equal(t, log.infoString(), unfilteredPpfOutput)
 }
 

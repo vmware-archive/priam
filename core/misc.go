@@ -23,7 +23,7 @@ func cmdLocalUserStore(ctx *HttpContext, args []string) {
 	if err := ctx.request("PUT", path, keyvals, &outp); err != nil {
 		ctx.log.err("Error: %v\n", err)
 	} else {
-		ctx.log.pp(desc, outp)
+		ctx.log.ppf(desc, outp, "name", "showLocalUserStore", "associatedIdPNames", "syncClient", "userStoreNameUsedForAuth", "uuid")
 	}
 }
 

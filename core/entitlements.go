@@ -22,9 +22,9 @@ const fmtEntitlement = `
 // Create entitlement for the given user or group
 func maybeEntitle(ctx *HttpContext, itemID, subjName, subjType, nameAttr, appName string) {
 	if subjName != "" {
-		subjID, err := scimGetID(ctx, strings.Title(subjType + "s"), nameAttr, subjName)
+		subjID, err := scimGetID(ctx, strings.Title(subjType+"s"), nameAttr, subjName)
 		if err == nil {
-			err = entitleSubject(ctx, subjID, strings.ToUpper(subjType + "s"), itemID)
+			err = entitleSubject(ctx, subjID, strings.ToUpper(subjType+"s"), itemID)
 		}
 		if err != nil {
 			ctx.log.err("Could not entitle %s \"%s\" to app \"%s\", error: %v\n", subjType, subjName, appName, err)
@@ -60,7 +60,7 @@ func getEntitlement(ctx *HttpContext, rtypeName, name string) {
 	if err := ctx.request("GET", path, nil, &body); err != nil {
 		ctx.log.err("Error: %v\n", err)
 	} else {
-		ctx.log.ppf("Entitlements", body["items"], []string{"Entitlements",
-			"catalogItemId", "subjectType", "subjectId", "activationPolicy"})
+		ctx.log.ppf("Entitlements", body["items"], "Entitlements",
+			"catalogItemId", "subjectType", "subjectId", "activationPolicy")
 	}
 }

@@ -204,7 +204,7 @@ func scimList(ctx *HttpContext, count int, filter string, resType string, summar
 	if err := ctx.request("GET", path, nil, &outp); err != nil {
 		ctx.log.err("Error getting SCIM resources of type %s: %v\n", resType, err)
 	} else {
-		ctx.log.ppf(resType, outp["Resources"], summaryLabels)
+		ctx.log.ppf(resType, outp["Resources"], summaryLabels...)
 	}
 }
 

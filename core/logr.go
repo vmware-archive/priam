@@ -150,7 +150,7 @@ func (l *logr) pp(prefix string, input interface{}) {
 	l.info("---- %s ----\n%s", prefix, toStringWithStyle(l.style, input))
 }
 
-func (l *logr) ppf(title string, info interface{}, filter []string) {
+func (l *logr) ppf(title string, info interface{}, filter ...string) {
 	if l.verboseOn || len(filter) == 0 {
 		l.pp(title, info)
 	} else {
