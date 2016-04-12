@@ -14,6 +14,10 @@ type jsonMarshalTester string
 func (jsonMarshalTester) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("json marshal error")
 }
+// the IDM application service
+type IDMApplicationService struct {
+
+}
 
 type priamApp struct {
 	Name                  string                 `json:"name,omitempty" yaml:"name,omitempty"`
@@ -42,6 +46,27 @@ type manifestApp struct {
 type itemResponse struct {
 	Links map[string]interface{}   `json:"_links,omitempty" yaml:"_links,omitempty"`
 	Items []map[string]interface{} `json:",omitempty" yaml:",omitempty"`
+}
+
+
+// Display application info
+func (service IDMApplicationService) Display(ctx *HttpContext, appName string) {
+	appGet(ctx, appName)
+}
+
+// Delete given application from the catalog
+func (service IDMApplicationService) Delete(ctx *HttpContext, appName string) {
+	appDelete(ctx, appName)
+}
+
+// List all applications in the catalog
+func (service IDMApplicationService) List(ctx *HttpContext, count int, filter string) {
+	appList(ctx, count, filter)
+}
+
+// Publish an application
+func (service IDMApplicationService) Publish(ctx *HttpContext, manifestFile string) {
+	publishApps(ctx, manifestFile)
 }
 
 func accessPolicyId(ctx *HttpContext, name string) string {
@@ -187,7 +212,7 @@ func appGet(ctx *HttpContext, name string) {
 	} else if app, err := getAppByUuid(ctx, uuid, mtype); err != nil {
 		ctx.log.err("Error getting app info by uuid: %v\n", err)
 	} else {
-		ctx.log.pp("App "+name, app)
+		ctx.log.pp("App " + name, app)
 	}
 }
 

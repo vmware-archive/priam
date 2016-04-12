@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"github.com/stretchr/testify/assert"
 )
 
 // Returns an error with the given message
@@ -37,4 +38,32 @@ func GetTempFile(t *testing.T, fileName string) string {
 	contents, err := ioutil.ReadFile(fileName)
 	require.Nil(t, err)
 	return string(contents)
+}
+
+func TestCaselessEqualsWithoutAString(t *testing.T) {
+	assert.False(t, caselessEqual("axel", 1985), "String should not equal integer")
+}
+
+func TestCaselessEquals(t *testing.T) {
+	assert.True(t, caselessEqual("axel", "AxEL"))
+}
+
+func TestCaseEqualsWithoutAString(t *testing.T) {
+	assert.False(t, caseEqual("axel", 1985), "String should not equal integer")
+}
+
+func TestCaseEqualsWithAString(t *testing.T) {
+	assert.False(t, caseEqual("axel", "AxEL"))
+}
+
+func TestCaseEquals(t *testing.T) {
+	assert.True(t, caseEqual("axel", "axel"))
+}
+
+func TestToStringFailsWithoutAString(t *testing.T) {
+	assert.Equal(t, "", interfaceToString(1985), "String should not be converted to integer")
+}
+
+func TestToString(t *testing.T) {
+	assert.Equal(t, "axel", interfaceToString("axel"))
 }

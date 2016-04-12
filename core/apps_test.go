@@ -48,7 +48,7 @@ var appSearchGetHandlers = map[string]tstHandler{
 func TestAppGet(t *testing.T) {
 	srv, ctx := newTestContext(t, appSearchGetHandlers)
 	defer srv.Close()
-	appGet(ctx, "olaf")
+	new(IDMApplicationService).Display(ctx, "olaf")
 	assertOnlyInfoContains(t, ctx, `name: olaf`)
 }
 
@@ -85,7 +85,7 @@ func TestAppList(t *testing.T) {
 		appSearchPath: appSearchH(appSearchFilter, appSearchResult, 0)}
 	srv, ctx := newTestContext(t, paths)
 	defer srv.Close()
-	appList(ctx, 0, "olaf")
+	new(IDMApplicationService).List(ctx, 0, "olaf")
 	assertOnlyInfoContains(t, ctx, `name: olaf`)
 }
 
@@ -104,7 +104,7 @@ func TestAppDelete(t *testing.T) {
 		appSearchPath: appSearchH(appSearchFilter, appSearchResult, 0)}
 	srv, ctx := newTestContext(t, paths)
 	defer srv.Close()
-	appDelete(ctx, "olaf")
+	new(IDMApplicationService).Delete(ctx, "olaf")
 	assertOnlyInfoContains(t, ctx, `app olaf deleted`)
 }
 
@@ -242,7 +242,7 @@ func PublishAppTester(t *testing.T, env appPubEnv) *HttpContext {
 	}
 	srv, ctx := newTestContext(t, paths)
 	defer srv.Close()
-	publishApps(ctx, tmpFile.Name())
+	new(IDMApplicationService).Publish(ctx, tmpFile.Name())
 	return ctx
 }
 

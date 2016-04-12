@@ -9,6 +9,7 @@ import (
 const (
 	DEFAULT_USERNAME = "john"
 	DEFAULT_GROUP_NAME = "saturday-night-fever"
+	DEFAULT_ROLE_NAME = "dancer"
 
 	DEFAULT_GET_USER_URL = "GET/scim/Users?count=10000&filter=userName+eq+%22" + DEFAULT_USERNAME + "%22"
 	DEFAULT_POST_USER_URL = "POST/scim/Users/12345"
@@ -30,6 +31,13 @@ func scimDefaultUserHandler() func(t *testing.T, req *tstReq) *tstReply {
 func scimDefaultGroupHandler() func(t *testing.T, req *tstReq) *tstReply {
 	return func(t *testing.T, req *tstReq) *tstReply {
 		output := `{"Resources": [{ "displayName" : "` + DEFAULT_GROUP_NAME + `", "id": "6789"}]}`
+		return &tstReply{output: output, contentType: "application/json"}
+	}
+}
+
+func scimDefaultRoleHandler() func(t *testing.T, req *tstReq) *tstReply {
+	return func(t *testing.T, req *tstReq) *tstReply {
+		output := `{"Resources": [{ "displayName" : "` + DEFAULT_ROLE_NAME + `", "id": "123"}]}`
 		return &tstReply{output: output, contentType: "application/json"}
 	}
 }
@@ -323,4 +331,16 @@ func TestListGroups(t *testing.T) {
 	new(SCIMGroupsService).ListEntities(ctx, 3, "myfilter")
 	assertOnlyInfoContains(t, ctx, `id: 6789`)
 	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_GROUP_NAME)
+}
+
+// Tests for ROLES
+// @todo To be put in roles_test.go?
+
+func TestListRoles(t *testing.T) {
+	srv := StartTstServer(t, map[string]tstHandler{
+		"GET/scim/Roles?count=3&filter=myfilter": scimDefaultRoleHandler()})
+	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
+	new(SCIMRolesService).ListEntities(ctx, 3, "myfilter")
+	assertOnlyInfoContains(t, ctx, `id: 123`)
+	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_ROLE_NAME)
 }

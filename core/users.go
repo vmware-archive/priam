@@ -13,6 +13,11 @@ type SCIMUsersService struct{}
 // SCIM implementation of the groups service
 type SCIMGroupsService struct{}
 
+// SCIM implementation of the roles service
+type SCIMRolesService struct {
+
+}
+
 const coreSchemaURN = "urn:scim:schemas:core:1.0"
 
 // Define user information
@@ -50,7 +55,7 @@ type memberPatch struct {
 }
 
 // -- USERS
-// @todo to put in users.go
+// @todo to put in scim_users.go
 
 func (userService SCIMUsersService) DisplayEntity(ctx *HttpContext, username string) {
 	scimGet(ctx, "Users", "userName", username)
@@ -63,7 +68,7 @@ func (userService SCIMUsersService) LoadEntities(ctx *HttpContext, fileName stri
 	} else {
 		for k, v := range newUsers {
 			if err := userService.AddEntity(ctx, &v); err != nil {
-				ctx.log.err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
+				ctx.log.err("Error adding user, line %d, name %s: %v\n", k + 1, v.Name, err)
 			} else {
 				ctx.log.info("added user %s\n", v.Name)
 			}
@@ -91,7 +96,7 @@ func (userService SCIMUsersService) DeleteEntity(ctx *HttpContext, username stri
 }
 
 // -- GROUPS
-// @todo to put in groups.go
+// @todo to put in scim_groups.go
 
 func (groupService SCIMGroupsService) DisplayEntity(ctx *HttpContext, name string) {
 	scimGet(ctx, "Groups", "displayName", name)
@@ -108,7 +113,7 @@ func (groupService SCIMGroupsService) AddEntity(ctx *HttpContext, entity interfa
 }
 
 func (groupService SCIMGroupsService) ListEntities(ctx *HttpContext, count int, filter string) {
-	scimList(ctx, count, filter, "Groups", "Groups", "displayName", "id", "members", "display")
+	scimList(ctx, count, filter, "Groups", "displayName", "id", "members", "display")
 }
 
 func (groupService SCIMGroupsService) DeleteEntity(ctx *HttpContext, username string) {
@@ -121,13 +126,44 @@ func (groupService SCIMGroupsService) UpdateEntity(ctx *HttpContext, name string
 	ctx.log.err("Not implemented.")
 }
 
+// -- ROLES
+// @todo to put in scim_roles.go
+
+func (roleService SCIMRolesService) DisplayEntity(ctx *HttpContext, name string) {
+	scimGet(ctx, "Roles", "displayName", name)
+}
+
+func (roleService SCIMRolesService) LoadEntities(ctx *HttpContext, fileName string) {
+	// not implemented
+	ctx.log.err("Not implemented.")
+}
+
+func (roleService SCIMRolesService) AddEntity(ctx *HttpContext, entity interface{}) error {
+	// not implemented
+	return errors.New("Not implemented")
+}
+
+func (roleService SCIMRolesService) ListEntities(ctx *HttpContext, count int, filter string) {
+	scimList(ctx, count, filter, "Roles", "displayName", "id")
+}
+
+func (roleService SCIMRolesService) DeleteEntity(ctx *HttpContext, username string) {
+	// not implemented
+	ctx.log.err("Not implemented.")
+}
+
+func (roleService SCIMRolesService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
+	// not implemented
+	ctx.log.err("Not implemented.")
+}
+
 // -- SCIM common code
 
 func scimAddUser(ctx *HttpContext, u *basicUser) error {
 	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
 	acct.Password = u.Pwd
 	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
-	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
+	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name + "@example.com")}}
 	ctx.log.pp("add user: ", acct)
 	return ctx.request("POST", "scim/Users", acct, acct)
 }

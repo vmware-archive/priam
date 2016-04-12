@@ -139,3 +139,7 @@ func TestErrorWritingConfigFile(t *testing.T) {
 	assert.False(cfg.save())
 	assert.Contains(log.errString(), "could not write config file "+cfgFile.Name())
 }
+
+func TestTargetCheckURLFails(t *testing.T) {
+
+}

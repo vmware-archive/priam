@@ -44,6 +44,17 @@ func tstSrvTgt(url string) string {
 	return fmt.Sprintf("---\ntargets:\n  1:\n    host: %s\n", url)
 }
 
+// Helpers to get health handler
+func healthHandler(status bool) func(t *testing.T, req *tstReq) *tstReply {
+	return func(t *testing.T, req *tstReq) *tstReply {
+		assert.Empty(t, req.input)
+		if (status) {
+			return &tstReply{output: `{"allOk":true}`, contentType: "application/json"}
+		}
+		return &tstReply{output: `{"somethingelse":true}`, contentType: "application/json"}
+	}
+}
+
 // in these tests the clientID is "john" and the client secret is "travolta"
 // Adapted from tests written by Fanny, who apparently likes John Travolta
 func tstClientCredGrant(t *testing.T, req *tstReq) *tstReply {
@@ -188,12 +199,32 @@ func TestAddNewTargetWithName(t *testing.T) {
 	}
 }
 
-func TestHealth(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		assert.Empty(t, req.input)
-		return &tstReply{output: `{"allOk":true}`, contentType: "application/json"}
+func TestAddNewTargetFailsIfHealthCheckFails(t *testing.T) {
+	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": ErrorHandler(500, "favourite 500 error")}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", "radio2.example.com", "sassoon"); ctx != nil {
+		assert.Contains(t, ctx.err, "Error checking health of https://radio2.example.com")
 	}
-	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": h}
+}
+
+func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOkTrue(t *testing.T) {
+	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(false)}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
+		assert.Contains(t, ctx.err, "Reply from " + srv.URL + " does not meet health check")
+	}
+}
+
+func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
+	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
+	srv := StartTstServer(t, paths)
+	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
+		assert.Contains(t, ctx.info, "new target is: sassoon, " + srv.URL)
+	}
+}
+
+func TestHealth(t *testing.T) {
+	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "health"); ctx != nil {
 		assert.Contains(t, ctx.info, "allOk")
@@ -435,7 +466,7 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", schemaType)
-	assert.Contains(t, ctx.info, "---- Schema for "+schemaType+" ----\nattributes:")
+	assert.Contains(t, ctx.info, "---- Schema for " + schemaType + " ----\nattributes:")
 }
 
 // - User store
@@ -484,4 +515,108 @@ func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
 	assert.Contains(t, ctx.err, "error test")
+}
+
+// - Roles
+
+// Helper to setup mock for the roles service
+func setupRolesServiceMock() *MockDirectoryService {
+	rolesServiceMock := new(MockDirectoryService)
+	rolesService = rolesServiceMock
+	return rolesServiceMock
+}
+
+func TestCanGetRole(t *testing.T) {
+	rolesServiceMock := setupRolesServiceMock()
+	rolesServiceMock.On("DisplayEntity", mock.Anything, "friendsforever").Return()
+	testCliCommand(t, "role", "get", "friendsforever")
+	rolesServiceMock.AssertExpectations(t)
+}
+
+func TestCanDisplayAllRoles(t *testing.T) {
+	rolesServiceMock := setupRolesServiceMock()
+	rolesServiceMock.On("ListEntities", mock.Anything, 0, "").Return()
+	testCliCommand(t, "role", "list")
+	rolesServiceMock.AssertExpectations(t)
+}
+
+func TestCanDisplayAllRolesWithCountAndFilter(t *testing.T) {
+	rolesServiceMock := setupRolesServiceMock()
+	rolesServiceMock.On("ListEntities", mock.Anything, 2, "filter").Return()
+	testCliCommand(t, "role", "list", "--count", "2", "--filter", "filter")
+	rolesServiceMock.AssertExpectations(t)
+}
+
+// - Tenant
+func TestGetTenantConfiguration(t *testing.T) {
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		return &tstReply{output: `{}`, contentType: "application/json"}}
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config" : h}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
+	assert.Contains(t, ctx.info, "---- Tenant configuration ----")
+}
+
+func TestSetTenantConfiguration(t *testing.T) {
+	h := func(t *testing.T, req *tstReq) *tstReply {
+		return &tstReply{output: `{}`, contentType: "application/json"}}
+	paths := map[string]tstHandler{
+		"POST" + vidmTokenPath:    tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config" : h}
+	srv := StartTstServer(t, paths)
+	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
+	assert.Contains(t, ctx.info, "---- Tenant configuration ----")
+}
+
+// - Apps
+
+// Helper to setup mock for the apps service
+func setupAppsServiceMock() *MockApplicationService {
+	appsServiceMock := new(MockApplicationService)
+	appsService = appsServiceMock
+	return appsServiceMock
+}
+
+func TestCanGetApp(t *testing.T) {
+	appsServiceMock := setupAppsServiceMock()
+	appsServiceMock.On("Display", mock.Anything, "makesnow").Return()
+	testCliCommand(t, "app", "get", "makesnow")
+	appsServiceMock.AssertExpectations(t)
+}
+
+func TestCanDeleteApp(t *testing.T) {
+	appsServiceMock := setupAppsServiceMock()
+	appsServiceMock.On("Delete", mock.Anything, "makesnow").Return()
+	testCliCommand(t, "app", "delete", "makesnow")
+	appsServiceMock.AssertExpectations(t)
+}
+
+func TestCanListApps(t *testing.T) {
+	appsServiceMock := setupAppsServiceMock()
+	appsServiceMock.On("List", mock.Anything, 0, "").Return()
+	testCliCommand(t, "app", "list")
+	appsServiceMock.AssertExpectations(t)
+}
+
+func TestCanListAppsWithCountAndFilter(t *testing.T) {
+	appsServiceMock := setupAppsServiceMock()
+	appsServiceMock.On("List", mock.Anything, 2, "filter").Return()
+	testCliCommand(t, "app", "list", "--count", "2", "--filter", "filter")
+	appsServiceMock.AssertExpectations(t)
+}
+
+func TestCanPublishAnApp(t *testing.T) {
+	appsServiceMock := setupAppsServiceMock()
+	appsServiceMock.On("Publish", mock.Anything, "").Return()
+	testCliCommand(t, "app", "add")
+	appsServiceMock.AssertExpectations(t)
+}
+
+func TestCanPublishAnAppWithASpecificManifest(t *testing.T) {
+	appsServiceMock := setupAppsServiceMock()
+	appsServiceMock.On("Publish", mock.Anything, "my-manifest.yaml").Return()
+	testCliCommand(t, "app", "add", "my-manifest.yaml")
+	appsServiceMock.AssertExpectations(t)
 }

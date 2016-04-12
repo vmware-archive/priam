@@ -10,14 +10,16 @@ import (
 )
 
 const (
-	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
-	vidmBasePath      = "/SAAS/jersey/manager/api/"
+	vidmTokenPath = "/SAAS/API/1.0/oauth2/token"
+	vidmBasePath = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
 )
 
 // Directory service
 var usersService DirectoryService = &SCIMUsersService{}
 var groupsService DirectoryService = &SCIMGroupsService{}
+var rolesService DirectoryService = &SCIMRolesService{}
+var appsService ApplicationService = &IDMApplicationService{}
 
 func getPwd(prompt string) string {
 	if s, err := gopass.GetPass(prompt); err != nil {
@@ -32,7 +34,7 @@ func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
 		return arg
 	}
 	for {
-		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
+		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt + " again: ") {
 			return pwd
 		}
 		log.info(prompt + "s didn't match. Try again.")
@@ -171,7 +173,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Name: "add", Usage: "add applications to the catalog", ArgsUsage: "[./manifest.yaml]",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 0, 1, true, nil); ctx != nil {
-							publishApps(ctx, args[0])
+							appsService.Publish(ctx, args[0])
 						}
 					},
 				},
@@ -179,7 +181,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Name: "delete", Usage: "delete an app from the catalog", ArgsUsage: "<appName>",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							appDelete(ctx, args[0])
+							appsService.Delete(ctx, args[0])
 						}
 					},
 				},
@@ -187,7 +189,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Name: "get", Usage: "get information about an app", ArgsUsage: "<appName>",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							appGet(ctx, args[0])
+							appsService.Display(ctx, args[0])
 						}
 					},
 				},
@@ -196,7 +198,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Flags: pageFlags,
 					Action: func(c *cli.Context) {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
-							appList(ctx, c.Int("count"), c.String("filter"))
+							appsService.List(ctx, c.Int("count"), c.String("filter"))
 						}
 					},
 				},
@@ -304,7 +306,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Name: "get", Usage: "get specific SCIM role", ArgsUsage: "<roleName>",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							scimGet(ctx, "Roles", "displayName", args[0])
+							rolesService.DisplayEntity(ctx, args[0])
 						}
 					},
 				},
@@ -312,7 +314,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Name: "list", ArgsUsage: " ", Usage: "list all roles", Flags: pageFlags,
 					Action: func(c *cli.Context) {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
-							scimList(ctx, c.Int("count"), c.String("filter"), "Roles")
+							rolesService.ListEntities(ctx, c.Int("count"), c.String("filter"))
 						}
 					},
 				},
@@ -358,7 +360,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			},
 		},
 		{
-			Name: "tenant", Usage: "gets/sets tenant configuration", ArgsUsage: "[key=value]...",
+			Name: "tenant", Usage: "gets/sets tenant configuration", ArgsUsage: "<tenantName> [key=value]...",
 			Action: func(c *cli.Context) {
 				if args, ctx := initCmd(cfg, c, 1, -1, true, nil); ctx != nil {
 					cmdTenantConfig(ctx, args[0], args[1:])
@@ -409,7 +411,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
 					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, pwd: changeme}\n" +
-						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
+					"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.LoadEntities(ctx, args[0])
