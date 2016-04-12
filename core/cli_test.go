@@ -41,14 +41,14 @@ targets:
 }
 
 func tstSrvTgt(url string) string {
-	return fmt.Sprintf("---\ntargets:\n  1:\n    host: %s\n", url)
+	return fmt.Sprintf("---\ncurrenttarget: 1\ntargets:\n  1:\n    host: %s\n", url)
 }
 
 // Helpers to get health handler
 func healthHandler(status bool) func(t *testing.T, req *tstReq) *tstReply {
 	return func(t *testing.T, req *tstReq) *tstReply {
 		assert.Empty(t, req.input)
-		if (status) {
+		if status {
 			return &tstReply{output: `{"allOk":true}`, contentType: "application/json"}
 		}
 		return &tstReply{output: `{"somethingelse":true}`, contentType: "application/json"}
@@ -124,7 +124,7 @@ func TestAppAnyName(t *testing.T) {
 	}
 }
 
-// should pick a target if none is set
+// should not pick a target if none is set
 func TestTargetNoCurrent(t *testing.T) {
 	var targetYaml string = `---
 targets:
@@ -132,7 +132,7 @@ targets:
     host: https://radio.example.com
 `
 	if ctx := runner(t, newTstCtx(targetYaml), "target"); ctx != nil {
-		assert.Contains(t, ctx.cfg, "radio.example.com")
+		assert.Equal(t, "no target set\n", ctx.info)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOkTrue(t *testing.T) {
 	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(false)}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
-		assert.Contains(t, ctx.err, "Reply from " + srv.URL + " does not meet health check")
+		assert.Contains(t, ctx.err, "Reply from "+srv.URL+" does not meet health check")
 	}
 }
 
@@ -219,7 +219,7 @@ func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
 	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
-		assert.Contains(t, ctx.info, "new target is: sassoon, " + srv.URL)
+		assert.Contains(t, ctx.info, "new target is: sassoon, "+srv.URL)
 	}
 }
 
@@ -466,7 +466,7 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", schemaType)
-	assert.Contains(t, ctx.info, "---- Schema for " + schemaType + " ----\nattributes:")
+	assert.Contains(t, ctx.info, "---- Schema for "+schemaType+" ----\nattributes:")
 }
 
 // - User store
@@ -550,10 +550,11 @@ func TestCanDisplayAllRolesWithCountAndFilter(t *testing.T) {
 // - Tenant
 func TestGetTenantConfiguration(t *testing.T) {
 	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{}`, contentType: "application/json"}}
+		return &tstReply{output: `{}`, contentType: "application/json"}
+	}
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config" : h}
+		"POST" + vidmTokenPath:                                         tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
 	assert.Contains(t, ctx.info, "---- Tenant configuration ----")
@@ -561,10 +562,11 @@ func TestGetTenantConfiguration(t *testing.T) {
 
 func TestSetTenantConfiguration(t *testing.T) {
 	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{}`, contentType: "application/json"}}
+		return &tstReply{output: `{}`, contentType: "application/json"}
+	}
 	paths := map[string]tstHandler{
-		"POST" + vidmTokenPath:    tstClientCredGrant,
-		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config" : h}
+		"POST" + vidmTokenPath:                                         tstClientCredGrant,
+		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
 	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
 	assert.Contains(t, ctx.info, "---- Tenant configuration ----")

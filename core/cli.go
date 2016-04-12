@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	vidmTokenPath = "/SAAS/API/1.0/oauth2/token"
-	vidmBasePath = "/SAAS/jersey/manager/api/"
+	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
+	vidmBasePath      = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
 )
 
@@ -34,7 +34,7 @@ func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
 		return arg
 	}
 	for {
-		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt + " again: ") {
+		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
 			return pwd
 		}
 		log.info(prompt + "s didn't match. Try again.")
@@ -343,6 +343,8 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 						cfg.clear()
 					} else if c.Bool("delete") {
 						cfg.deleteTarget(args[0], args[1])
+					} else if args[0] == "" {
+						cfg.printTarget("current")
 					} else if c.Bool("force") {
 						cfg.setTarget(args[0], args[1], nil)
 					} else {
@@ -411,7 +413,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
 					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, pwd: changeme}\n" +
-					"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
+						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.LoadEntities(ctx, args[0])

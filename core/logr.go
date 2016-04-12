@@ -98,8 +98,8 @@ func parseIndent(p string) (index int) {
 // This method takes such an object and pretty-prints it somewhat like
 // YAML, but it filters and orders the output.
 //
-// prefix is one of more lines to be printed before a selected object
-// info is the object of parsed JSON or YAML
+// prefix is one of more lines to be printed before a selected object.
+// info is the object of parsed JSON or YAML.
 // filter is an array of strings. Only map elements with keys in the
 // filter will be printed. Sibling map elements will be printed in the
 // order of the keys in the filter. To print a nested key, the keys of

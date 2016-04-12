@@ -66,6 +66,19 @@ func TestTargetDeleteCurrent(t *testing.T) {
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "space.odyssey.example.com")
 }
 
+func TestTargetDeleteSpecificCurrent(t *testing.T) {
+	cfg := cfgTestSetup(t, "")
+	defer os.Remove(cfg.fileName)
+	cfg.deleteTarget("familyCountDown", "")
+	assert.Contains(t, cfg.log.infoString(), "deleted target familyCountDown")
+	assert.NotContains(t, GetTempFile(t, cfg.fileName), "space.odyssey.example.com")
+
+	// ensure current is not set or chosen
+	cfg = newAppConfig(newBufferedLogr(), cfg.fileName)
+	cfg.printTarget("current")
+	assert.Equal(t, "no target set\n", cfg.log.infoString())
+}
+
 func TestTargetDeleteSpecific(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)

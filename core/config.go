@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const noTarget = ""
+
 // target is used to encapsulate everything needed to connect to a vidm instance.
 type target struct {
 	Host                   string
@@ -48,16 +50,11 @@ func newAppConfig(log *logr, fileName string) *config {
 	// get yaml file clears all fields, so these must be set after unmarshalling
 	appCfg.log, appCfg.fileName = log, fileName
 
-	if appCfg.CurrentTarget != "" &&
-		appCfg.Targets[appCfg.CurrentTarget] != (target{}) {
-		return appCfg
-	}
-	for k := range appCfg.Targets {
-		appCfg.CurrentTarget = k
-		return appCfg
-	}
 	if appCfg.Targets == nil {
 		appCfg.Targets = make(map[string]target)
+		appCfg.CurrentTarget = noTarget
+	} else if appCfg.CurrentTarget == noTarget || appCfg.Targets[appCfg.CurrentTarget] == (target{}) {
+		appCfg.CurrentTarget = noTarget
 	}
 	return appCfg
 }
@@ -71,7 +68,7 @@ func (cfg *config) save() bool {
 }
 
 func (cfg *config) clear() {
-	cfg.CurrentTarget = ""
+	cfg.CurrentTarget = noTarget
 	cfg.Targets = nil
 	if cfg.save() {
 		cfg.log.info("all targets deleted.\n")
@@ -79,7 +76,7 @@ func (cfg *config) clear() {
 }
 
 func (cfg *config) printTarget(prefix string) {
-	if cfg.CurrentTarget == "" {
+	if cfg.CurrentTarget == noTarget {
 		cfg.log.info("no target set\n")
 	} else {
 		cfg.log.info("%s target is: %s, %s\n", prefix, cfg.CurrentTarget,
@@ -89,7 +86,7 @@ func (cfg *config) printTarget(prefix string) {
 
 func (cfg *config) clearTarget(name string) {
 	if cfg.CurrentTarget == name {
-		cfg.CurrentTarget = ""
+		cfg.CurrentTarget = noTarget
 	}
 	delete(cfg.Targets, name)
 	if cfg.save() {
@@ -134,17 +131,17 @@ func (cfg *config) findTarget(url, name string) string {
 		}
 
 	}
-	return ""
+	return noTarget
 }
 
 func (cfg *config) deleteTarget(url, name string) {
 	if url == "" {
-		if cfg.CurrentTarget == "" {
+		if cfg.CurrentTarget == noTarget {
 			cfg.log.info("nothing deleted, no target set\n")
 		} else {
 			cfg.clearTarget(cfg.CurrentTarget)
 		}
-	} else if tgt := cfg.findTarget(url, name); tgt == "" {
+	} else if tgt := cfg.findTarget(url, name); tgt == noTarget {
 		cfg.log.info("nothing deleted, no such target found\n")
 	} else {
 		cfg.clearTarget(tgt)
@@ -153,11 +150,10 @@ func (cfg *config) deleteTarget(url, name string) {
 
 func (cfg *config) setTarget(url, name string, checkURL func(*config) bool) {
 	if url == "" {
-		cfg.printTarget("current")
 		return
 	}
 
-	if tgt := cfg.findTarget(url, name); tgt != "" {
+	if tgt := cfg.findTarget(url, name); tgt != noTarget {
 		// found existing target
 		cfg.CurrentTarget = tgt
 		if cfg.save() {
