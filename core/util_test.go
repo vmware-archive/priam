@@ -15,11 +15,11 @@ limitations under the License.
 package core
 
 import (
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"os"
 	"testing"
-	"github.com/stretchr/testify/assert"
 )
 
 // Returns an error with the given message

@@ -15,21 +15,21 @@ limitations under the License.
 package core
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
-	"fmt"
 )
 
 const (
-	DEFAULT_USERNAME = "john"
+	DEFAULT_USERNAME   = "john"
 	DEFAULT_GROUP_NAME = "saturday-night-fever"
-	DEFAULT_ROLE_NAME = "dancer"
+	DEFAULT_ROLE_NAME  = "dancer"
 
-	DEFAULT_GET_USER_URL = "GET/scim/Users?count=10000&filter=userName+eq+%22" + DEFAULT_USERNAME + "%22"
+	DEFAULT_GET_USER_URL  = "GET/scim/Users?count=10000&filter=userName+eq+%22" + DEFAULT_USERNAME + "%22"
 	DEFAULT_POST_USER_URL = "POST/scim/Users/12345"
 
 	DEFAULT_GET_GROUP_URL = "GET/scim/Groups?count=10000&filter=displayName+eq+%22" + DEFAULT_GROUP_NAME + "%22"
-	YAML_USERS_FILE = "../resources/newusers.yaml"
+	YAML_USERS_FILE       = "../resources/newusers.yaml"
 )
 
 var aBasicUser = func() *basicUser { return &basicUser{Name: "john", Given: "travolta"} }
@@ -201,7 +201,7 @@ func TestScimUpdateUserFailedIfUserDoesNotExist(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
 		DEFAULT_GET_USER_URL: ErrorHandler(404, "not found")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Name: "john", Given: "wayne" })
+	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Name: "john", Given: "wayne"})
 	assertErrorContains(t, ctx, "Error getting SCIM Users ID of john: 404 Not Found")
 }
 
@@ -211,7 +211,7 @@ func TestScimUpdateUserFailedIfPatchCommandFails(t *testing.T) {
 		// response does not matter, only body could be tested
 		"POST/scim/Users/12345": ErrorHandler(404, "error scim patch")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Name: "john", Given: "johnny" })
+	new(SCIMUsersService).UpdateEntity(ctx, "john", &basicUser{Name: "john", Given: "johnny"})
 	assertErrorContains(t, ctx, `Error updating user "john": 404 Not Found`)
 }
 
@@ -227,24 +227,24 @@ func scimUpdateDefaultUserWith(t *testing.T, name string, updatedUser *basicUser
 }
 
 func TestScimUpdateUserName(t *testing.T) {
-	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "newjohn", Given: "johnny" })
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "newjohn", Given: "johnny"})
 }
 
 func TestScimUpdateUserGivenName(t *testing.T) {
-	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Given: "johnny" })
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Given: "johnny"})
 }
 
 func TestScimUpdateUserFamilyName(t *testing.T) {
-	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Family: "wayne" })
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Family: "wayne"})
 }
 
 func TestScimUpdateUserEmail(t *testing.T) {
-	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Email: "j@travolta.com" })
+	scimUpdateDefaultUserWith(t, "john", &basicUser{Name: "john", Email: "j@travolta.com"})
 }
 
 func TestScimDeleteFailsIfUserDoesNotExist(t *testing.T) {
 	srv := StartTstServer(t, map[string]tstHandler{
-		DEFAULT_GET_USER_URL:      ErrorHandler(404, "test error")})
+		DEFAULT_GET_USER_URL: ErrorHandler(404, "test error")})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	scimDelete(ctx, "Users", "userName", "john")
 	assertErrorContains(t, ctx, "Error getting SCIM Users ID of john: 404 Not Found")
@@ -335,7 +335,7 @@ func TestGetGroup(t *testing.T) {
 		DEFAULT_GET_GROUP_URL: scimDefaultGroupHandler()})
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	new(SCIMGroupsService).DisplayEntity(ctx, DEFAULT_GROUP_NAME)
-	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_GROUP_NAME)
+	assertOnlyInfoContains(t, ctx, "displayName: "+DEFAULT_GROUP_NAME)
 }
 
 func TestListGroups(t *testing.T) {
@@ -344,7 +344,7 @@ func TestListGroups(t *testing.T) {
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	new(SCIMGroupsService).ListEntities(ctx, 3, "myfilter")
 	assertOnlyInfoContains(t, ctx, `id: 6789`)
-	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_GROUP_NAME)
+	assertOnlyInfoContains(t, ctx, "displayName: "+DEFAULT_GROUP_NAME)
 }
 
 // Tests for ROLES
@@ -356,5 +356,5 @@ func TestListRoles(t *testing.T) {
 	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
 	new(SCIMRolesService).ListEntities(ctx, 3, "myfilter")
 	assertOnlyInfoContains(t, ctx, `id: 123`)
-	assertOnlyInfoContains(t, ctx, "displayName: " + DEFAULT_ROLE_NAME)
+	assertOnlyInfoContains(t, ctx, "displayName: "+DEFAULT_ROLE_NAME)
 }

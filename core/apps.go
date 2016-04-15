@@ -28,9 +28,9 @@ type jsonMarshalTester string
 func (jsonMarshalTester) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("json marshal error")
 }
+
 // the IDM application service
 type IDMApplicationService struct {
-
 }
 
 type priamApp struct {
@@ -61,7 +61,6 @@ type itemResponse struct {
 	Links map[string]interface{}   `json:"_links,omitempty" yaml:"_links,omitempty"`
 	Items []map[string]interface{} `json:",omitempty" yaml:",omitempty"`
 }
-
 
 // Display application info
 func (service IDMApplicationService) Display(ctx *HttpContext, appName string) {
@@ -226,7 +225,7 @@ func appGet(ctx *HttpContext, name string) {
 	} else if app, err := getAppByUuid(ctx, uuid, mtype); err != nil {
 		ctx.log.err("Error getting app info by uuid: %v\n", err)
 	} else {
-		ctx.log.pp("App " + name, app)
+		ctx.log.pp("App "+name, app)
 	}
 }
 

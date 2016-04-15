@@ -29,7 +29,6 @@ type SCIMGroupsService struct{}
 
 // SCIM implementation of the roles service
 type SCIMRolesService struct {
-
 }
 
 const coreSchemaURN = "urn:scim:schemas:core:1.0"
@@ -82,7 +81,7 @@ func (userService SCIMUsersService) LoadEntities(ctx *HttpContext, fileName stri
 	} else {
 		for k, v := range newUsers {
 			if err := userService.AddEntity(ctx, &v); err != nil {
-				ctx.log.err("Error adding user, line %d, name %s: %v\n", k + 1, v.Name, err)
+				ctx.log.err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
 			} else {
 				ctx.log.info("added user %s\n", v.Name)
 			}
@@ -177,7 +176,7 @@ func scimAddUser(ctx *HttpContext, u *basicUser) error {
 	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
 	acct.Password = u.Pwd
 	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
-	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name + "@example.com")}}
+	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
 	ctx.log.pp("add user: ", acct)
 	return ctx.request("POST", "scim/Users", acct, acct)
 }
