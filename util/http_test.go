@@ -12,21 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package main
+package util
 
 import (
-	"os"
-	"path/filepath"
-	"priam/cli"
-	"strings"
+	"github.com/stretchr/testify/assert"
+	. "priam/testaid"
+	"testing"
 )
 
-func main() {
-	appName := filepath.Base(os.Args[0])
-	defaultCfgFile := filepath.Join(os.Getenv("HOME"), ".priam.yaml")
-	if strings.HasPrefix(appName, "cf-") {
-		cfplugin(appName, defaultCfgFile)
-	} else {
-		cli.Priam(os.Args, defaultCfgFile, os.Stdin, os.Stdout, os.Stderr)
+func TestHttpGet(t *testing.T) {
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		assert.Empty(t, req.Input)
+		return &TstReply{Output: "ok", ContentType: "text/plain"}
 	}
+	testpath, output, expected := "/testpath", "", "ok"
+	srv := StartTstServer(t, map[string]TstHandler{"GET" + testpath: h})
+	ctx := NewHttpContext(NewLogr(), srv.URL, "", "")
+	err := ctx.Request("GET", testpath, nil, &output)
+	assert.Nil(t, err)
+	assert.Equal(t, expected, output)
 }

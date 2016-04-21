@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package cli
 
 import (
-	"code.google.com/p/gopass"
+	"github.com/howeyc/gopass"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"io"
 	"path/filepath"
+	. "priam/core"
+	. "priam/util"
 	"strings"
 )
 
@@ -36,14 +38,15 @@ var rolesService DirectoryService = &SCIMRolesService{}
 var appsService ApplicationService = &IDMApplicationService{}
 
 func getPwd(prompt string) string {
-	if s, err := gopass.GetPass(prompt); err != nil {
+	fmt.Printf("%s", prompt)
+	if s, err := gopass.GetPasswd(); err != nil {
 		panic(err)
 	} else {
-		return s
+		return string(s)
 	}
 }
 
-func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
+func getArgOrPassword(log *Logr, prompt, arg string, repeat bool) string {
 	if arg != "" {
 		return arg
 	}
@@ -51,32 +54,32 @@ func getArgOrPassword(log *logr, prompt, arg string, repeat bool) string {
 		if pwd := getPwd(prompt + ": "); !repeat || pwd == getPwd(prompt+" again: ") {
 			return pwd
 		}
-		log.info(prompt + "s didn't match. Try again.")
+		log.Info(prompt + "s didn't match. Try again.")
 	}
 }
 
-func initCtx(cfg *config, authn bool) *HttpContext {
+func initCtx(cfg *Config, authn bool) *HttpContext {
 	if cfg.CurrentTarget == "" {
-		cfg.log.err("Error: no target set\n")
+		cfg.Log.Err("Error: no target set\n")
 		return nil
 	}
 	tgt := cfg.Targets[cfg.CurrentTarget]
-	ctx := newHttpContext(cfg.log, tgt.Host, vidmBasePath, vidmBaseMediaType)
+	ctx := NewHttpContext(cfg.Log, tgt.Host, vidmBasePath, vidmBaseMediaType)
 	if authn {
-		if err := ctx.clientCredsGrant(vidmTokenPath, tgt.ClientID, tgt.ClientSecret); err != nil {
-			cfg.log.err("Error getting access token: %v\n", err)
+		if err := ctx.ClientCredsGrant(vidmTokenPath, tgt.ClientID, tgt.ClientSecret); err != nil {
+			cfg.Log.Err("Error getting access token: %v\n", err)
 			return nil
 		}
 	}
 	return ctx
 }
 
-func initArgs(cfg *config, c *cli.Context, minArgs, maxArgs int, validateArgs func([]string) bool) []string {
+func initArgs(cfg *Config, c *cli.Context, minArgs, maxArgs int, validateArgs func([]string) bool) []string {
 	args := c.Args()
 	if len(args) < minArgs {
-		cfg.log.err("\nInput Error: at least %d arguments must be given\n\n", minArgs)
+		cfg.Log.Err("\nInput Error: at least %d arguments must be given\n\n", minArgs)
 	} else if maxArgs >= 0 && len(args) > maxArgs {
-		cfg.log.err("\nInput Error: at most %d arguments can be given\n\n", maxArgs)
+		cfg.Log.Err("\nInput Error: at most %d arguments can be given\n\n", maxArgs)
 	} else {
 
 		for i := len(args); i < maxArgs; i++ {
@@ -90,7 +93,7 @@ func initArgs(cfg *config, c *cli.Context, minArgs, maxArgs int, validateArgs fu
 	return nil
 }
 
-func initCmd(cfg *config, c *cli.Context, minArgs, maxArgs int, authn bool, validateArgs func([]string) bool) (args []string, ctx *HttpContext) {
+func initCmd(cfg *Config, c *cli.Context, minArgs, maxArgs int, authn bool, validateArgs func([]string) bool) (args []string, ctx *HttpContext) {
 	args = initArgs(cfg, c, minArgs, maxArgs, validateArgs)
 	if args != nil {
 		ctx = initCtx(cfg, authn)
@@ -98,7 +101,7 @@ func initCmd(cfg *config, c *cli.Context, minArgs, maxArgs int, authn bool, vali
 	return
 }
 
-func initUserCmd(cfg *config, c *cli.Context, getPwd bool) (*basicUser, *HttpContext) {
+func initUserCmd(cfg *Config, c *cli.Context, getPwd bool) (*BasicUser, *HttpContext) {
 	maxArgs := 1
 	if getPwd {
 		maxArgs = 2
@@ -107,26 +110,26 @@ func initUserCmd(cfg *config, c *cli.Context, getPwd bool) (*basicUser, *HttpCon
 	if args == nil {
 		return nil, nil
 	}
-	user := &basicUser{Name: args[0], Given: c.String("given"),
+	user := &BasicUser{Name: args[0], Given: c.String("given"),
 		Family: c.String("family"), Email: c.String("email")}
 	if getPwd {
-		user.Pwd = getArgOrPassword(cfg.log, "Password", args[1], true)
+		user.Pwd = getArgOrPassword(cfg.Log, "Password", args[1], true)
 	}
 	return user, initCtx(cfg, true)
 }
 
-func checkTarget(cfg *config) bool {
+func checkTarget(cfg *Config) bool {
 	ctx, output := initCtx(cfg, false), ""
 	if ctx == nil {
 		return false
 	}
-	if err := ctx.request("GET", "health", nil, &output); err != nil {
-		ctx.log.err("Error checking health of %s: \n", ctx.hostURL)
+	if err := ctx.Request("GET", "health", nil, &output); err != nil {
+		ctx.Log.Err("Error checking health of %s: \n", ctx.HostURL)
 		return false
 	}
-	ctx.log.debug("health check output:\n%s\n", output)
+	ctx.Log.Debug("health check output:\n%s\n", output)
 	if !strings.Contains(output, "allOk") {
-		ctx.log.err("Reply from %s does not meet health check\n", ctx.hostURL)
+		ctx.Log.Err("Reply from %s does not meet health check\n", ctx.HostURL)
 		return false
 	}
 	return true
@@ -134,7 +137,7 @@ func checkTarget(cfg *config) bool {
 
 func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW io.Writer) {
 	var err error
-	var cfg *config
+	var cfg *Config
 	cli.HelpFlag.Usage = "show help for given command or subcommand"
 	app := cli.NewApp()
 	app.Name, app.Usage = filepath.Base(args[0]), "a utility to interact with VMware Identity Manager"
@@ -150,16 +153,16 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 		cli.BoolFlag{Name: "verbose, V", Usage: "print verbose output"},
 	}
 	app.Before = func(c *cli.Context) (err error) {
-		log := &logr{debugOn: c.Bool("debug"), traceOn: c.Bool("trace"),
-			style: lyaml, verboseOn: c.Bool("verbose"), errw: errorW, outw: infoW}
+		log := &Logr{DebugOn: c.Bool("debug"), TraceOn: c.Bool("trace"),
+			Style: LYaml, VerboseOn: c.Bool("verbose"), ErrW: errorW, OutW: infoW}
 		if c.Bool("json") {
-			log.style = ljson
+			log.Style = LJson
 		}
 		fileName := c.String("config")
 		if fileName == "" {
 			fileName = defaultCfgFile
 		}
-		if cfg = newAppConfig(log, fileName); cfg == nil {
+		if cfg = NewConfig(log, fileName); cfg == nil {
 			return fmt.Errorf("app initialization failed\n")
 		}
 		return nil
@@ -226,13 +229,13 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Usage: "gets entitlements for a specific user, app, or group",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, func(args []string) bool {
-							res := hasString(args[0], []string{"group", "user", "app"})
+							res := HasString(args[0], []string{"group", "user", "app"})
 							if !res {
-								cfg.log.err("First parameter of 'get' must be user, group or app\n")
+								cfg.Log.Err("First parameter of 'get' must be user, group or app\n")
 							}
 							return res
 						}); ctx != nil {
-							getEntitlement(ctx, args[0], args[1])
+							GetEntitlement(ctx, args[0], args[1])
 						}
 					},
 				},
@@ -263,7 +266,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
 							// @todo Put this in the interface
-							scimMember(ctx, "Groups", "displayName", args[0], args[1], c.Bool("delete"))
+							ScimMember(ctx, "Groups", "displayName", args[0], args[1], c.Bool("delete"))
 						}
 					},
 				},
@@ -274,10 +277,10 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Action: func(c *cli.Context) {
 				if _, ctx := initCmd(cfg, c, 0, 0, false, nil); ctx != nil {
 					var outp interface{}
-					if err := ctx.request("GET", "health", nil, &outp); err != nil {
-						ctx.log.err("Error on Check Health: %v\n", err)
+					if err := ctx.Request("GET", "health", nil, &outp); err != nil {
+						ctx.Log.Err("Error on Check Health: %v\n", err)
 					} else {
-						ctx.log.pp("Health info", outp)
+						ctx.Log.PP("Health info", outp)
 					}
 				}
 			},
@@ -287,7 +290,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			ArgsUsage: "[key=value]...",
 			Action: func(c *cli.Context) {
 				if args, ctx := initCmd(cfg, c, 0, -1, true, nil); ctx != nil {
-					cmdLocalUserStore(ctx, args)
+					CmdLocalUserStore(ctx, args)
 				}
 			},
 		},
@@ -297,10 +300,10 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Description: "if clientSecret is not given as an argument, user will be prompted to enter it",
 			Action: func(c *cli.Context) {
 				if a, ctx := initCmd(cfg, c, 1, 2, false, nil); ctx != nil {
-					cfg.Targets[cfg.CurrentTarget] = target{Host: ctx.hostURL,
-						ClientID: a[0], ClientSecret: getArgOrPassword(cfg.log, "Secret", a[1], false)}
-					if ctx = initCtx(cfg, true); ctx != nil && cfg.save() {
-						cfg.log.info("clientID and clientSecret saved\n")
+					cfg.Targets[cfg.CurrentTarget] = Target{Host: ctx.HostURL,
+						ClientID: a[0], ClientSecret: getArgOrPassword(cfg.Log, "Secret", a[1], false)}
+					if ctx = initCtx(cfg, true); ctx != nil && cfg.Save() {
+						cfg.Log.Info("clientID and clientSecret saved\n")
 					}
 				}
 			},
@@ -309,7 +312,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Name: "policies", Usage: "get access policies", ArgsUsage: " ",
 			Action: func(c *cli.Context) {
 				if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
-					ctx.getPrintJson("Access Policies", "accessPolicies", "accesspolicyset.list")
+					ctx.GetPrintJson("Access Policies", "accessPolicies", "accesspolicyset.list")
 				}
 			},
 		},
@@ -337,7 +340,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					ArgsUsage: "<rolename> <username>", Flags: memberFlags,
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
-							scimMember(ctx, "Roles", "displayName", args[0], args[1], c.Bool("delete"))
+							ScimMember(ctx, "Roles", "displayName", args[0], args[1], c.Bool("delete"))
 						}
 					},
 				},
@@ -354,15 +357,15 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Action: func(c *cli.Context) {
 				if args := initArgs(cfg, c, 0, 2, nil); args != nil {
 					if c.Bool("delete-all") {
-						cfg.clear()
+						cfg.Clear()
 					} else if c.Bool("delete") {
-						cfg.deleteTarget(args[0], args[1])
+						cfg.DeleteTarget(args[0], args[1])
 					} else if args[0] == "" {
-						cfg.printTarget("current")
+						cfg.PrintTarget("current")
 					} else if c.Bool("force") {
-						cfg.setTarget(args[0], args[1], nil)
+						cfg.SetTarget(args[0], args[1], nil)
 					} else {
-						cfg.setTarget(args[0], args[1], checkTarget)
+						cfg.SetTarget(args[0], args[1], checkTarget)
 					}
 				}
 			},
@@ -371,7 +374,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Name: "targets", Usage: "display all targets", ArgsUsage: " ",
 			Action: func(c *cli.Context) {
 				if initArgs(cfg, c, 0, 0, nil) != nil {
-					cfg.listTargets()
+					cfg.ListTargets()
 				}
 			},
 		},
@@ -379,7 +382,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Name: "tenant", Usage: "gets/sets tenant configuration", ArgsUsage: "<tenantName> [key=value]...",
 			Action: func(c *cli.Context) {
 				if args, ctx := initCmd(cfg, c, 1, -1, true, nil); ctx != nil {
-					cmdTenantConfig(ctx, args[0], args[1:])
+					CmdTenantConfig(ctx, args[0], args[1:])
 				}
 			},
 		},
@@ -392,9 +395,9 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Action: func(c *cli.Context) {
 						if user, ctx := initUserCmd(cfg, c, true); ctx != nil {
 							if err := usersService.AddEntity(ctx, user); err != nil {
-								ctx.log.err("Error creating user '%s': %v\n", user.Name, err)
+								ctx.Log.Err("Error creating user '%s': %v\n", user.Name, err)
 							} else {
-								ctx.log.info(fmt.Sprintf("User '%s' successfully added\n", user.Name))
+								ctx.Log.Info(fmt.Sprintf("User '%s' successfully added\n", user.Name))
 							}
 						}
 					},
@@ -439,7 +442,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 					Description: "If password is not given as an argument, user will be prompted to enter it",
 					Action: func(c *cli.Context) {
 						if args, ctx := initCmd(cfg, c, 1, 2, true, nil); ctx != nil {
-							usersService.UpdateEntity(ctx, args[0], &basicUser{Pwd: getArgOrPassword(cfg.log, "Password", args[1], true)})
+							usersService.UpdateEntity(ctx, args[0], &BasicUser{Pwd: getArgOrPassword(cfg.Log, "Password", args[1], true)})
 						}
 					},
 				},
@@ -459,7 +462,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Description: "Supported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
 			Action: func(c *cli.Context) {
 				if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-					cmdSchema(ctx, args[0])
+					CmdSchema(ctx, args[0])
 				}
 			},
 		},

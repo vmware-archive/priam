@@ -15,9 +15,10 @@ limitations under the License.
 package core
 
 import (
-	"code.google.com/p/go-uuid/uuid"
+	"github.com/pborman/uuid"
 	"errors"
 	"fmt"
+	. "priam/util"
 	"strings"
 )
 
@@ -79,24 +80,24 @@ func (service IDMApplicationService) List(ctx *HttpContext, count int, filter st
 
 // Publish an application
 func (service IDMApplicationService) Publish(ctx *HttpContext, manifestFile string) {
-	publishApps(ctx, manifestFile)
+	PublishApps(ctx, manifestFile)
 }
 
 func accessPolicyId(ctx *HttpContext, name string) string {
 	outp := &itemResponse{}
-	ctx.accept("accesspolicyset.list")
-	if err := ctx.request("GET", "accessPolicies", nil, &outp); err != nil {
-		ctx.log.err("Error getting access policies: %v\n", err)
+	ctx.Accept("accesspolicyset.list")
+	if err := ctx.Request("GET", "accessPolicies", nil, &outp); err != nil {
+		ctx.Log.Err("Error getting access policies: %v\n", err)
 		return ""
 	}
 	for _, item := range outp.Items {
-		if name == "" && item["base"] == true || caselessEqual(name, item["name"]) {
+		if name == "" && item["base"] == true || CaselessEqual(name, item["name"]) {
 			if s, ok := item["uuid"].(string); ok {
 				return s
 			}
 		}
 	}
-	ctx.log.err("Could not find access policy uuid\n")
+	ctx.Log.Err("Could not find access policy uuid\n")
 	return ""
 }
 
@@ -104,15 +105,15 @@ func accessPolicyId(ctx *HttpContext, name string) string {
 // output uuid of existing app with the input uuid or uuid of first app with name
 func checkAppExists(ctx *HttpContext, name, uuid string) (outid string, err error) {
 	outp := &itemResponse{}
-	ctx.accept("catalog.summary.list").contentType("catalog.search")
-	if err = ctx.request("POST", "catalogitems/search?pageSize=10000", "{}", &outp); err == nil {
+	ctx.Accept("catalog.summary.list").ContentType("catalog.search")
+	if err = ctx.Request("POST", "catalogitems/search?pageSize=10000", "{}", &outp); err == nil {
 		for _, item := range outp.Items {
-			if caseEqual(uuid, item["uuid"]) {
+			if CaseEqual(uuid, item["uuid"]) {
 				outid = uuid
 				return
 			}
-			if caselessEqual(name, item["name"]) && outid == "" {
-				outid = interfaceToString(item["uuid"])
+			if CaselessEqual(name, item["name"]) && outid == "" {
+				outid = InterfaceToString(item["uuid"])
 			}
 		}
 	}
@@ -120,11 +121,11 @@ func checkAppExists(ctx *HttpContext, name, uuid string) (outid string, err erro
 }
 
 func getAppUuid(ctx *HttpContext, name string) (uuid, mtype string, err error) {
-	inp, outp := fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(name)), new(itemResponse)
-	ctx.accept("catalog.summary.list").contentType("catalog.search")
-	if err = ctx.request("POST", "catalogitems/search?pageSize=10000", &inp, &outp); err == nil {
+	inp, outp := fmt.Sprintf(`{"nameFilter":"%s"}`, EscapeQuotes(name)), new(itemResponse)
+	ctx.Accept("catalog.summary.list").ContentType("catalog.search")
+	if err = ctx.Request("POST", "catalogitems/search?pageSize=10000", &inp, &outp); err == nil {
 		for _, item := range outp.Items {
-			if u, ok := item["uuid"].(string); ok && caselessEqual(name, item["name"]) {
+			if u, ok := item["uuid"].(string); ok && CaselessEqual(name, item["name"]) {
 				if uuid != "" {
 					err = fmt.Errorf("Multiple apps with name \"%s\"", name)
 					return
@@ -144,17 +145,17 @@ func getAppUuid(ctx *HttpContext, name string) (uuid, mtype string, err error) {
 
 func getAppByUuid(ctx *HttpContext, uuid, mtype string) (app map[string]interface{}, err error) {
 	app = make(map[string]interface{})
-	err = ctx.accept(mtype).request("GET", fmt.Sprintf("catalogitems/%s", uuid), nil, &app)
+	err = ctx.Accept(mtype).Request("GET", fmt.Sprintf("catalogitems/%s", uuid), nil, &app)
 	return
 }
 
-func publishApps(ctx *HttpContext, manifile string) {
+func PublishApps(ctx *HttpContext, manifile string) {
 	if manifile == "" {
 		manifile = "manifest.yaml"
 	}
 	var manifest struct{ Applications []manifestApp }
-	if err := getYamlFile(manifile, &manifest); err != nil {
-		ctx.log.err("Error getting manifest: %v\n", err)
+	if err := GetYamlFile(manifile, &manifest); err != nil {
+		ctx.Log.Err("Error getting manifest: %v\n", err)
 		return
 	}
 	for _, v := range manifest.Applications {
@@ -164,19 +165,19 @@ func publishApps(ctx *HttpContext, manifile string) {
 		}
 		if w.AccessPolicySetUuid == "" {
 			if w.AccessPolicySetUuid = accessPolicyId(ctx, w.AccessPolicy); w.AccessPolicySetUuid == "" {
-				ctx.log.err("Skipping app %s\n", w.Name)
+				ctx.Log.Err("Skipping app %s\n", w.Name)
 				continue
 			}
 			w.AccessPolicy = ""
 		} else if w.AccessPolicy != "" {
-			ctx.log.err("Invalid manifest for %s: both accessPolicy \"%s\" and AccessPolicySetUuid \"%s\" cannot be specified\n",
+			ctx.Log.Err("Invalid manifest for %s: both accessPolicy \"%s\" and AccessPolicySetUuid \"%s\" cannot be specified\n",
 				w.Name, w.AccessPolicy, w.AccessPolicySetUuid)
 			continue
 		}
 		method, path, errVerb, successVerb := "POST", "catalogitems", "adding", "added"
 		id, err := checkAppExists(ctx, w.Name, w.Uuid)
 		if err != nil {
-			ctx.log.err("Error checking if app %s exists: %v\n", w.Name, err)
+			ctx.Log.Err("Error checking if app %s exists: %v\n", w.Name, err)
 			continue
 		}
 		if id != "" {
@@ -189,21 +190,21 @@ func publishApps(ctx *HttpContext, manifile string) {
 		mtype := "catalog." + strings.ToLower(w.CatalogItemType)
 		iconFile, entitleGrp, entitleUser := w.IconFile, w.EntitleGroup, w.EntitleUser
 		w.IconFile, w.EntitleGroup, w.EntitleUser = "", "", ""
-		content, err := toJson(w)
+		content, err := ToJson(w)
 		if err != nil {
-			ctx.log.err("Error converting app %s to JSON: %v\n", w.Name, err)
+			ctx.Log.Err("Error converting app %s to JSON: %v\n", w.Name, err)
 			continue
 		}
 		if iconFile == "" {
-			err = ctx.contentType(mtype).request(method, path, content, nil)
+			err = ctx.ContentType(mtype).Request(method, path, content, nil)
 		} else {
-			err = ctx.fileUploadRequest(method, path, "catalogitem", mtype, content, iconFile, nil)
+			err = ctx.FileUploadRequest(method, path, "catalogitem", mtype, content, iconFile, nil)
 		}
 		if err != nil {
-			ctx.log.err("Error %s %s to the catalog: %v\n", errVerb, w.Name, err)
+			ctx.Log.Err("Error %s %s to the catalog: %v\n", errVerb, w.Name, err)
 			continue
 		}
-		ctx.log.info("App \"%s\" %s to the catalog\n", w.Name, successVerb)
+		ctx.Log.Info("App \"%s\" %s to the catalog\n", w.Name, successVerb)
 		maybeEntitle(ctx, w.Uuid, entitleGrp, "group", "displayName", w.Name)
 		maybeEntitle(ctx, w.Uuid, entitleUser, "user", "userName", w.Name)
 	}
@@ -211,21 +212,21 @@ func publishApps(ctx *HttpContext, manifile string) {
 
 func appDelete(ctx *HttpContext, name string) {
 	if uuid, _, err := getAppUuid(ctx, name); err != nil {
-		ctx.log.err("Error getting app info by name: %v\n", err)
-	} else if err := ctx.request("DELETE", fmt.Sprintf("catalogitems/%s", uuid), nil, nil); err != nil {
-		ctx.log.err("Error deleting app %s from catalog: %v\n", name, err)
+		ctx.Log.Err("Error getting app info by name: %v\n", err)
+	} else if err := ctx.Request("DELETE", fmt.Sprintf("catalogitems/%s", uuid), nil, nil); err != nil {
+		ctx.Log.Err("Error deleting app %s from catalog: %v\n", name, err)
 	} else {
-		ctx.log.info("app %s deleted\n", name)
+		ctx.Log.Info("app %s deleted\n", name)
 	}
 }
 
 func appGet(ctx *HttpContext, name string) {
 	if uuid, mtype, err := getAppUuid(ctx, name); err != nil {
-		ctx.log.err("Error getting app info by name: %v\n", err)
+		ctx.Log.Err("Error getting app info by name: %v\n", err)
 	} else if app, err := getAppByUuid(ctx, uuid, mtype); err != nil {
-		ctx.log.err("Error getting app info by uuid: %v\n", err)
+		ctx.Log.Err("Error getting app info by uuid: %v\n", err)
 	} else {
-		ctx.log.pp("App "+name, app)
+		ctx.Log.PP("App "+name, app)
 	}
 }
 
@@ -235,13 +236,13 @@ func appList(ctx *HttpContext, count int, filter string) {
 	}
 	path, input := fmt.Sprintf("catalogitems/search?pageSize=%v", count), "{}"
 	if filter != "" {
-		input = fmt.Sprintf(`{"nameFilter":"%s"}`, escapeQuotes(filter))
+		input = fmt.Sprintf(`{"nameFilter":"%s"}`, EscapeQuotes(filter))
 	}
 	body := make(map[string]interface{})
-	ctx.accept("catalog.summary.list").contentType("catalog.search")
-	if err := ctx.request("POST", path, input, &body); err != nil {
-		ctx.log.err("Error: %v\n", err)
+	ctx.Accept("catalog.summary.list").ContentType("catalog.search")
+	if err := ctx.Request("POST", path, input, &body); err != nil {
+		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.log.ppf("Apps", body["items"], "Apps", "name", "description", "catalogItemType", "uuid")
+		ctx.Log.PPF("Apps", body["items"], "Apps", "name", "description", "catalogItemType", "uuid")
 	}
 }

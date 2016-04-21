@@ -12,21 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package main
+package cli
 
 import (
-	"os"
-	"path/filepath"
-	"priam/cli"
-	"strings"
+	"io"
+	"priam/core"
+	"priam/util"
 )
 
-func main() {
-	appName := filepath.Base(os.Args[0])
-	defaultCfgFile := filepath.Join(os.Getenv("HOME"), ".priam.yaml")
-	if strings.HasPrefix(appName, "cf-") {
-		cfplugin(appName, defaultCfgFile)
-	} else {
-		cli.Priam(os.Args, defaultCfgFile, os.Stdin, os.Stdout, os.Stderr)
+// publish command
+func PriamCfPublish(trace bool, configFile, manifestFile string, errw, outw io.Writer) {
+
+	log := &util.Logr{TraceOn: trace, ErrW: errw, OutW: outw}
+
+	if cfg := util.NewConfig(log, configFile); cfg != nil {
+		if ctx := initCtx(cfg, true); ctx != nil {
+			core.PublishApps(ctx, manifestFile)
+		}
 	}
 }

@@ -16,6 +16,7 @@ package core
 
 import (
 	"fmt"
+	. "priam/util"
 	"strings"
 )
 
@@ -41,22 +42,22 @@ func maybeEntitle(ctx *HttpContext, itemID, subjName, subjType, nameAttr, appNam
 			err = entitleSubject(ctx, subjID, strings.ToUpper(subjType+"s"), itemID)
 		}
 		if err != nil {
-			ctx.log.err("Could not entitle %s \"%s\" to app \"%s\", error: %v\n", subjType, subjName, appName, err)
+			ctx.Log.Err("Could not entitle %s \"%s\" to app \"%s\", error: %v\n", subjType, subjName, appName, err)
 		} else {
-			ctx.log.info("Entitled %s \"%s\" to app \"%s\".\n", subjType, subjName, appName)
+			ctx.Log.Info("Entitled %s \"%s\" to app \"%s\".\n", subjType, subjName, appName)
 		}
 	}
 }
 
 func entitleSubject(ctx *HttpContext, subjectId, subjectType, itemID string) error {
 	inp := fmt.Sprintf(fmtEntitlement, itemID, subjectType, subjectId)
-	ctx.accept("bulk.sync.response").contentType("entitlements.definition.bulk")
-	return ctx.request("POST", "entitlements/definitions", inp, nil)
+	ctx.Accept("bulk.sync.response").ContentType("entitlements.definition.bulk")
+	return ctx.Request("POST", "entitlements/definitions", inp, nil)
 }
 
 // Get entitlement for the given user whose username is 'name'
 // rtypeName has been validated before and is one of 'user', 'group' or 'app'
-func getEntitlement(ctx *HttpContext, rtypeName, name string) {
+func GetEntitlement(ctx *HttpContext, rtypeName, name string) {
 	var resType, id string
 	body := make(map[string]interface{})
 	switch rtypeName {
@@ -71,10 +72,10 @@ func getEntitlement(ctx *HttpContext, rtypeName, name string) {
 		return
 	}
 	path := fmt.Sprintf("entitlements/definitions/%s/%s", resType, id)
-	if err := ctx.request("GET", path, nil, &body); err != nil {
-		ctx.log.err("Error: %v\n", err)
+	if err := ctx.Request("GET", path, nil, &body); err != nil {
+		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.log.ppf("Entitlements", body["items"], "Entitlements",
+		ctx.Log.PPF("Entitlements", body["items"], "Entitlements",
 			"catalogItemId", "subjectType", "subjectId", "activationPolicy")
 	}
 }

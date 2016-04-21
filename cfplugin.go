@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"github.com/cloudfoundry/cli/plugin"
 	"os"
-	"priam/core"
+	"priam/cli"
 	"strings"
 )
 
@@ -85,7 +85,7 @@ func (c *CfPriam) Publish(cliConn plugin.CliConnection, args []string) {
 
 	// when cf execs a plugin it sets stdin and stdout but not stderr, so pass
 	// stdout for outw and errw
-	core.PriamCfPublish(*trace, c.defaultConfigFile, *manifile, os.Stdout, os.Stdout)
+	cli.PriamCfPublish(*trace, c.defaultConfigFile, *manifile, os.Stdout, os.Stdout)
 }
 
 func (c *CfPriam) Unpublish(args []string) {

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	. "priam/util"
 	"strconv"
 )
 
@@ -28,13 +29,12 @@ type SCIMUsersService struct{}
 type SCIMGroupsService struct{}
 
 // SCIM implementation of the roles service
-type SCIMRolesService struct {
-}
+type SCIMRolesService struct {}
 
 const coreSchemaURN = "urn:scim:schemas:core:1.0"
 
 // Define user information
-type basicUser struct {
+type BasicUser struct {
 	Name, Given, Family, Email, Pwd string `yaml:",omitempty,flow"`
 }
 
@@ -75,26 +75,26 @@ func (userService SCIMUsersService) DisplayEntity(ctx *HttpContext, username str
 }
 
 func (userService SCIMUsersService) LoadEntities(ctx *HttpContext, fileName string) {
-	var newUsers []basicUser
-	if err := getYamlFile(fileName, &newUsers); err != nil {
-		ctx.log.err("could not read file of bulk users: %v\n", err)
+	var newUsers []BasicUser
+	if err := GetYamlFile(fileName, &newUsers); err != nil {
+		ctx.Log.Err("could not read file of bulk users: %v\n", err)
 	} else {
 		for k, v := range newUsers {
 			if err := userService.AddEntity(ctx, &v); err != nil {
-				ctx.log.err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
+				ctx.Log.Err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
 			} else {
-				ctx.log.info("added user %s\n", v.Name)
+				ctx.Log.Info("added user %s\n", v.Name)
 			}
 		}
 	}
 }
 
 func (userService SCIMUsersService) AddEntity(ctx *HttpContext, entity interface{}) error {
-	return scimAddUser(ctx, entity.(*basicUser))
+	return scimAddUser(ctx, entity.(*BasicUser))
 }
 
 func (userService SCIMUsersService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
-	scimUpdateUser(ctx, name, entity.(*basicUser))
+	scimUpdateUser(ctx, name, entity.(*BasicUser))
 }
 
 func (userService SCIMUsersService) ListEntities(ctx *HttpContext, count int, filter string) {
@@ -117,7 +117,7 @@ func (groupService SCIMGroupsService) DisplayEntity(ctx *HttpContext, name strin
 
 func (groupService SCIMGroupsService) LoadEntities(ctx *HttpContext, fileName string) {
 	// not implemented
-	ctx.log.err("Not implemented.")
+	ctx.Log.Err("Not implemented.")
 }
 
 func (groupService SCIMGroupsService) AddEntity(ctx *HttpContext, entity interface{}) error {
@@ -131,12 +131,12 @@ func (groupService SCIMGroupsService) ListEntities(ctx *HttpContext, count int, 
 
 func (groupService SCIMGroupsService) DeleteEntity(ctx *HttpContext, username string) {
 	// not implemented
-	ctx.log.err("Not implemented.")
+	ctx.Log.Err("Not implemented.")
 }
 
 func (groupService SCIMGroupsService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
 	// not implemented
-	ctx.log.err("Not implemented.")
+	ctx.Log.Err("Not implemented.")
 }
 
 // -- ROLES
@@ -148,7 +148,7 @@ func (roleService SCIMRolesService) DisplayEntity(ctx *HttpContext, name string)
 
 func (roleService SCIMRolesService) LoadEntities(ctx *HttpContext, fileName string) {
 	// not implemented
-	ctx.log.err("Not implemented.")
+	ctx.Log.Err("Not implemented.")
 }
 
 func (roleService SCIMRolesService) AddEntity(ctx *HttpContext, entity interface{}) error {
@@ -162,26 +162,26 @@ func (roleService SCIMRolesService) ListEntities(ctx *HttpContext, count int, fi
 
 func (roleService SCIMRolesService) DeleteEntity(ctx *HttpContext, username string) {
 	// not implemented
-	ctx.log.err("Not implemented.")
+	ctx.Log.Err("Not implemented.")
 }
 
 func (roleService SCIMRolesService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
 	// not implemented
-	ctx.log.err("Not implemented.")
+	ctx.Log.Err("Not implemented.")
 }
 
 // -- SCIM common code
 
-func scimAddUser(ctx *HttpContext, u *basicUser) error {
+func scimAddUser(ctx *HttpContext, u *BasicUser) error {
 	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
 	acct.Password = u.Pwd
-	acct.Name = &nameAttr{FamilyName: stringOrDefault(u.Family, u.Name), GivenName: stringOrDefault(u.Given, u.Name)}
-	acct.Emails = []dispValue{{Value: stringOrDefault(u.Email, u.Name+"@example.com")}}
-	ctx.log.pp("add user: ", acct)
-	return ctx.request("POST", "scim/Users", acct, acct)
+	acct.Name = &nameAttr{FamilyName: StringOrDefault(u.Family, u.Name), GivenName: StringOrDefault(u.Given, u.Name)}
+	acct.Emails = []dispValue{{Value: StringOrDefault(u.Email, u.Name+"@example.com")}}
+	ctx.Log.PP("add user: ", acct)
+	return ctx.Request("POST", "scim/Users", acct, acct)
 }
 
-func scimUpdateUser(ctx *HttpContext, name string, u *basicUser) {
+func scimUpdateUser(ctx *HttpContext, name string, u *BasicUser) {
 	if id := scimNameToID(ctx, "Users", "userName", name); id != "" {
 		acct := userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
 		if u.Pwd != "" {
@@ -195,9 +195,9 @@ func scimUpdateUser(ctx *HttpContext, name string, u *basicUser) {
 		}
 
 		if err := scimPatch(ctx, "Users", id, &acct); err != nil {
-			ctx.log.err("Error updating user \"%s\": %v\n", name, err)
+			ctx.Log.Err("Error updating user \"%s\": %v\n", name, err)
 		} else {
-			ctx.log.info("User \"%s\" updated\n", name)
+			ctx.Log.Info("User \"%s\" updated\n", name)
 		}
 	}
 }
@@ -210,11 +210,11 @@ func scimGetByName(ctx *HttpContext, resType, nameAttr, name string) (item map[s
 	}{}
 	vals := url.Values{"count": {"10000"}, "filter": {fmt.Sprintf("%s eq \"%s\"", nameAttr, name)}}
 	path := fmt.Sprintf("scim/%v?%v", resType, vals.Encode())
-	if err = ctx.request("GET", path, nil, &output); err != nil {
+	if err = ctx.Request("GET", path, nil, &output); err != nil {
 		return
 	}
 	for _, v := range output.Resources {
-		if caselessEqual(name, v[nameAttr]) {
+		if CaselessEqual(name, v[nameAttr]) {
 			if item != nil {
 				return nil, fmt.Errorf("multiple %v found named \"%s\"", resType, name)
 			} else {
@@ -250,29 +250,29 @@ func scimList(ctx *HttpContext, count int, filter string, resType string, summar
 	}
 	path := fmt.Sprintf("scim/%s?%v", resType, vals.Encode())
 	outp := make(map[string]interface{})
-	if err := ctx.request("GET", path, nil, &outp); err != nil {
-		ctx.log.err("Error getting SCIM resources of type %s: %v\n", resType, err)
+	if err := ctx.Request("GET", path, nil, &outp); err != nil {
+		ctx.Log.Err("Error getting SCIM resources of type %s: %v\n", resType, err)
 	} else {
-		ctx.log.ppf(resType, outp["Resources"], summaryLabels...)
+		ctx.Log.PPF(resType, outp["Resources"], summaryLabels...)
 	}
 }
 
 func scimPatch(ctx *HttpContext, resType, id string, input interface{}) error {
-	ctx.header("X-HTTP-Method-Override", "PATCH")
+	ctx.Header("X-HTTP-Method-Override", "PATCH")
 	path := fmt.Sprintf("scim/%s/%s", resType, id)
-	return ctx.request("POST", path, input, nil)
+	return ctx.Request("POST", path, input, nil)
 }
 
 func scimNameToID(ctx *HttpContext, resType, nameAttr, name string) string {
 	if id, err := scimGetID(ctx, resType, nameAttr, name); err == nil {
 		return id
 	} else {
-		ctx.log.err("Error getting SCIM %s ID of %s: %v\n", resType, name, err)
+		ctx.Log.Err("Error getting SCIM %s ID of %s: %v\n", resType, name, err)
 	}
 	return ""
 }
 
-func scimMember(ctx *HttpContext, resType, nameAttr, rname, uname string, remove bool) {
+func ScimMember(ctx *HttpContext, resType, nameAttr, rname, uname string, remove bool) {
 	rid, uid := scimNameToID(ctx, resType, nameAttr, rname), scimNameToID(ctx, "Users", "userName", uname)
 	if rid == "" || uid == "" {
 		return
@@ -282,27 +282,27 @@ func scimMember(ctx *HttpContext, resType, nameAttr, rname, uname string, remove
 		patch.Members[0].Operation = "delete"
 	}
 	if err := scimPatch(ctx, resType, rid, &patch); err != nil {
-		ctx.log.err("Error updating SCIM resource %s of type %s: %v\n", rname, resType, err)
+		ctx.Log.Err("Error updating SCIM resource %s of type %s: %v\n", rname, resType, err)
 	} else {
-		ctx.log.info("Updated SCIM resource %s of type %s\n", rname, resType)
+		ctx.Log.Info("Updated SCIM resource %s of type %s\n", rname, resType)
 	}
 }
 
 func scimGet(ctx *HttpContext, resType, nameAttr, rname string) {
 	if item, err := scimGetByName(ctx, resType, nameAttr, rname); err != nil {
-		ctx.log.err("Error getting SCIM resource named %s of type %s: %v\n", rname, resType, err)
+		ctx.Log.Err("Error getting SCIM resource named %s of type %s: %v\n", rname, resType, err)
 	} else {
-		ctx.log.pp("", item)
+		ctx.Log.PP("", item)
 	}
 }
 
 func scimDelete(ctx *HttpContext, resType, nameAttr, rname string) {
 	if id := scimNameToID(ctx, resType, nameAttr, rname); id != "" {
 		path := fmt.Sprintf("scim/%s/%s", resType, id)
-		if err := ctx.request("DELETE", path, nil, nil); err != nil {
-			ctx.log.err("Error deleting %s %s: %v\n", resType, rname, err)
+		if err := ctx.Request("DELETE", path, nil, nil); err != nil {
+			ctx.Log.Err("Error deleting %s %s: %v\n", resType, rname, err)
 		} else {
-			ctx.log.info("%s \"%s\" deleted\n", resType, rname)
+			ctx.Log.Info("%s \"%s\" deleted\n", resType, rname)
 		}
 	}
 }

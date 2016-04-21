@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package util
 
 import (
 	"bytes"
@@ -24,64 +24,64 @@ import (
 	"strings"
 )
 
-type logStyle int
+type LogStyle int
 
 const (
-	ljson logStyle = iota
-	lyaml
+	LJson LogStyle = iota
+	LYaml
 )
 
-type logr struct {
-	debugOn, traceOn, verboseOn bool
-	style                       logStyle
-	errw, outw                  io.Writer
+type Logr struct {
+	DebugOn, TraceOn, VerboseOn bool
+	Style                       LogStyle
+	ErrW, OutW                  io.Writer
 }
 
-func newLogr() *logr {
-	return &logr{false, false, false, lyaml, os.Stderr, os.Stdout}
+func NewLogr() *Logr {
+	return &Logr{false, false, false, LYaml, os.Stderr, os.Stdout}
 }
 
-func (l *logr) clearBuffers() *logr {
-	l.errw, l.outw = &bytes.Buffer{}, &bytes.Buffer{}
+func (l *Logr) ClearBuffers() *Logr {
+	l.ErrW, l.OutW = &bytes.Buffer{}, &bytes.Buffer{}
 	return l
 }
 
-func newBufferedLogr() *logr {
-	return (&logr{false, false, false, lyaml, nil, nil}).clearBuffers()
+func NewBufferedLogr() *Logr {
+	return (&Logr{false, false, false, LYaml, nil, nil}).ClearBuffers()
 }
 
-func (l *logr) infoString() string {
-	return l.outw.(*bytes.Buffer).String()
+func (l *Logr) InfoString() string {
+	return l.OutW.(*bytes.Buffer).String()
 }
 
-func (l *logr) errString() string {
-	return l.errw.(*bytes.Buffer).String()
+func (l *Logr) ErrString() string {
+	return l.ErrW.(*bytes.Buffer).String()
 }
 
-func (l *logr) info(format string, args ...interface{}) {
-	fmt.Fprintf(l.outw, format, args...)
+func (l *Logr) Info(format string, args ...interface{}) {
+	fmt.Fprintf(l.OutW, format, args...)
 }
 
-func (l *logr) err(format string, args ...interface{}) {
-	fmt.Fprintf(l.errw, format, args...)
+func (l *Logr) Err(format string, args ...interface{}) {
+	fmt.Fprintf(l.ErrW, format, args...)
 }
 
-func (l *logr) debug(format string, args ...interface{}) {
-	if l.debugOn {
-		fmt.Fprintf(l.outw, format, args...)
+func (l *Logr) Debug(format string, args ...interface{}) {
+	if l.DebugOn {
+		fmt.Fprintf(l.OutW, format, args...)
 	}
 }
 
-func (l *logr) trace(format string, args ...interface{}) {
-	if l.traceOn {
-		fmt.Fprintf(l.outw, format, args...)
+func (l *Logr) Trace(format string, args ...interface{}) {
+	if l.TraceOn {
+		fmt.Fprintf(l.OutW, format, args...)
 	}
 }
 
-func toStringWithStyle(ls logStyle, input interface{}) string {
+func ToStringWithStyle(ls LogStyle, input interface{}) string {
 	var err error
 	var outp []byte
-	if ls == lyaml {
+	if ls == LYaml {
 		outp, err = yaml.Marshal(input)
 	} else {
 		outp, err = json.MarshalIndent(input, "", "  ")
@@ -121,7 +121,7 @@ func parseIndent(p string) (index int) {
 //
 // returns true if something was printed
 //
-func (l *logr) filter(prefix string, info interface{}, filter []string) (printed bool) {
+func (l *Logr) Filter(prefix string, info interface{}, filter []string) (printed bool) {
 	thisPrefix, nextPrefix, indent := "", "", parseIndent(prefix)
 	printValue := func(key, sep string, value interface{}) {
 		if printed {
@@ -138,7 +138,7 @@ func (l *logr) filter(prefix string, info interface{}, filter []string) (printed
 			}
 			nextPrefix = fmt.Sprintf("%*s", indent, "")
 		}
-		if l.filter(thisPrefix, value, filter) {
+		if l.Filter(thisPrefix, value, filter) {
 			printed = true
 		}
 	}
@@ -154,21 +154,21 @@ func (l *logr) filter(prefix string, info interface{}, filter []string) (printed
 			}
 		}
 	default:
-		l.info("%s%v\n", prefix, inf)
+		l.Info("%s%v\n", prefix, inf)
 		printed = true
 	}
 	return
 }
 
-func (l *logr) pp(prefix string, input interface{}) {
-	l.info("---- %s ----\n%s", prefix, toStringWithStyle(l.style, input))
+func (l *Logr) PP(prefix string, input interface{}) {
+	l.Info("---- %s ----\n%s", prefix, ToStringWithStyle(l.Style, input))
 }
 
-func (l *logr) ppf(title string, info interface{}, filter ...string) {
-	if l.verboseOn || len(filter) == 0 {
-		l.pp(title, info)
+func (l *Logr) PPF(title string, info interface{}, filter ...string) {
+	if l.VerboseOn || len(filter) == 0 {
+		l.PP(title, info)
 	} else {
-		l.info("---- %s ----\n", title)
-		l.filter("", info, filter)
+		l.Info("---- %s ----\n", title)
+		l.Filter("", info, filter)
 	}
 }

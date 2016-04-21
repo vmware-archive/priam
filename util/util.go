@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package util
 
 import (
 	"strings"
 )
 
-func stringOrDefault(v, dfault string) string {
+func StringOrDefault(v, dfault string) string {
 	if v != "" {
 		return v
 	}
@@ -27,33 +27,33 @@ func stringOrDefault(v, dfault string) string {
 
 var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
 
-func escapeQuotes(s string) string {
+func EscapeQuotes(s string) string {
 	return quoteEscaper.Replace(s)
 }
 
-func interfaceToString(i interface{}) string {
+func InterfaceToString(i interface{}) string {
 	if s, ok := i.(string); ok {
 		return s
 	}
 	return ""
 }
 
-func caselessEqual(s string, i interface{}) bool {
+func CaselessEqual(s string, i interface{}) bool {
 	if t, ok := i.(string); ok {
 		return strings.EqualFold(s, t)
 	}
 	return false
 }
 
-func caseEqual(s string, i interface{}) bool {
+func CaseEqual(s string, i interface{}) bool {
 	if t, ok := i.(string); ok {
 		return s == t
 	}
 	return false
 }
 
-// Returns true if the given string is one of the strings in the given array, false otherwise
-func hasString(s string, a []string) bool {
+// HastString takes a string and an array of strings. Returns true if the given string is one of the strings in the given array, false otherwise
+func HasString(s string, a []string) bool {
 	for _, v := range a {
 		if v == s {
 			return true

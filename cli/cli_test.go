@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package cli
 
 import (
 	"bytes"
@@ -22,9 +22,15 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
+	. "priam/core"
+	"priam/mocks"
+	. "priam/testaid"
+	. "priam/util"
 	"strings"
 	"testing"
 )
+
+const YAML_USERS_FILE = "../resources/newusers.yaml"
 
 type UsersServiceMock struct {
 	mock.Mock
@@ -51,7 +57,7 @@ targets:
   staging:
     host: https://radio2.example.com
 `
-	return &tstCtx{appName: "testapp", cfg: stringOrDefault(cfg, sampleCfg)}
+	return &tstCtx{appName: "testapp", cfg: StringOrDefault(cfg, sampleCfg)}
 }
 
 func tstSrvTgt(url string) string {
@@ -59,24 +65,24 @@ func tstSrvTgt(url string) string {
 }
 
 // Helpers to get health handler
-func healthHandler(status bool) func(t *testing.T, req *tstReq) *tstReply {
-	return func(t *testing.T, req *tstReq) *tstReply {
-		assert.Empty(t, req.input)
+func healthHandler(status bool) func(t *testing.T, req *TstReq) *TstReply {
+	return func(t *testing.T, req *TstReq) *TstReply {
+		assert.Empty(t, req.Input)
 		if status {
-			return &tstReply{output: `{"allOk":true}`, contentType: "application/json"}
+			return &TstReply{Output: `{"allOk":true}`, ContentType: "application/json"}
 		}
-		return &tstReply{output: `{"somethingelse":true}`, contentType: "application/json"}
+		return &TstReply{Output: `{"somethingelse":true}`, ContentType: "application/json"}
 	}
 }
 
 // in these tests the clientID is "john" and the client secret is "travolta"
 // Adapted from tests written by Fanny, who apparently likes John Travolta
-func tstClientCredGrant(t *testing.T, req *tstReq) *tstReply {
+func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
 	const tokenReply = `{"token_type": "Bearer", "access_token": "testvalidtoken"}`
 	const basicAuthJohnTravolta = "Basic am9objp0cmF2b2x0YQ=="
-	assert.Equal(t, basicAuthJohnTravolta, req.authorization)
-	assert.Equal(t, "grant_type=client_credentials", req.input)
-	return &tstReply{output: tokenReply}
+	assert.Equal(t, basicAuthJohnTravolta, req.Authorization)
+	assert.Equal(t, "grant_type=client_credentials", req.Input)
+	return &TstReply{Output: tokenReply}
 }
 
 func tstSrvTgtWithAuth(url string) string {
@@ -214,7 +220,7 @@ func TestAddNewTargetWithName(t *testing.T) {
 }
 
 func TestAddNewTargetFailsIfHealthCheckFails(t *testing.T) {
-	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": ErrorHandler(500, "favourite 500 error")}
+	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(500, "favourite 500 error")}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", "radio2.example.com", "sassoon"); ctx != nil {
 		assert.Contains(t, ctx.err, "Error checking health of https://radio2.example.com")
@@ -222,7 +228,7 @@ func TestAddNewTargetFailsIfHealthCheckFails(t *testing.T) {
 }
 
 func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOkTrue(t *testing.T) {
-	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(false)}
+	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(false)}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
 		assert.Contains(t, ctx.err, "Reply from "+srv.URL+" does not meet health check")
@@ -230,7 +236,7 @@ func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOkTrue(t *testing.T) {
 }
 
 func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
-	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
+	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
 		assert.Contains(t, ctx.info, "new target is: sassoon, "+srv.URL)
@@ -238,7 +244,7 @@ func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
+	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "health"); ctx != nil {
 		assert.Contains(t, ctx.info, "allOk")
@@ -246,7 +252,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestExitIfHealthFails(t *testing.T) {
-	paths := map[string]tstHandler{"GET" + vidmBasePath + "health": ErrorHandler(404, "test health")}
+	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(404, "test health")}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "health"); ctx != nil {
 		assert.Contains(t, ctx.err, "test health")
@@ -267,11 +273,11 @@ func TestCanNotLoginWithTargetSetButNoOauthCreds(t *testing.T) {
 }
 
 func TestCanHandleBadLoginReply(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		assert.NotEmpty(t, req.input)
-		return &tstReply{output: "crap"}
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		assert.NotEmpty(t, req.Input)
+		return &TstReply{Output: "crap"}
 	}
-	paths := map[string]tstHandler{"POST" + vidmTokenPath: h}
+	paths := map[string]TstHandler{"POST" + vidmTokenPath: h}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
 		assert.Contains(t, ctx.err, "invalid")
@@ -279,7 +285,7 @@ func TestCanHandleBadLoginReply(t *testing.T) {
 }
 
 func TestCanLogin(t *testing.T) {
-	paths := map[string]tstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
+	paths := map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
 	srv := StartTstServer(t, paths)
 	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
 		assert.Contains(t, ctx.cfg, "clientid: john")
@@ -309,21 +315,21 @@ func TestCanNotIssueUserCommandWithTooManyArguments(t *testing.T) {
 // @param args the list of arguments for the command
 // @return The mock for users service.
 func testCliCommand(t *testing.T, args ...string) *tstCtx {
-	paths := map[string]tstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
+	paths := map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
 	srv := StartTstServer(t, paths)
 	return runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), args...)
 }
 
 // Helper to setup mock for the user service
-func setupUsersServiceMock() *MockDirectoryService {
-	usersServiceMock := new(MockDirectoryService)
+func setupUsersServiceMock() *mocks.DirectoryService {
+	usersServiceMock := new(mocks.DirectoryService)
 	usersService = usersServiceMock
 	return usersServiceMock
 }
 
 func TestCanAddUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("AddEntity", mock.Anything, &basicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(nil)
+	usersServiceMock.On("AddEntity", mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(nil)
 	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
 		assert.Contains(t, ctx.info, "User 'elsa' successfully added")
 	}
@@ -333,7 +339,7 @@ func TestCanAddUser(t *testing.T) {
 func TestDisplayErrorWhenAddUserFails(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("AddEntity",
-		mock.Anything, &basicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(errors.New("test"))
+		mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(errors.New("test"))
 	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
 		assert.Contains(t, ctx.err, "Error creating user 'elsa': test")
 	}
@@ -371,7 +377,7 @@ func TestCanListUsersWithFilter(t *testing.T) {
 func TestCanUpdateUserPassword(t *testing.T) {
 	newpassword := "friendsforever"
 	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &basicUser{Pwd: newpassword}).Return()
+	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &BasicUser{Pwd: newpassword}).Return()
 	testCliCommand(t, "user", "password", "elsa", newpassword)
 	usersServiceMock.AssertExpectations(t)
 }
@@ -381,7 +387,7 @@ func TestCanUpdateUserInfo(t *testing.T) {
 	newgiven := "elsa"
 	newfamily := "frozen"
 	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &basicUser{Name: "elsa", Family: newfamily, Email: newemail, Given: newgiven}).Return()
+	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &BasicUser{Name: "elsa", Family: newfamily, Email: newemail, Given: newgiven}).Return()
 	testCliCommand(t, "user", "update", "elsa", "--given", newgiven, "--family", newfamily, "--email", newemail)
 	usersServiceMock.AssertExpectations(t)
 }
@@ -396,8 +402,8 @@ func TestLoadUsersFromYamlFile(t *testing.T) {
 // - Groups
 
 // Helper to setup mock for the user service
-func setupGroupsServiceMock() *MockDirectoryService {
-	groupsServiceMock := new(MockDirectoryService)
+func setupGroupsServiceMock() *mocks.DirectoryService {
+	groupsServiceMock := new(mocks.DirectoryService)
 	groupsService = groupsServiceMock
 	return groupsServiceMock
 }
@@ -433,11 +439,11 @@ func TestCanListGroupsWithFilter(t *testing.T) {
 // - Policies
 
 func TestCanListAccessPolicies(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		assert.Empty(t, req.input)
-		return &tstReply{output: `{"items": [ {"name": "default_access_policy_set"} ]}`, contentType: "application/json"}
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		assert.Empty(t, req.Input)
+		return &TstReply{Output: `{"items": [ {"name": "default_access_policy_set"} ]}`, ContentType: "application/json"}
 	}
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/accessPolicies": h}
 	srv := StartTstServer(t, paths)
@@ -455,7 +461,7 @@ func TestCannotGetSchemaIfNoTypeSpecified(t *testing.T) {
 
 func TestCannotGetSchemaforUnknownType(t *testing.T) {
 	unknownSchema := "olaf"
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                                                                tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + unknownSchema + "%22": ErrorHandler(404, "test schema")}
 	srv := StartTstServer(t, paths)
@@ -472,10 +478,10 @@ func TestCanGetSchema(t *testing.T) {
 }
 
 func canGetSchemaFor(t *testing.T, schemaType string) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{ "attributes": [], "name": "test", "schema": "urn:scim:schemas:core:1.0"}`, contentType: "application/json"}
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		return &TstReply{Output: `{ "attributes": [], "name": "test", "schema": "urn:scim:schemas:core:1.0"}`, ContentType: "application/json"}
 	}
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                                                             tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22": h}
 	srv := StartTstServer(t, paths)
@@ -485,8 +491,8 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 
 // - User store
 func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		return &TstReply{Output: `{
 
 	"name": "Test Local Users",
 	"showLocalUserStore": true,
@@ -495,10 +501,10 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
     "userStoreNameUsedForAuth": false,
 	"uuid": "123"
 		}`,
-			contentType: "application/json"}
+			ContentType: "application/json"}
 	}
 
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
@@ -510,10 +516,10 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
 }
 
 func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{"showLocalUserStore": false}`, contentType: "application/json"}
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		return &TstReply{Output: `{"showLocalUserStore": false}`, ContentType: "application/json"}
 	}
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"PUT/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
@@ -523,7 +529,7 @@ func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 }
 
 func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"PUT/SAAS/jersey/manager/api/localuserstore": ErrorHandler(500, "error test")}
 	srv := StartTstServer(t, paths)
@@ -534,8 +540,8 @@ func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
 // - Roles
 
 // Helper to setup mock for the roles service
-func setupRolesServiceMock() *MockDirectoryService {
-	rolesServiceMock := new(MockDirectoryService)
+func setupRolesServiceMock() *mocks.DirectoryService {
+	rolesServiceMock := new(mocks.DirectoryService)
 	rolesService = rolesServiceMock
 	return rolesServiceMock
 }
@@ -563,10 +569,10 @@ func TestCanDisplayAllRolesWithCountAndFilter(t *testing.T) {
 
 // - Tenant
 func TestGetTenantConfiguration(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{}`, contentType: "application/json"}
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		return &TstReply{Output: `{}`, ContentType: "application/json"}
 	}
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                                         tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
@@ -575,10 +581,10 @@ func TestGetTenantConfiguration(t *testing.T) {
 }
 
 func TestSetTenantConfiguration(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		return &tstReply{output: `{}`, contentType: "application/json"}
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		return &TstReply{Output: `{}`, ContentType: "application/json"}
 	}
-	paths := map[string]tstHandler{
+	paths := map[string]TstHandler{
 		"POST" + vidmTokenPath:                                         tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
@@ -589,8 +595,8 @@ func TestSetTenantConfiguration(t *testing.T) {
 // - Apps
 
 // Helper to setup mock for the apps service
-func setupAppsServiceMock() *MockApplicationService {
-	appsServiceMock := new(MockApplicationService)
+func setupAppsServiceMock() *mocks.ApplicationService {
+	appsServiceMock := new(mocks.ApplicationService)
 	appsService = appsServiceMock
 	return appsServiceMock
 }
@@ -635,4 +641,33 @@ func TestCanPublishAnAppWithASpecificManifest(t *testing.T) {
 	appsServiceMock.On("Publish", mock.Anything, "my-manifest.yaml").Return()
 	testCliCommand(t, "app", "add", "my-manifest.yaml")
 	appsServiceMock.AssertExpectations(t)
+}
+
+// - Entitlements
+
+func TestGetEntitlementWithNoArgsShowsHelp(t *testing.T) {
+	if ctx := runner(t, newTstCtx(""), "entitlement"); ctx != nil {
+		assert.Contains(t, ctx.info, "USAGE")
+	}
+}
+
+func TestGetEntitlementWithNoTypeShowsError(t *testing.T) {
+	if ctx := runner(t, newTstCtx(" "), "entitlement", "get"); ctx != nil {
+		assert.Contains(t, ctx.err, "at least 2 arguments must be given")
+	}
+}
+
+func TestGetEntitlementWithNoNameShowsError(t *testing.T) {
+	types := [...]string{"user", "app", "group"}
+	for i := range types {
+		if ctx := runner(t, newTstCtx(" "), "entitlement", "get", types[i]); ctx != nil {
+			assert.Contains(t, ctx.err, "at least 2 arguments must be given")
+		}
+	}
+}
+
+func TestGetEntitlementWithWrongTypeShowsError(t *testing.T) {
+	if ctx := runner(t, newTstCtx(" "), "entitlement", "get", "actor", "swayze"); ctx != nil {
+		assert.Contains(t, ctx.err, "First parameter of 'get' must be user, group or app")
+	}
 }

@@ -16,20 +16,39 @@ package core
 
 import (
 	"github.com/stretchr/testify/assert"
+	"net/http/httptest"
+	. "priam/testaid"
+	. "priam/util"
 	"testing"
 )
 
 func TestGetSchemaWithNoMediaType(t *testing.T) {
-	h := func(t *testing.T, req *tstReq) *tstReply {
-		assert.Empty(t, req.accept)
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		assert.Empty(t, req.Accept)
 		output := `{"attributes": [{ "name" : "id"}, {"name": "userName"}]}`
-		return &tstReply{output: output}
+		return &TstReply{Output: output}
 	}
-	srv := StartTstServer(t, map[string]tstHandler{"GET/scim/Schemas?filter=name+eq+%22User%22": h})
-	ctx := newHttpContext(newBufferedLogr(), srv.URL, "/", "")
-	cmdSchema(ctx, "User")
-	assert.Empty(t, ctx.log.errString())
-	assert.Contains(t, ctx.log.infoString(), "Schema for User")
-	assert.Contains(t, ctx.log.infoString(), "attributes")
-	assert.Contains(t, ctx.log.infoString(), "name: userName")
+	srv := StartTstServer(t, map[string]TstHandler{"GET/scim/Schemas?filter=name+eq+%22User%22": h})
+	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
+	CmdSchema(ctx, "User")
+	assert.Empty(t, ctx.Log.ErrString())
+	assert.Contains(t, ctx.Log.InfoString(), "Schema for User")
+	assert.Contains(t, ctx.Log.InfoString(), "attributes")
+	assert.Contains(t, ctx.Log.InfoString(), "name: userName")
+}
+
+func NewTestContext(t *testing.T, paths map[string]TstHandler) (*httptest.Server, *HttpContext) {
+	srv := StartTstServer(t, paths)
+	return srv, NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
+}
+
+// Assert context info contains the given string
+func AssertOnlyInfoContains(t *testing.T, ctx *HttpContext, expected string) {
+	assert.Empty(t, ctx.Log.ErrString(), "Error message should be empty")
+	assert.Contains(t, ctx.Log.InfoString(), expected, "INFO log message should contain '"+expected+"'")
+}
+
+// Assert context error contains the given string
+func AssertErrorContains(t *testing.T, ctx *HttpContext, expected string) {
+	assert.Contains(t, ctx.Log.ErrString(), expected, "ERROR log message should contain '"+expected+"'")
 }

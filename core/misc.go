@@ -17,15 +17,16 @@ package core
 import (
 	"fmt"
 	"net/url"
+	. "priam/util"
 	"strings"
 )
 
-func cmdLocalUserStore(ctx *HttpContext, args []string) {
+func CmdLocalUserStore(ctx *HttpContext, args []string) {
 	const desc = "Local User Store configuration"
 	const path = "localuserstore"
 	const mtype = "local.userstore"
 	if len(args) == 0 {
-		ctx.getPrintJson(desc, path, mtype)
+		ctx.GetPrintJson(desc, path, mtype)
 		return
 	}
 	keyvals, outp := make(map[string]interface{}), ""
@@ -33,15 +34,15 @@ func cmdLocalUserStore(ctx *HttpContext, args []string) {
 		kv := strings.SplitAfterN(arg, "=", 2)
 		keyvals[strings.TrimSuffix(kv[0], "=")] = kv[1]
 	}
-	ctx.accept(mtype).contentType(mtype)
-	if err := ctx.request("PUT", path, keyvals, &outp); err != nil {
-		ctx.log.err("Error: %v\n", err)
+	ctx.Accept(mtype).ContentType(mtype)
+	if err := ctx.Request("PUT", path, keyvals, &outp); err != nil {
+		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.log.ppf(desc, outp, "name", "showLocalUserStore", "associatedIdPNames", "syncClient", "userStoreNameUsedForAuth", "uuid")
+		ctx.Log.PPF(desc, outp, "name", "showLocalUserStore", "associatedIdPNames", "syncClient", "userStoreNameUsedForAuth", "uuid")
 	}
 }
 
-func cmdTenantConfig(ctx *HttpContext, name string, nvpairs []string) {
+func CmdTenantConfig(ctx *HttpContext, name string, nvpairs []string) {
 	const desc = "Tenant configuration"
 	const mtype = "tenants.tenant.config.list"
 	path := fmt.Sprintf("tenants/tenant/%s/config", name)
@@ -51,7 +52,7 @@ func cmdTenantConfig(ctx *HttpContext, name string, nvpairs []string) {
 		Links map[string]string `json:"_links"`
 	}
 	if len(nvpairs) == 0 {
-		ctx.getPrintJson(desc, path, mtype)
+		ctx.GetPrintJson(desc, path, mtype)
 		return
 	}
 	keyvals, outp := []nvpair{}, ""
@@ -59,17 +60,17 @@ func cmdTenantConfig(ctx *HttpContext, name string, nvpairs []string) {
 		kv := strings.SplitAfterN(arg, "=", 2)
 		keyvals = append(keyvals, nvpair{strings.TrimSuffix(kv[0], "="), kv[1], map[string]string{}})
 	}
-	ctx.accept(mtype).contentType(mtype)
-	if err := ctx.request("PUT", path, keyvals, &outp); err != nil {
-		ctx.log.err("Error: %v\n", err)
+	ctx.Accept(mtype).ContentType(mtype)
+	if err := ctx.Request("PUT", path, keyvals, &outp); err != nil {
+		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.log.pp(desc, outp)
+		ctx.Log.PP(desc, outp)
 	}
 }
 
-func cmdSchema(ctx *HttpContext, name string) {
+func CmdSchema(ctx *HttpContext, name string) {
 	vals := make(url.Values)
 	vals.Set("filter", fmt.Sprintf("name eq \"%s\"", name))
 	path := fmt.Sprintf("scim/Schemas?%v", vals.Encode())
-	ctx.getPrintJson("Schema for "+name, path, "")
+	ctx.GetPrintJson("Schema for "+name, path, "")
 }

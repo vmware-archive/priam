@@ -23,7 +23,8 @@ govet:
 
 generate-mocks:
 	$(GO) get github.com/vektra/mockery/.../
-	$(GOPATH)/bin/mockery -inpkg -all
+	$(GOPATH)/bin/mockery -dir=core -name=DirectoryService
+	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService
 
 build: generate-mocks
 	@echo building...
@@ -32,7 +33,10 @@ build: generate-mocks
 
 test: build
 	@echo testing...
-	$(GO) test ./core -coverprofile=coverage.out
+	#$(GO) test ./.../ -coverprofile=coverage.out
+	#$(GO) test -cover
+	$(GO) get github.com/wadey/gocovmerge
+	$(GOPATH)/bin/gotestcover -coverprofile=coverage.out ./util ./core ./cli
 
 coverage: test
 	$(GO) tool cover -html=coverage.out

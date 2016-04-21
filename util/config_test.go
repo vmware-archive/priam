@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package util
 
 import (
 	"errors"
@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
+	. "priam/testaid"
 	"testing"
 )
 
@@ -34,98 +35,98 @@ targets:
     host: https://earth.example.com
 `
 
-func cfgTestSetup(t *testing.T, cfg string) *config {
-	cfgFile := WriteTempFile(t, stringOrDefault(cfg, testAppCfg))
+func cfgTestSetup(t *testing.T, cfg string) *Config {
+	cfgFile := WriteTempFile(t, StringOrDefault(cfg, testAppCfg))
 	defer cfgFile.Close()
-	return newAppConfig(newBufferedLogr(), cfgFile.Name())
+	return NewConfig(NewBufferedLogr(), cfgFile.Name())
 }
 
 func TestTargetDeleteByName(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.deleteTarget("1", "")
-	assert.Contains(t, cfg.log.infoString(), "deleted target 1")
+	cfg.DeleteTarget("1", "")
+	assert.Contains(t, cfg.Log.InfoString(), "deleted target 1")
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "https://venus.example.com")
 }
 
 func TestTargetDeleteByNameAndURL(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.deleteTarget("venus.example.com", "1")
-	assert.Contains(t, cfg.log.infoString(), "deleted target 1")
+	cfg.DeleteTarget("venus.example.com", "1")
+	assert.Contains(t, cfg.Log.InfoString(), "deleted target 1")
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "https://venus.example.com")
 }
 
 func TestTargetDeleteAll(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.clear()
-	assert.Contains(t, cfg.log.infoString(), "all targets deleted")
+	cfg.Clear()
+	assert.Contains(t, cfg.Log.InfoString(), "all targets deleted")
 	assert.Equal(t, "currenttarget: \"\"\ntargets: {}\n", GetTempFile(t, cfg.fileName))
 }
 
 func TestTargetDeleteByURL(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.deleteTarget("space.odyssey.example.com", "")
-	assert.Contains(t, cfg.log.infoString(), "deleted target familyCountDown")
+	cfg.DeleteTarget("space.odyssey.example.com", "")
+	assert.Contains(t, cfg.Log.InfoString(), "deleted target familyCountDown")
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "space.odyssey.example.com")
 }
 
 func TestTargetDeleteCurrent(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.deleteTarget("", "")
-	assert.Contains(t, cfg.log.infoString(), "deleted target familyCountDown")
+	cfg.DeleteTarget("", "")
+	assert.Contains(t, cfg.Log.InfoString(), "deleted target familyCountDown")
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "space.odyssey.example.com")
 }
 
 func TestTargetDeleteSpecificCurrent(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.deleteTarget("familyCountDown", "")
-	assert.Contains(t, cfg.log.infoString(), "deleted target familyCountDown")
+	cfg.DeleteTarget("familyCountDown", "")
+	assert.Contains(t, cfg.Log.InfoString(), "deleted target familyCountDown")
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "space.odyssey.example.com")
 
 	// ensure current is not set or chosen
-	cfg = newAppConfig(newBufferedLogr(), cfg.fileName)
-	cfg.printTarget("current")
-	assert.Equal(t, "no target set\n", cfg.log.infoString())
+	cfg = NewConfig(NewBufferedLogr(), cfg.fileName)
+	cfg.PrintTarget("current")
+	assert.Equal(t, "no target set\n", cfg.Log.InfoString())
 }
 
 func TestTargetDeleteSpecific(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.deleteTarget("staging", "")
-	assert.Contains(t, cfg.log.infoString(), "deleted target staging")
+	cfg.DeleteTarget("staging", "")
+	assert.Contains(t, cfg.Log.InfoString(), "deleted target staging")
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "earth.example.com")
 }
 
 func TestTargetDeleteNotFound(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.deleteTarget("sven", "")
-	assert.Contains(t, cfg.log.infoString(), "nothing deleted, no such target found")
+	cfg.DeleteTarget("sven", "")
+	assert.Contains(t, cfg.Log.InfoString(), "nothing deleted, no such target found")
 }
 
 func TestTargetDeleteCurrentNotSet(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
 	cfg.CurrentTarget = ""
-	cfg.deleteTarget("", "")
-	assert.Contains(t, cfg.log.infoString(), "nothing deleted, no target set")
+	cfg.DeleteTarget("", "")
+	assert.Contains(t, cfg.Log.InfoString(), "nothing deleted, no target set")
 }
 
 func TestTarget(t *testing.T) {
 	cfg := cfgTestSetup(t, "")
 	defer os.Remove(cfg.fileName)
-	cfg.setTarget("", "", nil)
-	assert.Contains(t, "current target is: familyCountDown, https://space.odyssey.example.com\n", cfg.log.infoString())
+	cfg.SetTarget("", "", nil)
+	assert.Contains(t, "current target is: familyCountDown, https://space.odyssey.example.com\n", cfg.Log.InfoString())
 }
 
 func TestGetConfigFileFailure(t *testing.T) {
 	fname := filepath.Join(os.TempDir(), "this file does not exist")
-	err := getYamlFile(fname, &config{})
+	err := GetYamlFile(fname, &Config{})
 	assert.NotNil(t, err)
 }
 
@@ -141,7 +142,7 @@ func TestYamlMarshalError(t *testing.T) {
 	fname := filepath.Join(os.TempDir(), "bad_yaml_test_file")
 	_, err := os.Stat(fname)
 	assert.True(t, os.IsNotExist(err))
-	err = putYamlFile(fname, &failingMarshaler{})
+	err = PutYamlFile(fname, &failingMarshaler{})
 	assert.EqualError(t, err, yamlMarshalErrorMsg)
 	_, err = os.Stat(fname)
 	assert.True(t, os.IsNotExist(err))
@@ -150,23 +151,19 @@ func TestYamlMarshalError(t *testing.T) {
 // creates and inits a config file, removes read privilege,
 // calls newAppConfig, tests error
 func TestErrorReadingConfigFile(t *testing.T) {
-	assert, log, cfgFile := assert.New(t), newBufferedLogr(), WriteTempFile(t, "---\n")
+	assert, log, cfgFile := assert.New(t), NewBufferedLogr(), WriteTempFile(t, "---\n")
 	defer CleanupTempFile(cfgFile)
 	require.Nil(t, cfgFile.Chmod(0))
-	assert.Nil(newAppConfig(log, cfgFile.Name()))
-	assert.Contains(log.errString(), "could not read config file "+cfgFile.Name())
+	assert.Nil(NewConfig(log, cfgFile.Name()))
+	assert.Contains(log.ErrString(), "could not read config file "+cfgFile.Name())
 }
 
 func TestErrorWritingConfigFile(t *testing.T) {
-	assert, log, cfgFile := assert.New(t), newBufferedLogr(), WriteTempFile(t, "---\n")
+	assert, log, cfgFile := assert.New(t), NewBufferedLogr(), WriteTempFile(t, "---\n")
 	defer CleanupTempFile(cfgFile)
-	cfg := newAppConfig(log, cfgFile.Name())
+	cfg := NewConfig(log, cfgFile.Name())
 	assert.NotNil(cfg)
 	require.Nil(t, cfgFile.Chmod(0))
-	assert.False(cfg.save())
-	assert.Contains(log.errString(), "could not write config file "+cfgFile.Name())
-}
-
-func TestTargetCheckURLFails(t *testing.T) {
-
+	assert.False(cfg.Save())
+	assert.Contains(log.ErrString(), "could not write config file "+cfgFile.Name())
 }

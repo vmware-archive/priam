@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package util
 
 import (
 	"encoding/json"
@@ -64,9 +64,9 @@ wampeter: ice-nine
 func TestFilteredJsonPrettyPrint(t *testing.T) {
 	var jsonObj interface{}
 	assert.Nil(t, json.Unmarshal([]byte(cradle), &jsonObj))
-	log := newBufferedLogr()
-	log.ppf("cradle", jsonObj, ppfFilter...)
-	assert.Equal(t, log.infoString(), filteredPpfOutput)
+	log := NewBufferedLogr()
+	log.PPF("cradle", jsonObj, ppfFilter...)
+	assert.Equal(t, log.InfoString(), filteredPpfOutput)
 }
 
 func TestFilteredJsonArrayPrettyPrint(t *testing.T) {
@@ -77,38 +77,38 @@ func TestFilteredJsonArrayPrettyPrint(t *testing.T) {
 `
 	var jsonObj interface{}
 	assert.Nil(t, json.Unmarshal([]byte(`[{"mona": "monzano","asa":"breed","bokonon": ""}]`), &jsonObj))
-	log := newBufferedLogr()
-	log.ppf("names", jsonObj, "mona", "asa", "bokonon")
-	assert.Equal(t, expected, log.infoString())
+	log := NewBufferedLogr()
+	log.PPF("names", jsonObj, "mona", "asa", "bokonon")
+	assert.Equal(t, expected, log.InfoString())
 }
 
 func TestVerboseFilteredJsonPrettyPrint(t *testing.T) {
 	var jsonObj interface{}
 	assert.Nil(t, json.Unmarshal([]byte(cradle), &jsonObj))
-	log := newBufferedLogr()
-	log.verboseOn = true
-	log.ppf("cradle", jsonObj, ppfFilter...)
-	assert.Equal(t, log.infoString(), unfilteredPpfOutput)
+	log := NewBufferedLogr()
+	log.VerboseOn = true
+	log.PPF("cradle", jsonObj, ppfFilter...)
+	assert.Equal(t, log.InfoString(), unfilteredPpfOutput)
 }
 
 func TestLogDebug(t *testing.T) {
-	log := newBufferedLogr()
-	log.debugOn = true
-	log.debug("test1")
-	assert.Contains(t, log.infoString(), "test1")
-	log.debugOn = false
-	log.debug("test2")
-	assert.NotContains(t, log.infoString(), "test2")
+	log := NewBufferedLogr()
+	log.DebugOn = true
+	log.Debug("test1")
+	assert.Contains(t, log.InfoString(), "test1")
+	log.DebugOn = false
+	log.Debug("test2")
+	assert.NotContains(t, log.InfoString(), "test2")
 }
 
 func TestLogTrace(t *testing.T) {
-	log := newBufferedLogr()
-	log.traceOn = true
-	log.trace("test1")
-	assert.Contains(t, log.infoString(), "test1")
-	log.traceOn = false
-	log.trace("test2")
-	assert.NotContains(t, log.infoString(), "test2")
+	log := NewBufferedLogr()
+	log.TraceOn = true
+	log.Trace("test1")
+	assert.Contains(t, log.InfoString(), "test1")
+	log.TraceOn = false
+	log.Trace("test2")
+	assert.NotContains(t, log.InfoString(), "test2")
 }
 
 func TestToStringJsonStyle(t *testing.T) {
@@ -117,7 +117,7 @@ func TestToStringJsonStyle(t *testing.T) {
   "winston": "rumfoord"
 }`
 	kazak := map[string]string{"malachi": "constant", "winston": "rumfoord"}
-	assert.Equal(t, kazakJson, toStringWithStyle(ljson, kazak))
+	assert.Equal(t, kazakJson, ToStringWithStyle(LJson, kazak))
 }
 
 type failingYamlMarshaler struct{}
@@ -129,5 +129,5 @@ func (ft *failingYamlMarshaler) MarshalYAML() (interface{}, error) {
 }
 
 func TestStringStyleError(t *testing.T) {
-	assert.Equal(t, "&{}", toStringWithStyle(lyaml, &failingYamlMarshaler{}))
+	assert.Equal(t, "&{}", ToStringWithStyle(LYaml, &failingYamlMarshaler{}))
 }

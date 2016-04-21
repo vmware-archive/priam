@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package util
 
 import (
 	"bytes"
@@ -31,8 +31,8 @@ import (
 )
 
 type HttpContext struct {
-	log     *logr
-	hostURL string
+	Log     *Logr
+	HostURL string
 
 	/* basePath is a convenience so that many callers can use a short
 	 * portion of a path from a common root. If a path for a given request
@@ -50,8 +50,8 @@ type HttpContext struct {
 	client        http.Client
 }
 
-func newHttpContext(log *logr, hostURL, basePath, baseMediaType string) *HttpContext {
-	return &HttpContext{log: log, hostURL: hostURL, basePath: basePath,
+func NewHttpContext(log *Logr, hostURL, basePath, baseMediaType string) *HttpContext {
+	return &HttpContext{Log: log, HostURL: hostURL, basePath: basePath,
 		baseMediaType: baseMediaType, headers: make(map[string]string)}
 }
 
@@ -64,7 +64,7 @@ func (ctx *HttpContext) fullMediaType(shortType string) string {
 	return ctx.baseMediaType + shortType + "+json"
 }
 
-func (ctx *HttpContext) header(name, value string) *HttpContext {
+func (ctx *HttpContext) Header(name, value string) *HttpContext {
 	if value == "" {
 		delete(ctx.headers, name)
 	} else {
@@ -73,30 +73,30 @@ func (ctx *HttpContext) header(name, value string) *HttpContext {
 	return ctx
 }
 
-func (ctx *HttpContext) accept(s string) *HttpContext {
-	return ctx.header("Accept", ctx.fullMediaType(s))
+func (ctx *HttpContext) Accept(s string) *HttpContext {
+	return ctx.Header("Accept", ctx.fullMediaType(s))
 }
 
-func (ctx *HttpContext) contentType(s string) *HttpContext {
-	return ctx.header("Content-Type", ctx.fullMediaType(s))
+func (ctx *HttpContext) ContentType(s string) *HttpContext {
+	return ctx.Header("Content-Type", ctx.fullMediaType(s))
 }
 
-func (ctx *HttpContext) authorization(s string) *HttpContext {
-	return ctx.header("Authorization", s)
+func (ctx *HttpContext) Authorization(s string) *HttpContext {
+	return ctx.Header("Authorization", s)
 }
 
 func (ctx *HttpContext) traceHeaders(prefix string, hdrs *http.Header) {
-	if ctx.log.traceOn {
-		ctx.log.trace("%s:\n", prefix)
+	if ctx.Log.TraceOn {
+		ctx.Log.Trace("%s:\n", prefix)
 		for k, av := range *hdrs {
 			for _, v := range av {
-				ctx.log.trace("  %v: %v\n", k, v)
+				ctx.Log.Trace("  %v: %v\n", k, v)
 			}
 		}
 	}
 }
 
-func toJson(input interface{}) (output []byte, err error) {
+func ToJson(input interface{}) (output []byte, err error) {
 	switch inp := input.(type) {
 	case nil:
 	case string:
@@ -117,7 +117,7 @@ func toJson(input interface{}) (output []byte, err error) {
 	return
 }
 
-func formatReply(ls logStyle, contentType string, body []byte) string {
+func formatReply(ls LogStyle, contentType string, body []byte) string {
 	if !strings.HasPrefix(contentType, "application/") || !strings.Contains(contentType, "json") {
 		return string(body)
 	}
@@ -125,17 +125,17 @@ func formatReply(ls logStyle, contentType string, body []byte) string {
 	if err := json.Unmarshal(body, &parsedBody); err != nil {
 		return string(body)
 	}
-	return toStringWithStyle(ls, parsedBody)
+	return ToStringWithStyle(ls, parsedBody)
 }
 
-func (ctx *HttpContext) request(method, path string, input, output interface{}) error {
-	body, err := toJson(input)
+func (ctx *HttpContext) Request(method, path string, input, output interface{}) error {
+	body, err := ToJson(input)
 	if err != nil {
 		return err
 	}
-	url := ctx.hostURL + path
+	url := ctx.HostURL + path
 	if !strings.HasPrefix(path, "/") {
-		url = ctx.hostURL + ctx.basePath + path
+		url = ctx.HostURL + ctx.basePath + path
 	}
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
 	if err != nil {
@@ -144,24 +144,24 @@ func (ctx *HttpContext) request(method, path string, input, output interface{}) 
 	for k, v := range ctx.headers {
 		req.Header.Set(k, v)
 	}
-	ctx.log.trace("%s request to : %v\n", method, url)
+	ctx.Log.Trace("%s request to : %v\n", method, url)
 	ctx.traceHeaders("request headers", &req.Header)
 	if input != nil {
-		ctx.log.trace("request body: %s\n", body)
+		ctx.Log.Trace("request body: %s\n", body)
 	}
 	resp, err := ctx.client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	ctx.log.trace("response status: %v\n", resp.Status)
+	ctx.Log.Trace("response status: %v\n", resp.Status)
 	ctx.traceHeaders("response headers", &resp.Header)
 	if body, err = ioutil.ReadAll(resp.Body); err != nil {
 		return err
 	}
 	contentType := resp.Header.Get("Content-Type")
-	if ctx.log.traceOn && len(body) > 0 {
-		ctx.log.trace("response body:\n%s\n", formatReply(ljson, contentType, body))
+	if ctx.Log.TraceOn && len(body) > 0 {
+		ctx.Log.Trace("response body:\n%s\n", formatReply(LJson, contentType, body))
 	}
 	if output != nil {
 		switch outp := output.(type) {
@@ -177,12 +177,12 @@ func (ctx *HttpContext) request(method, path string, input, output interface{}) 
 	}
 	good := map[int]bool{200: true, 201: true, 204: true}
 	if !good[resp.StatusCode] {
-		err = fmt.Errorf("%s\n%s\n", resp.Status, formatReply(ctx.log.style, contentType, body))
+		err = fmt.Errorf("%s\n%s\n", resp.Status, formatReply(ctx.Log.Style, contentType, body))
 	}
 	return err
 }
 
-func (ctx *HttpContext) fileUploadRequest(method, path, key, mediaType string, content []byte, fileName string, outp interface{}) error {
+func (ctx *HttpContext) FileUploadRequest(method, path, key, mediaType string, content []byte, fileName string, outp interface{}) error {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return err
@@ -194,7 +194,7 @@ func (ctx *HttpContext) fileUploadRequest(method, path, key, mediaType string, c
 	buf := &bytes.Buffer{}
 	writer, h := multipart.NewWriter(buf), make(textproto.MIMEHeader)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`,
-		escapeQuotes(filepath.Base(fileName))))
+		EscapeQuotes(filepath.Base(fileName))))
 	h.Set("Content-Type", http.DetectContentType(first512))
 	pw, err := writer.CreatePart(h)
 	if err == nil {
@@ -217,34 +217,34 @@ func (ctx *HttpContext) fileUploadRequest(method, path, key, mediaType string, c
 	if err = writer.Close(); err != nil {
 		return err
 	}
-	return ctx.contentType(writer.FormDataContentType()).request(method, path, buf.Bytes(), outp)
+	return ctx.ContentType(writer.FormDataContentType()).Request(method, path, buf.Bytes(), outp)
 }
 
 // sets the ctx.authHeader with basic auth
-func (ctx *HttpContext) basicAuth(name, pwd string) *HttpContext {
-	return ctx.authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd)))
+func (ctx *HttpContext) BasicAuth(name, pwd string) *HttpContext {
+	return ctx.Authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd)))
 }
 
 // sets the ctx.authHeader with an access token suitable for the
 // authorization header in the form "Bearer xxxxxxx"
-func (ctx *HttpContext) clientCredsGrant(path, clientID, clientSecret string) (err error) {
+func (ctx *HttpContext) ClientCredsGrant(path, clientID, clientSecret string) (err error) {
 	tokenInfo := struct {
 		Access_token, Token_type, Refresh_token, Scope string
 		Expires_in                                     int
 	}{}
 	inp := neturl.Values{"grant_type": {"client_credentials"}}.Encode()
-	ctx.basicAuth(clientID, clientSecret).contentType("application/x-www-form-urlencoded")
-	if err = ctx.request("POST", path, inp, &tokenInfo); err == nil {
-		ctx.authorization(tokenInfo.Token_type + " " + tokenInfo.Access_token)
+	ctx.BasicAuth(clientID, clientSecret).ContentType("application/x-www-form-urlencoded")
+	if err = ctx.Request("POST", path, inp, &tokenInfo); err == nil {
+		ctx.Authorization(tokenInfo.Token_type + " " + tokenInfo.Access_token)
 	}
 	return
 }
 
-func (ctx *HttpContext) getPrintJson(prefix, path, mediaType string) {
+func (ctx *HttpContext) GetPrintJson(prefix, path, mediaType string) {
 	var outp interface{}
-	if err := ctx.accept(mediaType).request("GET", path, nil, &outp); err != nil {
-		ctx.log.err("Error: %v\n", err)
+	if err := ctx.Accept(mediaType).Request("GET", path, nil, &outp); err != nil {
+		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.log.pp(prefix, outp)
+		ctx.Log.PP(prefix, outp)
 	}
 }

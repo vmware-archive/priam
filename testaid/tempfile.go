@@ -12,20 +12,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package testaid
 
 import (
-	"io"
+	"github.com/stretchr/testify/require"
+	"io/ioutil"
+	"os"
+	"testing"
 )
 
-// publish command
-func PriamCfPublish(trace bool, configFile, manifestFile string, errw, outw io.Writer) {
+func WriteTempFile(t *testing.T, contents string) *os.File {
+	f, err := ioutil.TempFile("", "priam-test-file")
+	require.Nil(t, err)
+	_, err = f.Write([]byte(contents))
+	require.Nil(t, err)
+	return f
+}
 
-	log := &logr{traceOn: trace, errw: errw, outw: outw}
+func CleanupTempFile(f *os.File) {
+	f.Close()
+	os.Remove(f.Name())
+}
 
-	if cfg := newAppConfig(log, configFile); cfg != nil {
-		if ctx := initCtx(cfg, true); ctx != nil {
-			publishApps(ctx, manifestFile)
-		}
-	}
+func GetTempFile(t *testing.T, fileName string) string {
+	contents, err := ioutil.ReadFile(fileName)
+	require.Nil(t, err)
+	return string(contents)
 }

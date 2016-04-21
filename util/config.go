@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package core
+package util
 
 import (
 	"fmt"
@@ -26,19 +26,19 @@ import (
 const noTarget = ""
 
 // target is used to encapsulate everything needed to connect to a vidm instance.
-type target struct {
+type Target struct {
 	Host                   string
 	ClientID, ClientSecret string `yaml:",omitempty"`
 }
 
-type config struct {
+type Config struct {
 	CurrentTarget string
-	Targets       map[string]target
+	Targets       map[string]Target
 	fileName      string
-	log           *logr
+	Log           *Logr `yaml:"-"`
 }
 
-func getYamlFile(filename string, output interface{}) error {
+func GetYamlFile(filename string, output interface{}) error {
 	if f, err := ioutil.ReadFile(filename); err != nil {
 		return err
 	} else {
@@ -46,7 +46,7 @@ func getYamlFile(filename string, output interface{}) error {
 	}
 }
 
-func putYamlFile(filename string, input interface{}) error {
+func PutYamlFile(filename string, input interface{}) error {
 	if f, err := yaml.Marshal(input); err != nil {
 		return err
 	} else {
@@ -54,61 +54,61 @@ func putYamlFile(filename string, input interface{}) error {
 	}
 }
 
-func newAppConfig(log *logr, fileName string) *config {
-	appCfg := &config{}
-	if err := getYamlFile(fileName, appCfg); err != nil && !os.IsNotExist(err) {
-		log.err("could not read config file %s, error: %v\n", fileName, err)
+func NewConfig(log *Logr, fileName string) *Config {
+	appCfg := &Config{}
+	if err := GetYamlFile(fileName, appCfg); err != nil && !os.IsNotExist(err) {
+		log.Err("could not read config file %s, error: %v\n", fileName, err)
 		return nil
 	}
 
 	// get yaml file clears all fields, so these must be set after unmarshalling
-	appCfg.log, appCfg.fileName = log, fileName
+	appCfg.Log, appCfg.fileName = log, fileName
 
 	if appCfg.Targets == nil {
-		appCfg.Targets = make(map[string]target)
+		appCfg.Targets = make(map[string]Target)
 		appCfg.CurrentTarget = noTarget
-	} else if appCfg.CurrentTarget == noTarget || appCfg.Targets[appCfg.CurrentTarget] == (target{}) {
+	} else if appCfg.CurrentTarget == noTarget || appCfg.Targets[appCfg.CurrentTarget] == (Target{}) {
 		appCfg.CurrentTarget = noTarget
 	}
 	return appCfg
 }
 
-func (cfg *config) save() bool {
-	if err := putYamlFile(cfg.fileName, cfg); err != nil {
-		cfg.log.err("could not write config file %s, error: %v\n", cfg.fileName, err)
+func (cfg *Config) Save() bool {
+	if err := PutYamlFile(cfg.fileName, cfg); err != nil {
+		cfg.Log.Err("could not write config file %s, error: %v\n", cfg.fileName, err)
 		return false
 	}
 	return true
 }
 
-func (cfg *config) clear() {
+func (cfg *Config) Clear() {
 	cfg.CurrentTarget = noTarget
 	cfg.Targets = nil
-	if cfg.save() {
-		cfg.log.info("all targets deleted.\n")
+	if cfg.Save() {
+		cfg.Log.Info("all targets deleted.\n")
 	}
 }
 
-func (cfg *config) printTarget(prefix string) {
+func (cfg *Config) PrintTarget(prefix string) {
 	if cfg.CurrentTarget == noTarget {
-		cfg.log.info("no target set\n")
+		cfg.Log.Info("no target set\n")
 	} else {
-		cfg.log.info("%s target is: %s, %s\n", prefix, cfg.CurrentTarget,
+		cfg.Log.Info("%s target is: %s, %s\n", prefix, cfg.CurrentTarget,
 			cfg.Targets[cfg.CurrentTarget].Host)
 	}
 }
 
-func (cfg *config) clearTarget(name string) {
+func (cfg *Config) ClearTarget(name string) {
 	if cfg.CurrentTarget == name {
 		cfg.CurrentTarget = noTarget
 	}
 	delete(cfg.Targets, name)
-	if cfg.save() {
-		cfg.log.info("deleted target %s.\n", name)
+	if cfg.Save() {
+		cfg.Log.Info("deleted target %s.\n", name)
 	}
 }
 
-func (cfg *config) hasTarget(name string) bool {
+func (cfg *Config) hasTarget(name string) bool {
 	_, ok := cfg.Targets[name]
 	return ok
 }
@@ -124,7 +124,7 @@ func ensureFullURL(url string) string {
 // may specify a target as a url followed by an optional name, or with no input
 // to specify the current target. findTarget returns the name of any existing
 // target.
-func (cfg *config) findTarget(url, name string) string {
+func (cfg *Config) findTarget(url, name string) string {
 	fullURL := ensureFullURL(url)
 	if name == "" {
 		// if url is already a key and no name is given, assume url is a name
@@ -148,21 +148,21 @@ func (cfg *config) findTarget(url, name string) string {
 	return noTarget
 }
 
-func (cfg *config) deleteTarget(url, name string) {
+func (cfg *Config) DeleteTarget(url, name string) {
 	if url == "" {
 		if cfg.CurrentTarget == noTarget {
-			cfg.log.info("nothing deleted, no target set\n")
+			cfg.Log.Info("nothing deleted, no target set\n")
 		} else {
-			cfg.clearTarget(cfg.CurrentTarget)
+			cfg.ClearTarget(cfg.CurrentTarget)
 		}
 	} else if tgt := cfg.findTarget(url, name); tgt == noTarget {
-		cfg.log.info("nothing deleted, no such target found\n")
+		cfg.Log.Info("nothing deleted, no such target found\n")
 	} else {
-		cfg.clearTarget(tgt)
+		cfg.ClearTarget(tgt)
 	}
 }
 
-func (cfg *config) setTarget(url, name string, checkURL func(*config) bool) {
+func (cfg *Config) SetTarget(url, name string, checkURL func(*Config) bool) {
 	if url == "" {
 		return
 	}
@@ -170,8 +170,8 @@ func (cfg *config) setTarget(url, name string, checkURL func(*config) bool) {
 	if tgt := cfg.findTarget(url, name); tgt != noTarget {
 		// found existing target
 		cfg.CurrentTarget = tgt
-		if cfg.save() {
-			cfg.printTarget("new")
+		if cfg.Save() {
+			cfg.PrintTarget("new")
 		}
 		return
 	}
@@ -188,20 +188,20 @@ func (cfg *config) setTarget(url, name string, checkURL func(*config) bool) {
 	}
 
 	cfg.CurrentTarget = name
-	cfg.Targets[cfg.CurrentTarget] = target{Host: ensureFullURL(url)}
-	if (checkURL == nil || checkURL(cfg)) && cfg.save() {
-		cfg.printTarget("new")
+	cfg.Targets[cfg.CurrentTarget] = Target{Host: ensureFullURL(url)}
+	if (checkURL == nil || checkURL(cfg)) && cfg.Save() {
+		cfg.PrintTarget("new")
 	}
 }
 
-func (cfg *config) listTargets() {
+func (cfg *Config) ListTargets() {
 	var keys []string
 	for k := range cfg.Targets {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		cfg.log.info("name: %s\nhost: %s\n\n", k, cfg.Targets[k].Host)
+		cfg.Log.Info("name: %s\nhost: %s\n\n", k, cfg.Targets[k].Host)
 	}
-	cfg.printTarget("current")
+	cfg.PrintTarget("current")
 }
