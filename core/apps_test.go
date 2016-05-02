@@ -233,11 +233,13 @@ type appPubEnv struct {
 	appCheckH, appPutH                func(t *testing.T, req *TstReq) *TstReply
 }
 
+const noIconFile = "<none>"
+
 func PublishAppTester(t *testing.T, env appPubEnv) *HttpContext {
 	const groupPath = "GET/scim/Groups?count=10000&filter=displayName+eq+%22ALL+USERS%22"
 	if env.iconFile == "" {
 		env.iconFile = "../resources/vin.jpg"
-	} else if env.iconFile == "<none>" {
+	} else if env.iconFile == noIconFile {
 		env.iconFile = ""
 	}
 	if env.accessPolicy == "" {
@@ -301,13 +303,13 @@ func TestPublishAppJsonError(t *testing.T) {
 }
 
 func TestPublishAppNoIconFile(t *testing.T) {
-	ctx := PublishAppTester(t, appPubEnv{appCheckH: appGetH(appSearchResult, 0), iconFile: "<none>"})
+	ctx := PublishAppTester(t, appPubEnv{appCheckH: appGetH(appSearchResult, 0), iconFile: noIconFile})
 	AssertOnlyInfoContains(t, ctx, `App "olaf" updated to the catalog`)
 	AssertOnlyInfoContains(t, ctx, `Entitled group "ALL USERS" to app "olaf"`)
 }
 
 func TestPublishAppNoIconFileError(t *testing.T) {
-	ctx := PublishAppTester(t, appPubEnv{appCheckH: appGetH(appSearchResult, 0), iconFile: "<none>", appPutH: ErrorHandler(500, "traditional error")})
+	ctx := PublishAppTester(t, appPubEnv{appCheckH: appGetH(appSearchResult, 0), iconFile: noIconFile, appPutH: ErrorHandler(500, "traditional error")})
 	AssertErrorContains(t, ctx, `Error updating olaf to the catalog: 500 Internal Server Error`)
 }
 

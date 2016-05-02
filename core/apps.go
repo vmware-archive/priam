@@ -160,7 +160,7 @@ func PublishApps(ctx *HttpContext, manifile string) {
 		}
 		if w.AccessPolicySetUuid == "" {
 			if w.AccessPolicySetUuid = accessPolicyId(ctx, w.AccessPolicy); w.AccessPolicySetUuid == "" {
-				ctx.Log.Err("Skipping app %s\n", w.Name)
+				ctx.Log.Err("Skipping app %s\n", w.Name) // accessPolicyID logs any errors so user knows reason for skip
 				continue
 			}
 			w.AccessPolicy = ""
