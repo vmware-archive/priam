@@ -134,7 +134,7 @@ func TestScimListWithCountAndFilter(t *testing.T) {
 		"GET/scim/Users?count=3&filter=myfilter": scimDefaultUserHandler()})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
 	new(SCIMUsersService).ListEntities(ctx, 3, "myfilter")
-	AssertOnlyInfoContains(t, ctx, `id: 12345`)
+	AssertOnlyInfoContains(t, ctx, `id: "12345"`)
 }
 
 func TestScimListFilteredByLabel(t *testing.T) {
@@ -343,7 +343,7 @@ func TestListGroups(t *testing.T) {
 		"GET/scim/Groups?count=3&filter=myfilter": scimDefaultGroupHandler()})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
 	new(SCIMGroupsService).ListEntities(ctx, 3, "myfilter")
-	AssertOnlyInfoContains(t, ctx, `id: 6789`)
+	AssertOnlyInfoContains(t, ctx, `id: "6789"`)
 	AssertOnlyInfoContains(t, ctx, "displayName: "+DEFAULT_GROUP_NAME)
 }
 
@@ -355,6 +355,6 @@ func TestListRoles(t *testing.T) {
 		"GET/scim/Roles?count=3&filter=myfilter": scimDefaultRoleHandler()})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
 	new(SCIMRolesService).ListEntities(ctx, 3, "myfilter")
-	AssertOnlyInfoContains(t, ctx, `id: 123`)
+	AssertOnlyInfoContains(t, ctx, `id: "123"`)
 	AssertOnlyInfoContains(t, ctx, "displayName: "+DEFAULT_ROLE_NAME)
 }

@@ -75,7 +75,7 @@ func GetEntitlement(ctx *HttpContext, rtypeName, name string) {
 	if err := ctx.Request("GET", path, nil, &body); err != nil {
 		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.Log.PPF("Entitlements", body["items"], "Entitlements",
+		ctx.Log.PP("Entitlements", body["items"],
 			"catalogItemId", "subjectType", "subjectId", "activationPolicy")
 	}
 }

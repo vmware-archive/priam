@@ -31,17 +31,17 @@ const cradle string = `{
 var ppfFilter = []string{"duffle", "papa", "karass", "sinookas", "rock", "foma"}
 
 const filteredPpfOutput string = `---- cradle ----
-duffle: 
+duffle:
   papa: manzano
+foma:
+- life is good
+- - busy
+  - busy
+  - busy
 karass: cynics
-sinookas: 
-  - sarcasm
-  - rock: grateful dead
-foma: 
-  - life is good
-  - - busy
-    - busy
-    - busy
+sinookas:
+- sarcasm
+- rock: grateful dead
 `
 const unfilteredPpfOutput string = `---- cradle ----
 duffle:
@@ -65,20 +65,20 @@ func TestFilteredJsonPrettyPrint(t *testing.T) {
 	var jsonObj interface{}
 	assert.Nil(t, json.Unmarshal([]byte(cradle), &jsonObj))
 	log := NewBufferedLogr()
-	log.PPF("cradle", jsonObj, ppfFilter...)
-	assert.Equal(t, log.InfoString(), filteredPpfOutput)
+	log.PP("cradle", jsonObj, ppfFilter...)
+	assert.Equal(t, filteredPpfOutput, log.InfoString())
 }
 
 func TestFilteredJsonArrayPrettyPrint(t *testing.T) {
 	expected := `---- names ----
-- mona: monzano
-  asa: breed
-  bokonon: 
+- asa: breed
+  bokonon: ""
+  mona: monzano
 `
 	var jsonObj interface{}
 	assert.Nil(t, json.Unmarshal([]byte(`[{"mona": "monzano","asa":"breed","bokonon": ""}]`), &jsonObj))
 	log := NewBufferedLogr()
-	log.PPF("names", jsonObj, "mona", "asa", "bokonon")
+	log.PP("names", jsonObj, "mona", "asa", "bokonon")
 	assert.Equal(t, expected, log.InfoString())
 }
 
@@ -87,7 +87,7 @@ func TestVerboseFilteredJsonPrettyPrint(t *testing.T) {
 	assert.Nil(t, json.Unmarshal([]byte(cradle), &jsonObj))
 	log := NewBufferedLogr()
 	log.VerboseOn = true
-	log.PPF("cradle", jsonObj, ppfFilter...)
+	log.PP("cradle", jsonObj, ppfFilter...)
 	assert.Equal(t, log.InfoString(), unfilteredPpfOutput)
 }
 
@@ -130,4 +130,72 @@ func (ft *failingYamlMarshaler) MarshalYAML() (interface{}, error) {
 
 func TestStringStyleError(t *testing.T) {
 	assert.Equal(t, "&{}", ToStringWithStyle(LYaml, &failingYamlMarshaler{}))
+}
+
+var ppData = map[string]interface{}{"integer": 88888, "string": "string",
+	"array": []interface{}{5, 4, 3}, "intstring": "111",
+}
+
+func TestFilteredOutputValidYaml(t *testing.T) {
+	const expected = `---- sirens ----
+array:
+- 5
+- 4
+- 3
+intstring: "111"
+`
+	log := NewBufferedLogr()
+	log.PP("sirens", ppData, "array", "intstring")
+	assert.Equal(t, expected, log.InfoString())
+}
+
+func TestUnfilteredOutputValidYaml(t *testing.T) {
+	const expected = `---- sirens ----
+array:
+- 5
+- 4
+- 3
+integer: 88888
+intstring: "111"
+string: string
+`
+	log := NewBufferedLogr()
+	log.PP("sirens", ppData)
+	assert.Equal(t, expected, log.InfoString())
+}
+
+func TestFilteredOutputValidJson(t *testing.T) {
+	const expected = `---- sirens ----
+{
+  "array": [
+    5,
+    4,
+    3
+  ],
+  "integer": 88888,
+  "intstring": "111",
+  "string": "string"
+}`
+	log := NewBufferedLogr()
+	log.Style = LJson
+	log.PP("sirens", ppData, "integer", "string", "array", "intstring")
+	assert.Equal(t, expected, log.InfoString())
+}
+
+func TestUnfilteredOutputValidJson(t *testing.T) {
+	const expected = `---- sirens ----
+{
+  "array": [
+    5,
+    4,
+    3
+  ],
+  "integer": 88888,
+  "intstring": "111",
+  "string": "string"
+}`
+	log := NewBufferedLogr()
+	log.Style = LJson
+	log.PP("sirens", ppData)
+	assert.Equal(t, expected, log.InfoString())
 }

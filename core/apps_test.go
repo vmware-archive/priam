@@ -15,6 +15,7 @@ limitations under the License.
 package core
 
 import (
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -222,6 +223,10 @@ const groupGetResult = `{
 }
 `
 const accessPolicyResult = `{"items": [{ "name" : "default_access_policy_set", "uuid": "1977-08-11"}]}`
+
+func (jsonMarshalTester) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("json marshal error")
+}
 
 type appPubEnv struct {
 	accessPolicy, jsonError, iconFile string

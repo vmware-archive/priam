@@ -38,7 +38,7 @@ func CmdLocalUserStore(ctx *HttpContext, args []string) {
 	if err := ctx.Request("PUT", path, keyvals, &outp); err != nil {
 		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.Log.PPF(desc, outp, "name", "showLocalUserStore", "associatedIdPNames", "syncClient", "userStoreNameUsedForAuth", "uuid")
+		ctx.Log.PP(desc, outp, "name", "showLocalUserStore", "associatedIdPNames", "syncClient", "userStoreNameUsedForAuth", "uuid")
 	}
 }
 

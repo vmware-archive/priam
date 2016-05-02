@@ -97,7 +97,7 @@ func TestCreateEntitlementFailedForUnknownUser(t *testing.T) {
 // common method to test getting basic entitlements
 func checkGetEntitlementReturns(t *testing.T, entity, rType, rID string) {
 	entH := func(t *testing.T, req *TstReq) *TstReply {
-		output := `{"items": [{ "Entitlements" : "bar"}]}`
+		output := `{"items": [{ "activationPolicy" : "bar"}]}`
 		return &TstReply{Output: output, ContentType: "application/json"}
 	}
 	idH := func(t *testing.T, req *TstReq) *TstReply {
@@ -111,5 +111,5 @@ func checkGetEntitlementReturns(t *testing.T, entity, rType, rID string) {
 	srv, ctx := NewTestContext(t, paths)
 	defer srv.Close()
 	GetEntitlement(ctx, entity, "foo")
-	AssertOnlyInfoContains(t, ctx, "Entitlements: bar")
+	AssertOnlyInfoContains(t, ctx, "activationPolicy: bar")
 }

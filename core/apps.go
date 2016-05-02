@@ -15,9 +15,8 @@ limitations under the License.
 package core
 
 import (
-	"github.com/pborman/uuid"
-	"errors"
 	"fmt"
+	"github.com/pborman/uuid"
 	. "priam/util"
 	"strings"
 )
@@ -25,10 +24,6 @@ import (
 // this type is only used for testing. the test code implements the
 // json.Marshaler interface so that it can return an error
 type jsonMarshalTester string
-
-func (jsonMarshalTester) MarshalJSON() ([]byte, error) {
-	return nil, errors.New("json marshal error")
-}
 
 // the IDM application service
 type IDMApplicationService struct {
@@ -243,6 +238,6 @@ func appList(ctx *HttpContext, count int, filter string) {
 	if err := ctx.Request("POST", path, input, &body); err != nil {
 		ctx.Log.Err("Error: %v\n", err)
 	} else {
-		ctx.Log.PPF("Apps", body["items"], "Apps", "name", "description", "catalogItemType", "uuid")
+		ctx.Log.PP("Apps", body["items"], "name", "description", "catalogItemType", "uuid")
 	}
 }

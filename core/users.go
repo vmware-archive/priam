@@ -29,7 +29,7 @@ type SCIMUsersService struct{}
 type SCIMGroupsService struct{}
 
 // SCIM implementation of the roles service
-type SCIMRolesService struct {}
+type SCIMRolesService struct{}
 
 const coreSchemaURN = "urn:scim:schemas:core:1.0"
 
@@ -253,7 +253,7 @@ func scimList(ctx *HttpContext, count int, filter string, resType string, summar
 	if err := ctx.Request("GET", path, nil, &outp); err != nil {
 		ctx.Log.Err("Error getting SCIM resources of type %s: %v\n", resType, err)
 	} else {
-		ctx.Log.PPF(resType, outp["Resources"], summaryLabels...)
+		ctx.Log.PP(resType, outp["Resources"], summaryLabels...)
 	}
 }
 

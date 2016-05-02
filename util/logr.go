@@ -21,7 +21,6 @@ import (
 	"gopkg.in/yaml.v2"
 	"io"
 	"os"
-	"strings"
 )
 
 type LogStyle int
@@ -92,83 +91,48 @@ func ToStringWithStyle(ls LogStyle, input interface{}) string {
 	return string(outp)
 }
 
-// helper function for filter()
-func parseIndent(p string) (index int) {
-	lines := strings.Split(p, "\n")
-	lastLine := lines[len(lines)-1]
-	if strings.HasSuffix(lastLine, "- ") {
-		return len(lastLine) - 2
-	}
-	index = strings.IndexFunc(lastLine, func(r rune) bool { return r != ' ' })
-	if index < 0 {
-		index = 0
-	}
-	return
-}
-
 // when JSON or YAML data are parsed into a general interface{}, they
 // produce a nested object of interface{}, []interface{} and
 // map[string]interface{} -- arrays and maps of various types of data.
-// This method takes such an object and pretty-prints it somewhat like
-// YAML, but it filters and orders the output.
+// This method takes such an object and removes any map keys that are
+// not in the filter. returns a new filtered interface{}
 //
-// prefix is one of more lines to be printed before a selected object.
-// info is the object of parsed JSON or YAML.
-// filter is an array of strings. Only map elements with keys in the
-// filter will be printed. Sibling map elements will be printed in the
-// order of the keys in the filter. To print a nested key, the keys of
-// the parent elements must be included.
-//
-// returns true if something was printed
-//
-func (l *Logr) Filter(prefix string, info interface{}, filter []string) (printed bool) {
-	thisPrefix, nextPrefix, indent := "", "", parseIndent(prefix)
-	printValue := func(key, sep string, value interface{}) {
-		if printed {
-			thisPrefix = fmt.Sprintf("%s%s%s", nextPrefix, key, sep)
-		} else {
-			if strings.HasSuffix(prefix, ": ") {
-				indent = parseIndent(prefix) + 2
-				thisPrefix = fmt.Sprintf("%s\n%*s%s%s", prefix, indent, "", key, sep)
-			} else {
-				if strings.HasSuffix(prefix, "- ") {
-					indent = parseIndent(prefix) + 2
-				}
-				thisPrefix = fmt.Sprintf("%s%s%s", prefix, key, sep)
-			}
-			nextPrefix = fmt.Sprintf("%*s", indent, "")
-		}
-		if l.Filter(thisPrefix, value, filter) {
-			printed = true
-		}
-	}
+func (l *Logr) Filter(info interface{}, filter []string) interface{} {
 	switch inf := info.(type) {
 	case []interface{}:
+		filteredArray := make([]interface{}, 0)
 		for _, v := range inf {
-			printValue("-", " ", v)
-		}
-	case map[string]interface{}:
-		for _, k := range filter {
-			if v, ok := inf[k]; ok {
-				printValue(k, ": ", v)
+			if fv := l.Filter(v, filter); fv != nil {
+				filteredArray = append(filteredArray, fv)
 			}
 		}
-	default:
-		l.Info("%s%v\n", prefix, inf)
-		printed = true
+		if len(filteredArray) == 0 {
+			return nil
+		}
+		return filteredArray
+	case map[string]interface{}:
+		filteredMap := make(map[string]interface{}, len(inf))
+		for _, k := range filter {
+			if v, ok := inf[k]; ok {
+				if fv := l.Filter(v, filter); fv != nil {
+					filteredMap[k] = fv
+				}
+			}
+		}
+		if len(filteredMap) == 0 {
+			return nil
+		}
+		return filteredMap
 	}
-	return
+	return info
 }
 
-func (l *Logr) PP(prefix string, input interface{}) {
-	l.Info("---- %s ----\n%s", prefix, ToStringWithStyle(l.Style, input))
-}
-
-func (l *Logr) PPF(title string, info interface{}, filter ...string) {
-	if l.VerboseOn || len(filter) == 0 {
-		l.PP(title, info)
-	} else {
-		l.Info("---- %s ----\n", title)
-		l.Filter("", info, filter)
+// pp will pretty print in json or yaml format (based on logr.style) to logr.info.
+// If filter is not empty and logr is not verbose, output will only include map
+// values with those keys.
+func (l *Logr) PP(title string, info interface{}, filter ...string) {
+	if !l.VerboseOn && len(filter) > 0 {
+		info = l.Filter(info, filter)
 	}
+	l.Info("---- %s ----\n%s", title, ToStringWithStyle(l.Style, info))
 }
