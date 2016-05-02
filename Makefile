@@ -21,20 +21,21 @@ govet:
 	@echo checking go vet...
 	$(GO) tool vet -structtags=false -methods=false .
 
-generate-mocks:
+build-testaid:
+	$(GO) install ./testaid
+
+generate-mocks: build-testaid
 	$(GO) get github.com/vektra/mockery/.../
 	$(GOPATH)/bin/mockery -dir=core -name=DirectoryService
 	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService
 
-build: generate-mocks
+build:
 	@echo building...
 	$(GO) get
 	$(GO) build
 
-test: build
+test: build generate-mocks
 	@echo testing...
-	#$(GO) test ./.../ -coverprofile=coverage.out
-	#$(GO) test -cover
 	$(GO) get github.com/wadey/gocovmerge
 	$(GOPATH)/bin/gotestcover -coverprofile=coverage.out ./util ./core ./cli
 
