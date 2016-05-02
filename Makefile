@@ -36,7 +36,7 @@ build:
 
 test: build generate-mocks
 	@echo testing...
-	$(GO) get github.com/wadey/gocovmerge
+	$(GO) get github.com/pierrre/gotestcover
 	$(GOPATH)/bin/gotestcover -coverprofile=coverage.out ./util ./core ./cli
 
 coverage: test
