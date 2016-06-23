@@ -22,6 +22,7 @@ govet:
 	$(GO) tool vet -structtags=false -methods=false .
 
 build-testaid:
+	$(GO) get ./testaid
 	$(GO) install ./testaid
 
 generate-mocks: build-testaid
