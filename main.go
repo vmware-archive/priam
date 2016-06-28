@@ -28,6 +28,6 @@ func main() {
 	if strings.HasPrefix(appName, "cf-") {
 		cfplugin(appName, defaultCfgFile)
 	} else {
-		cli.Priam(os.Args, defaultCfgFile, os.Stdin, os.Stdout, os.Stderr)
+		cli.Priam(os.Args, defaultCfgFile, os.Stdout, os.Stderr)
 	}
 }

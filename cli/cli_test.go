@@ -27,7 +27,6 @@ import (
 	"priam/mocks"
 	. "priam/testaid"
 	. "priam/util"
-	"strings"
 	"testing"
 )
 
@@ -38,6 +37,7 @@ type UsersServiceMock struct {
 }
 
 type tstCtx struct {
+	t                              *testing.T
 	appName, cfg, input, info, err string
 	printResults                   bool
 }
@@ -47,7 +47,22 @@ func (ctx *tstCtx) printOut() *tstCtx {
 	return ctx
 }
 
-func newTstCtx(cfg string) *tstCtx {
+func (ctx *tstCtx) assertOnlyInfoContains(expected string) {
+	assert.Empty(ctx.t, ctx.err, "Error message should be empty")
+	assert.Contains(ctx.t, ctx.info, expected, "Info message should contain '"+expected+"'")
+}
+
+func (ctx *tstCtx) assertOnlyErrContains(expected string) {
+	assert.Empty(ctx.t, ctx.info, "Info message should be empty")
+	assert.Contains(ctx.t, ctx.err, expected, "Error should contain '"+expected+"'")
+}
+
+func (ctx *tstCtx) assertInfoErrContains(expectedInfo, expectedErr string) {
+	assert.Contains(ctx.t, ctx.info, expectedInfo, "Info message should contain '"+expectedInfo+"'")
+	assert.Contains(ctx.t, ctx.err, expectedErr, "Error should contain '"+expectedErr+"'")
+}
+
+func newTstCtx(t *testing.T, cfg string) *tstCtx {
 	sampleCfg := `---
 currenttarget: 1
 targets:
@@ -58,7 +73,7 @@ targets:
   staging:
     host: https://radio2.example.com
 `
-	return &tstCtx{appName: "testapp", cfg: StringOrDefault(cfg, sampleCfg)}
+	return &tstCtx{t: t, appName: "testapp", cfg: StringOrDefault(cfg, sampleCfg)}
 }
 
 func tstSrvTgt(url string) string {
@@ -90,59 +105,53 @@ func tstSrvTgtWithAuth(url string) string {
 	return tstSrvTgt(url) + "    clientid: john\n    clientsecret: travolta\n"
 }
 
-func runner(t *testing.T, ctx *tstCtx, args ...string) *tstCtx {
-	cfgFile := WriteTempFile(t, ctx.cfg)
+func runner(ctx *tstCtx, args ...string) *tstCtx {
+	cfgFile := WriteTempFile(ctx.t, ctx.cfg)
 	defer CleanupTempFile(cfgFile)
 	args = append([]string{ctx.appName}, args...)
 	infoW, errW := bytes.Buffer{}, bytes.Buffer{}
-	Priam(args, cfgFile.Name(), strings.NewReader(ctx.cfg), &infoW, &errW)
+	Priam(args, cfgFile.Name(), &infoW, &errW)
 	_, err := cfgFile.Seek(0, 0)
-	assert.Nil(t, err)
+	require.Nil(ctx.t, err)
 	contents, err := ioutil.ReadAll(cfgFile)
-	assert.Nil(t, err)
+	require.Nil(ctx.t, err)
 	ctx.cfg, ctx.info, ctx.err = string(contents), infoW.String(), errW.String()
 	if ctx.printResults {
 		fmt.Printf("----------------config:\n%s\n", ctx.cfg)
 		fmt.Printf("----------------info:\n%s\n", ctx.info)
 		fmt.Printf("----------------error:\n%s\n", ctx.err)
 	}
-	require.NotNil(t, ctx)
 	return ctx
 }
 
 // help usage
 func TestHelp(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "help"); ctx != nil {
-		assert.Contains(t, ctx.info, "USAGE")
+	if ctx := runner(newTstCtx(t, ""), "help"); ctx != nil {
+		ctx.assertOnlyInfoContains("USAGE")
 	}
 }
 
 // unknown flag should not crash the app
 func TestUnknownFlagOption(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "--unknowflag", "2", "user", "list"); ctx != nil {
-		assert.Contains(t, ctx.info, "USAGE")
-	}
+	ctx := runner(newTstCtx(t, ""), "--unknowflag", "2", "user", "list")
+	ctx.assertInfoErrContains("USAGE", "flag provided but not defined: -unknowflag")
 }
 
 // help user load usage includes password and does not require target
 func TestHelpUserLoad(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "user", "help", "load"); ctx != nil {
-		assert.Contains(t, ctx.info, "user load")
-	}
+	ctx := runner(newTstCtx(t, ""), "user", "help", "load")
+	ctx.assertOnlyInfoContains("user load")
 }
 
 func TestHelpUserLoadOption(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "user", "load", "-h"); ctx != nil {
-		assert.Contains(t, ctx.info, "user load")
-	}
+	ctx := runner(newTstCtx(t, ""), "user", "load", "-h")
+	ctx.assertOnlyInfoContains("user load")
 }
 
 func TestAppAnyName(t *testing.T) {
-	ctx, name := newTstCtx(""), "welcome_back_kotter"
+	ctx, name := newTstCtx(t, ""), "welcome_back_kotter"
 	ctx.appName = name
-	if ctx := runner(t, ctx, "-h"); ctx != nil {
-		assert.Contains(t, ctx.info, name)
-	}
+	runner(ctx, "-h").assertOnlyInfoContains(name)
 }
 
 // should not pick a target if none is set
@@ -152,37 +161,32 @@ targets:
   radio:
     host: https://radio.example.com
 `
-	if ctx := runner(t, newTstCtx(targetYaml), "target"); ctx != nil {
-		assert.Equal(t, "no target set\n", ctx.info)
-	}
+	ctx := runner(newTstCtx(t, targetYaml), "target")
+	ctx.assertOnlyInfoContains("no target set\n")
 }
 
 // should use the current target if one is set
 func TestTargetCurrent(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "target"); ctx != nil {
-		assert.Contains(t, ctx.info, "radio1.example.com")
-	}
+	ctx := runner(newTstCtx(t, ""), "target")
+	ctx.assertOnlyInfoContains("radio1.example.com")
 }
 
 // should fail gracefully if no config exists
 func TestTargetNoConfig(t *testing.T) {
-	if ctx := runner(t, newTstCtx(" "), "target"); ctx != nil {
-		assert.Contains(t, ctx.info, "no target set")
-	}
+	ctx := runner(newTstCtx(t, " "), "target")
+	ctx.assertOnlyInfoContains("no target set")
 }
 
 // should not require access to server if target forced
 func TestTargetForced(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "target", "-f", "https://bad.example.com"); ctx != nil {
-		assert.Contains(t, ctx.info, "bad.example.com")
-	}
+	ctx := runner(newTstCtx(t, ""), "target", "-f", "https://bad.example.com")
+	ctx.assertOnlyInfoContains("bad.example.com")
 }
 
 // should add https to target url if needed
 func TestTargetAddHttps(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "target", "-f", "bad.example.com"); ctx != nil {
-		assert.Contains(t, ctx.info, "https://bad.example.com")
-	}
+	ctx := runner(newTstCtx(t, ""), "target", "-f", "bad.example.com")
+	ctx.assertOnlyInfoContains("https://bad.example.com")
 }
 
 func TestTargets(t *testing.T) {
@@ -197,80 +201,75 @@ host: https://radio2.example.com
 
 current target is: 1, https://radio1.example.com
 `
-	if ctx := runner(t, newTstCtx(""), "targets"); ctx != nil {
-		assert.Equal(t, expectedSorted, ctx.info)
-	}
+	ctx := runner(newTstCtx(t, ""), "targets")
+	ctx.assertOnlyInfoContains(expectedSorted)
+
 }
 
 func TestReuseExistingTargetHostWithoutName(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "target", "radio2.example.com"); ctx != nil {
-		assert.Contains(t, ctx.info, "new target is: staging, https://radio2.example.com")
-	}
+	ctx := runner(newTstCtx(t, ""), "target", "radio2.example.com")
+	ctx.assertOnlyInfoContains("new target is: staging, https://radio2.example.com")
 }
 
 func TestReuseExistingTargetByName(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "target", "staging"); ctx != nil {
-		assert.Contains(t, ctx.info, "new target is: staging, https://radio2.example.com")
-	}
+	ctx := runner(newTstCtx(t, ""), "target", "staging")
+	ctx.assertOnlyInfoContains("new target is: staging, https://radio2.example.com")
 }
 
 func TestAddNewTargetWithName(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "target", "-f", "radio2.example.com", "sassoon"); ctx != nil {
-		assert.Contains(t, ctx.info, "new target is: sassoon, https://radio2.example.com")
-	}
+	ctx := runner(newTstCtx(t, ""), "target", "-f", "radio2.example.com", "sassoon")
+	ctx.assertOnlyInfoContains("new target is: sassoon, https://radio2.example.com")
 }
 
 func TestAddNewTargetFailsIfHealthCheckFails(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(500, "favourite 500 error")}
 	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", "radio2.example.com", "sassoon"); ctx != nil {
-		assert.Contains(t, ctx.err, "Error checking health of https://radio2.example.com")
-	}
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", "radio2.example.com", "sassoon")
+	ctx.assertOnlyErrContains("Error checking health of https://radio2.example.com")
 }
 
 func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOkTrue(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(false)}
 	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
-		assert.Contains(t, ctx.err, "Reply from "+srv.URL+" does not meet health check")
-	}
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon")
+	ctx.assertOnlyErrContains("Reply from " + srv.URL + " does not meet health check")
 }
 
 func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
 	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon"); ctx != nil {
-		assert.Contains(t, ctx.info, "new target is: sassoon, "+srv.URL)
-	}
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon")
+	ctx.assertOnlyInfoContains("new target is: sassoon, " + srv.URL)
 }
 
 func TestHealth(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
 	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "health"); ctx != nil {
-		assert.Contains(t, ctx.info, "allOk")
-	}
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "health")
+	ctx.assertOnlyInfoContains("allOk")
 }
 
 func TestExitIfHealthFails(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(404, "test health")}
 	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "health"); ctx != nil {
-		assert.Contains(t, ctx.err, "test health")
-	}
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "health")
+	ctx.assertOnlyErrContains("test health")
 }
 
 // -- Login
 func TestCanNotLoginWithNoTarget(t *testing.T) {
-	if ctx := runner(t, newTstCtx(" "), "login", "c", "s"); ctx != nil {
-		assert.Contains(t, ctx.err, "no target set")
-	}
+	ctx := runner(newTstCtx(t, " "), "login", "c", "s")
+	ctx.assertOnlyErrContains("no target set")
 }
 
 func TestCanNotLoginWithTargetSetButNoOauthCreds(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "login"); ctx != nil {
-		assert.Contains(t, ctx.err, "at least 1 arguments must be given")
-	}
+	ctx := runner(newTstCtx(t, ""), "login")
+	ctx.assertInfoErrContains("USAGE", "at least 1 arguments must be given")
 }
 
 func TestCanHandleBadLoginReply(t *testing.T) {
@@ -280,35 +279,33 @@ func TestCanHandleBadLoginReply(t *testing.T) {
 	}
 	paths := map[string]TstHandler{"POST" + vidmTokenPath: h}
 	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
-		assert.Contains(t, ctx.err, "invalid")
-	}
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
+	ctx.assertOnlyErrContains("invalid")
 }
 
 func TestCanLogin(t *testing.T) {
 	paths := map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
 	srv := StartTstServer(t, paths)
-	if ctx := runner(t, newTstCtx(tstSrvTgt(srv.URL)), "login", "john", "travolta"); ctx != nil {
-		assert.Contains(t, ctx.cfg, "clientid: john")
-		assert.Contains(t, ctx.cfg, "clientsecret: travolta")
-		assert.Contains(t, ctx.info, "clientID and clientSecret saved")
-	}
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
+	assert.Contains(t, ctx.cfg, "clientid: john")
+	assert.Contains(t, ctx.cfg, "clientsecret: travolta")
+	ctx.assertOnlyInfoContains("clientID and clientSecret saved")
 }
 
 // -- common CLI checks
 
 func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "app", "get", "too", "many", "args"); ctx != nil {
-		assert.Contains(t, ctx.err, "at most 1 arguments can be given")
-	}
+	ctx := runner(newTstCtx(t, ""), "app", "get", "too", "many", "args")
+	ctx.assertInfoErrContains("USAGE", "at most 1 arguments can be given")
 }
 
 // -- user commands
 func TestCanNotIssueUserCommandWithTooManyArguments(t *testing.T) {
 	for _, command := range []string{"add", "update", "list", "get", "delete", "load", "password"} {
-		if ctx := runner(t, newTstCtx(""), "user", command, "too", "many", "args"); ctx != nil {
-			assert.Contains(t, ctx.err, "Input Error: at most")
-		}
+		ctx := runner(newTstCtx(t, ""), "user", command, "too", "many", "args")
+		ctx.assertInfoErrContains("USAGE", "Input Error: at most")
 	}
 }
 
@@ -318,7 +315,8 @@ func TestCanNotIssueUserCommandWithTooManyArguments(t *testing.T) {
 func testCliCommand(t *testing.T, args ...string) *tstCtx {
 	paths := map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
 	srv := StartTstServer(t, paths)
-	return runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), args...)
+	defer srv.Close()
+	return runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), args...)
 }
 
 // Helper to setup mock for the user service
@@ -332,7 +330,7 @@ func TestCanAddUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("AddEntity", mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(nil)
 	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
-		assert.Contains(t, ctx.info, "User 'elsa' successfully added")
+		ctx.assertOnlyInfoContains("User 'elsa' successfully added")
 	}
 	usersServiceMock.AssertExpectations(t)
 }
@@ -448,16 +446,15 @@ func TestCanListAccessPolicies(t *testing.T) {
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/accessPolicies": h}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "policies")
-	assert.NotNil(t, ctx)
-	assert.Contains(t, ctx.info, "---- Access Policies ----\nitems:\n- name: default_access_policy_set")
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "policies")
+	ctx.assertOnlyInfoContains("---- Access Policies ----\nitems:\n- name: default_access_policy_set")
 }
 
 // - Schema
 func TestCannotGetSchemaIfNoTypeSpecified(t *testing.T) {
 	ctx := testCliCommand(t, "schema")
-	assert.NotNil(t, ctx)
-	assert.Contains(t, ctx.err, "Input Error: at least 1 arguments must be given")
+	ctx.assertInfoErrContains("USAGE", "Input Error: at least 1 arguments must be given")
 }
 
 func TestCannotGetSchemaforUnknownType(t *testing.T) {
@@ -466,9 +463,9 @@ func TestCannotGetSchemaforUnknownType(t *testing.T) {
 		"POST" + vidmTokenPath:                                                                tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + unknownSchema + "%22": ErrorHandler(404, "test schema")}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", unknownSchema)
-	assert.NotNil(t, ctx)
-	assert.Contains(t, ctx.err, "test schema")
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "schema", unknownSchema)
+	ctx.assertOnlyErrContains("test schema")
 }
 
 func TestCanGetSchema(t *testing.T) {
@@ -486,8 +483,9 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 		"POST" + vidmTokenPath:                                                             tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22": h}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "schema", schemaType)
-	assert.Contains(t, ctx.info, "---- Schema for "+schemaType+" ----\nattributes:")
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "schema", schemaType)
+	ctx.assertOnlyInfoContains("---- Schema for " + schemaType + " ----\nattributes:")
 }
 
 // - User store
@@ -509,11 +507,12 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore")
-	assert.Contains(t, ctx.info, "---- Local User Store configuration ----")
-	assert.Contains(t, ctx.info, "name: Test Local Users")
-	assert.Contains(t, ctx.info, "showLocalUserStore: true")
-	assert.Contains(t, ctx.info, "uuid: \"123\"")
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "localuserstore")
+	ctx.assertOnlyInfoContains("---- Local User Store configuration ----")
+	ctx.assertOnlyInfoContains("name: Test Local Users")
+	ctx.assertOnlyInfoContains("showLocalUserStore: true")
+	ctx.assertOnlyInfoContains("uuid: \"123\"")
 }
 
 func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
@@ -524,9 +523,10 @@ func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"PUT/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
-	assert.Contains(t, ctx.info, "---- Local User Store configuration ----")
-	assert.Contains(t, ctx.info, `{"showLocalUserStore": false}`)
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
+	ctx.assertOnlyInfoContains("---- Local User Store configuration ----")
+	ctx.assertOnlyInfoContains(`{"showLocalUserStore": false}`)
 }
 
 func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
@@ -534,8 +534,9 @@ func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
 		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"PUT/SAAS/jersey/manager/api/localuserstore": ErrorHandler(500, "error test")}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
-	assert.Contains(t, ctx.err, "error test")
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
+	ctx.assertOnlyErrContains("error test")
 }
 
 // - Roles
@@ -577,8 +578,9 @@ func TestGetTenantConfiguration(t *testing.T) {
 		"POST" + vidmTokenPath:                                         tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
-	assert.Contains(t, ctx.info, "---- Tenant configuration ----")
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
+	ctx.assertOnlyInfoContains("---- Tenant configuration ----")
 }
 
 func TestSetTenantConfiguration(t *testing.T) {
@@ -589,8 +591,9 @@ func TestSetTenantConfiguration(t *testing.T) {
 		"POST" + vidmTokenPath:                                         tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
-	ctx := runner(t, newTstCtx(tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
-	assert.Contains(t, ctx.info, "---- Tenant configuration ----")
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
+	ctx.assertOnlyInfoContains("---- Tenant configuration ----")
 }
 
 // - Apps
@@ -647,28 +650,24 @@ func TestCanPublishAnAppWithASpecificManifest(t *testing.T) {
 // - Entitlements
 
 func TestGetEntitlementWithNoArgsShowsHelp(t *testing.T) {
-	if ctx := runner(t, newTstCtx(""), "entitlement"); ctx != nil {
-		assert.Contains(t, ctx.info, "USAGE")
-	}
+	ctx := runner(newTstCtx(t, ""), "entitlement")
+	ctx.assertOnlyInfoContains("USAGE")
 }
 
 func TestGetEntitlementWithNoTypeShowsError(t *testing.T) {
-	if ctx := runner(t, newTstCtx(" "), "entitlement", "get"); ctx != nil {
-		assert.Contains(t, ctx.err, "at least 2 arguments must be given")
-	}
+	ctx := runner(newTstCtx(t, " "), "entitlement", "get")
+	ctx.assertInfoErrContains("USAGE", "at least 2 arguments must be given")
 }
 
 func TestGetEntitlementWithNoNameShowsError(t *testing.T) {
-	types := [...]string{"user", "app", "group"}
+	types := []string{"user", "app", "group"}
 	for i := range types {
-		if ctx := runner(t, newTstCtx(" "), "entitlement", "get", types[i]); ctx != nil {
-			assert.Contains(t, ctx.err, "at least 2 arguments must be given")
-		}
+		ctx := runner(newTstCtx(t, " "), "entitlement", "get", types[i])
+		ctx.assertInfoErrContains("USAGE", "at least 2 arguments must be given")
 	}
 }
 
 func TestGetEntitlementWithWrongTypeShowsError(t *testing.T) {
-	if ctx := runner(t, newTstCtx(" "), "entitlement", "get", "actor", "swayze"); ctx != nil {
-		assert.Contains(t, ctx.err, "First parameter of 'get' must be user, group or app")
-	}
+	ctx := runner(newTstCtx(t, " "), "entitlement", "get", "actor", "swayze")
+	ctx.assertInfoErrContains("USAGE", "First parameter of 'get' must be user, group or app")
 }

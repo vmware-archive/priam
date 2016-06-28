@@ -17,8 +17,8 @@ package cli
 
 import (
 	"fmt"
-	"github.com/codegangsta/cli"
 	"github.com/howeyc/gopass"
+	"github.com/urfave/cli"
 	"io"
 	"path/filepath"
 	. "priam/core"
@@ -38,16 +38,19 @@ var groupsService DirectoryService = &SCIMGroupsService{}
 var rolesService DirectoryService = &SCIMRolesService{}
 var appsService ApplicationService = &IDMApplicationService{}
 
-func getPwd(prompt string) string {
-	fmt.Printf("%s", prompt)
-	if s, err := gopass.GetPasswd(); err != nil {
-		panic(err)
-	} else {
-		return string(s)
-	}
-}
+// called via variable so that tests can provide stub
+var getRawPassword = gopass.GetPasswd
 
 func getArgOrPassword(log *Logr, prompt, arg string, repeat bool) string {
+	getPwd := func(prompt string) string {
+		log.Info("%s", prompt)
+		if s, err := getRawPassword(); err != nil {
+			panic(err)
+		} else {
+			return string(s)
+		}
+	}
+
 	if arg != "" {
 		return arg
 	}
@@ -136,18 +139,21 @@ func checkTarget(cfg *Config) bool {
 	return true
 }
 
-func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW io.Writer) {
+func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 	var err error
 	var cfg *Config
 	cli.HelpFlag.Usage = "show help for given command or subcommand"
+
+	// work around error in cli v1.18 by setting package level ErrWriter since
+	// app level ErrWriter is ignored for some deprecation warnings.
+	cli.ErrWriter = errorW
+
 	app := cli.NewApp()
 	app.Name, app.Usage = filepath.Base(args[0]), "a utility to interact with VMware Identity Manager"
-	app.Email, app.Author, app.Writer, app.Version = "", "", infoW, "1.0.0"
-	app.Action = cli.ShowAppHelp
+	app.Email, app.Author, app.Writer, app.ErrWriter = "", "", infoW, errorW
+	app.Action, app.Version = cli.ShowAppHelp, "1.0.0"
 	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name: "config", Usage: "specify config file. Def: " + defaultCfgFile,
-		},
+		cli.StringFlag{Name: "config", Usage: "specify config file. Def: " + defaultCfgFile},
 		cli.BoolFlag{Name: "debug, d", Usage: "print debug output"},
 		cli.BoolFlag{Name: "json, j", Usage: "prefer output in json rather than yaml"},
 		cli.BoolFlag{Name: "trace, t", Usage: "print all requests and responses"},
@@ -189,35 +195,39 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Subcommands: []cli.Command{
 				{
 					Name: "add", Usage: "add applications to the catalog", ArgsUsage: "[./manifest.yaml]",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 0, 1, true, nil); ctx != nil {
 							appsService.Publish(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "delete", Usage: "delete an app from the catalog", ArgsUsage: "<appName>",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							appsService.Delete(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "get", Usage: "get information about an app", ArgsUsage: "<appName>",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							appsService.Display(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "list", Usage: "list all applications in the catalog", ArgsUsage: " ",
 					Flags: pageFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							appsService.List(ctx, c.Int("count"), c.String("filter"))
 						}
+						return nil
 					},
 				},
 			},
@@ -228,7 +238,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 				{
 					Name: "get", ArgsUsage: "(group|user|app) <name>",
 					Usage: "gets entitlements for a specific user, app, or group",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, func(args []string) bool {
 							res := HasString(args[0], []string{"group", "user", "app"})
 							if !res {
@@ -238,6 +248,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 						}); ctx != nil {
 							GetEntitlement(ctx, args[0], args[1])
 						}
+						return nil
 					},
 				},
 			},
@@ -247,35 +258,38 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Subcommands: []cli.Command{
 				{
 					Name: "get", Usage: "get a specific group", ArgsUsage: "get <groupName>",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							groupsService.DisplayEntity(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "list", Usage: "list all groups", ArgsUsage: " ", Flags: pageFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							groupsService.ListEntities(ctx, c.Int("count"), c.String("filter"))
 						}
+						return nil
 					},
 				},
 				{
 					Name: "member", Usage: "add or remove users from a group",
 					ArgsUsage: "<groupname> <username>", Flags: memberFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
 							// @todo Put this in the interface
 							ScimMember(ctx, "Groups", "displayName", args[0], args[1], c.Bool("delete"))
 						}
+						return nil
 					},
 				},
 			},
 		},
 		{
 			Name: "health", Usage: "check workspace service health", ArgsUsage: " ",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if _, ctx := initCmd(cfg, c, 0, 0, false, nil); ctx != nil {
 					var outp interface{}
 					if err := ctx.Request("GET", "health", nil, &outp); err != nil {
@@ -284,22 +298,24 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 						ctx.Log.PP("Health info", outp)
 					}
 				}
+				return nil
 			},
 		},
 		{
 			Name: "localuserstore", Usage: "gets/sets local user store configuration",
 			ArgsUsage: "[key=value]...",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if args, ctx := initCmd(cfg, c, 0, -1, true, nil); ctx != nil {
 					CmdLocalUserStore(ctx, args)
 				}
+				return nil
 			},
 		},
 		{
 			Name: "login", Usage: "validates and saves clientID and clientSecret",
 			ArgsUsage:   "<clientID> [clientSecret]",
 			Description: "if clientSecret is not given as an argument, user will be prompted to enter it",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if a, ctx := initCmd(cfg, c, 1, 2, false, nil); ctx != nil {
 					cfg.Targets[cfg.CurrentTarget] = Target{Host: ctx.HostURL,
 						ClientID: a[0], ClientSecret: getArgOrPassword(cfg.Log, "Secret", a[1], false)}
@@ -307,14 +323,16 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 						cfg.Log.Info("clientID and clientSecret saved\n")
 					}
 				}
+				return nil
 			},
 		},
 		{
 			Name: "policies", Usage: "get access policies", ArgsUsage: " ",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 					ctx.GetPrintJson("Access Policies", "accessPolicies", "accesspolicyset.list")
 				}
+				return nil
 			},
 		},
 		{
@@ -322,27 +340,30 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 			Subcommands: []cli.Command{
 				{
 					Name: "get", Usage: "get specific SCIM role", ArgsUsage: "<roleName>",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							rolesService.DisplayEntity(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "list", ArgsUsage: " ", Usage: "list all roles", Flags: pageFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							rolesService.ListEntities(ctx, c.Int("count"), c.String("filter"))
 						}
+						return nil
 					},
 				},
 				{
 					Name: "member", Usage: "add or remove users from a role",
 					ArgsUsage: "<rolename> <username>", Flags: memberFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
 							ScimMember(ctx, "Roles", "displayName", args[0], args[1], c.Bool("delete"))
 						}
+						return nil
 					},
 				},
 			},
@@ -355,7 +376,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 				cli.BoolFlag{Name: "delete, d", Usage: "delete specified or current target"},
 				cli.BoolFlag{Name: "delete-all", Usage: "delete all targets"},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if args := initArgs(cfg, c, 0, 2, nil); args != nil {
 					if c.Bool("delete-all") {
 						cfg.Clear()
@@ -369,22 +390,25 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 						cfg.SetTarget(args[0], args[1], checkTarget)
 					}
 				}
+				return nil
 			},
 		},
 		{
 			Name: "targets", Usage: "display all targets", ArgsUsage: " ",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if initArgs(cfg, c, 0, 0, nil) != nil {
 					cfg.ListTargets()
 				}
+				return nil
 			},
 		},
 		{
 			Name: "tenant", Usage: "gets/sets tenant configuration", ArgsUsage: "<tenantName> [key=value]...",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if args, ctx := initCmd(cfg, c, 1, -1, true, nil); ctx != nil {
 					CmdTenantConfig(ctx, args[0], args[1:])
 				}
+				return nil
 			},
 		},
 		{
@@ -393,7 +417,7 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 				{
 					Name: "add", Usage: "create a user account", ArgsUsage: "<userName> [password]",
 					Flags: userAttrFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if user, ctx := initUserCmd(cfg, c, true); ctx != nil {
 							if err := usersService.AddEntity(ctx, user); err != nil {
 								ctx.Log.Err("Error creating user '%s': %v\n", user.Name, err)
@@ -401,59 +425,66 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 								ctx.Log.Info(fmt.Sprintf("User '%s' successfully added\n", user.Name))
 							}
 						}
+						return nil
 					},
 				},
 				{
 					Name: "get", Usage: "display user account", ArgsUsage: "<userName>",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.DisplayEntity(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "delete", Usage: "delete user account", ArgsUsage: "<userName>",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.DeleteEntity(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "list", Usage: "list user accounts", ArgsUsage: " ",
 					Flags: pageFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							usersService.ListEntities(ctx, c.Int("count"), c.String("filter"))
 						}
+						return nil
 					},
 				},
 				{
 					Name: "load", ArgsUsage: "<fileName>", Usage: "loads yaml file of an array of users.",
 					Description: "Example yaml file content:\n---\n- {name: joe, given: joseph, pwd: changeme}\n" +
 						"- {name: sue, given: susan, family: jones, email: sue@what.com}\n",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 							usersService.LoadEntities(ctx, args[0])
 						}
+						return nil
 					},
 				},
 				{
 					Name: "password", Usage: "set a user's password", ArgsUsage: "<username> [password]",
 					Description: "If password is not given as an argument, user will be prompted to enter it",
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 2, true, nil); ctx != nil {
 							usersService.UpdateEntity(ctx, args[0], &BasicUser{Pwd: getArgOrPassword(cfg.Log, "Password", args[1], true)})
 						}
+						return nil
 					},
 				},
 				{
 					Name: "update", Usage: "update user account", ArgsUsage: "<userName>",
 					Flags: userAttrFlags,
-					Action: func(c *cli.Context) {
+					Action: func(c *cli.Context) error {
 						if user, ctx := initUserCmd(cfg, c, false); ctx != nil {
 							usersService.UpdateEntity(ctx, user.Name, user)
 						}
+						return nil
 					},
 				},
 			},
@@ -461,10 +492,11 @@ func Priam(args []string, defaultCfgFile string, infoR io.Reader, infoW, errorW 
 		{
 			Name: "schema", Usage: "get SCIM schema of specific type", ArgsUsage: "<type>",
 			Description: "Supported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
 					CmdSchema(ctx, args[0])
 				}
+				return nil
 			},
 		},
 	}
