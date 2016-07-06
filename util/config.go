@@ -24,12 +24,12 @@ import (
 	"strings"
 )
 
-const noTarget = ""
+const NoTarget = ""
 
 // target is used to encapsulate everything needed to connect to a vidm instance.
 type Target struct {
-	Host                   string
-	ClientID, ClientSecret string `yaml:",omitempty"`
+	Host       string
+	AuthHeader string `yaml:",omitempty"`
 }
 
 type Config struct {
@@ -67,9 +67,9 @@ func NewConfig(log *Logr, fileName string) *Config {
 
 	if appCfg.Targets == nil {
 		appCfg.Targets = make(map[string]Target)
-		appCfg.CurrentTarget = noTarget
-	} else if appCfg.CurrentTarget == noTarget || appCfg.Targets[appCfg.CurrentTarget] == (Target{}) {
-		appCfg.CurrentTarget = noTarget
+		appCfg.CurrentTarget = NoTarget
+	} else if appCfg.CurrentTarget == NoTarget || appCfg.Targets[appCfg.CurrentTarget] == (Target{}) {
+		appCfg.CurrentTarget = NoTarget
 	}
 	return appCfg
 }
@@ -83,7 +83,7 @@ func (cfg *Config) Save() bool {
 }
 
 func (cfg *Config) Clear() {
-	cfg.CurrentTarget = noTarget
+	cfg.CurrentTarget = NoTarget
 	cfg.Targets = nil
 	if cfg.Save() {
 		cfg.Log.Info("all targets deleted.\n")
@@ -91,7 +91,7 @@ func (cfg *Config) Clear() {
 }
 
 func (cfg *Config) PrintTarget(prefix string) {
-	if cfg.CurrentTarget == noTarget {
+	if cfg.CurrentTarget == NoTarget {
 		cfg.Log.Info("no target set\n")
 	} else {
 		cfg.Log.Info("%s target is: %s, %s\n", prefix, cfg.CurrentTarget,
@@ -101,7 +101,7 @@ func (cfg *Config) PrintTarget(prefix string) {
 
 func (cfg *Config) ClearTarget(name string) {
 	if cfg.CurrentTarget == name {
-		cfg.CurrentTarget = noTarget
+		cfg.CurrentTarget = NoTarget
 	}
 	delete(cfg.Targets, name)
 	if cfg.Save() {
@@ -112,6 +112,13 @@ func (cfg *Config) ClearTarget(name string) {
 func (cfg *Config) hasTarget(name string) bool {
 	_, ok := cfg.Targets[name]
 	return ok
+}
+
+func (cfg *Config) WithAuthHeader(hdr string) *Config {
+	tgt := cfg.Targets[cfg.CurrentTarget]
+	tgt.AuthHeader = hdr
+	cfg.Targets[cfg.CurrentTarget] = tgt
+	return cfg
 }
 
 func ensureFullURL(url string) string {
@@ -146,17 +153,17 @@ func (cfg *Config) findTarget(url, name string) string {
 		}
 
 	}
-	return noTarget
+	return NoTarget
 }
 
 func (cfg *Config) DeleteTarget(url, name string) {
 	if url == "" {
-		if cfg.CurrentTarget == noTarget {
+		if cfg.CurrentTarget == NoTarget {
 			cfg.Log.Info("nothing deleted, no target set\n")
 		} else {
 			cfg.ClearTarget(cfg.CurrentTarget)
 		}
-	} else if tgt := cfg.findTarget(url, name); tgt == noTarget {
+	} else if tgt := cfg.findTarget(url, name); tgt == NoTarget {
 		cfg.Log.Info("nothing deleted, no such target found\n")
 	} else {
 		cfg.ClearTarget(tgt)
@@ -168,7 +175,7 @@ func (cfg *Config) SetTarget(url, name string, checkURL func(*Config) bool) {
 		return
 	}
 
-	if tgt := cfg.findTarget(url, name); tgt != noTarget {
+	if tgt := cfg.findTarget(url, name); tgt != NoTarget {
 		// found existing target
 		cfg.CurrentTarget = tgt
 		if cfg.Save() {

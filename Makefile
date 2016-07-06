@@ -5,7 +5,7 @@
 # -- VMware Confidential
 #
 
-.PHONY: test build generate-mocks help
+.PHONY: all check govet build-testaid generate-mocks build test coverage cover install help 
 
 # GO program
 GO=go
@@ -13,13 +13,18 @@ GO=go
 # Default target is all
 _default: all
 
-all: check test
+all: check build test
 
 check: govet
 
 govet:
 	@echo checking go vet...
 	$(GO) tool vet -structtags=false -methods=false .
+
+build:
+	@echo building...
+	$(GO) get
+	$(GO) build
 
 build-testaid:
 	$(GO) get ./testaid
@@ -30,18 +35,21 @@ generate-mocks: build-testaid
 	$(GOPATH)/bin/mockery -dir=core -name=DirectoryService
 	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService
 
-build:
-	@echo building...
-	$(GO) get
-	$(GO) build
-
-test: build generate-mocks
+test: generate-mocks
 	@echo testing...
-	$(GO) get github.com/pierrre/gotestcover
-	$(GOPATH)/bin/gotestcover -coverprofile=coverage.out ./util ./core ./cli
+	$(GO) test -cover ./util ./core ./cli
 
-coverage: test
+coverage: generate-mocks
+	@echo generating test coverage report...
+	$(GO) test -coverprofile=util.cover.out ./util
+	$(GO) test -coverprofile=core.cover.out -coverpkg=./util,./core ./core
+	$(GO) test -coverprofile=cli.cover.out -coverpkg=./util,./core,./cli ./cli
+	echo "mode: set" > coverage.out
+	cat *.cover.out | grep -v mode: | sort -r | awk '{if($$1 != last) {print $$0;last=$$1}}' >> coverage.out
+	rm util.cover.out core.cover.out cli.cover.out
 	$(GO) tool cover -html=coverage.out
+
+cover: coverage
 
 # We will probaby have to run "go install github.com/vmware/priam"
 # when ready

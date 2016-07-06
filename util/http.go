@@ -25,7 +25,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,21 +223,6 @@ func (ctx *HttpContext) FileUploadRequest(method, path, key, mediaType string, c
 // sets the ctx.authHeader with basic auth
 func (ctx *HttpContext) BasicAuth(name, pwd string) *HttpContext {
 	return ctx.Authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd)))
-}
-
-// sets the ctx.authHeader with an access token suitable for the
-// authorization header in the form "Bearer xxxxxxx"
-func (ctx *HttpContext) ClientCredsGrant(path, clientID, clientSecret string) (err error) {
-	tokenInfo := struct {
-		Access_token, Token_type, Refresh_token, Scope string
-		Expires_in                                     int
-	}{}
-	inp := neturl.Values{"grant_type": {"client_credentials"}}.Encode()
-	ctx.BasicAuth(clientID, clientSecret).ContentType("application/x-www-form-urlencoded")
-	if err = ctx.Request("POST", path, inp, &tokenInfo); err == nil {
-		ctx.Authorization(tokenInfo.Token_type + " " + tokenInfo.Access_token)
-	}
-	return
 }
 
 func (ctx *HttpContext) GetPrintJson(prefix, path, mediaType string) {

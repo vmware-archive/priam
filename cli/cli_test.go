@@ -30,7 +30,12 @@ import (
 	"testing"
 )
 
-const YAML_USERS_FILE = "../resources/newusers.yaml"
+const (
+	yamlUsersFile   = "../resources/newusers.yaml"
+	goodAccessToken = "travolta.was.here"
+	goodAuthHeader  = "Bearer " + goodAccessToken
+	badAccessToken  = "travolta.has.gone"
+)
 
 type UsersServiceMock struct {
 	mock.Mock
@@ -80,29 +85,8 @@ func tstSrvTgt(url string) string {
 	return fmt.Sprintf("---\ncurrenttarget: 1\ntargets:\n  1:\n    host: %s\n", url)
 }
 
-// Helpers to get health handler
-func healthHandler(status bool) func(t *testing.T, req *TstReq) *TstReply {
-	return func(t *testing.T, req *TstReq) *TstReply {
-		assert.Empty(t, req.Input)
-		if status {
-			return &TstReply{Output: `{"allOk":true}`, ContentType: "application/json"}
-		}
-		return &TstReply{Output: `{"somethingelse":true}`, ContentType: "application/json"}
-	}
-}
-
-// in these tests the clientID is "john" and the client secret is "travolta"
-// Adapted from tests written by Fanny, who apparently likes John Travolta
-func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
-	const tokenReply = `{"token_type": "Bearer", "access_token": "testvalidtoken"}`
-	const basicAuthJohnTravolta = "Basic am9objp0cmF2b2x0YQ=="
-	assert.Equal(t, basicAuthJohnTravolta, req.Authorization)
-	assert.Equal(t, "grant_type=client_credentials", req.Input)
-	return &TstReply{Output: tokenReply}
-}
-
 func tstSrvTgtWithAuth(url string) string {
-	return tstSrvTgt(url) + "    clientid: john\n    clientsecret: travolta\n"
+	return fmt.Sprintf("%s    authheader: Bearer %s\n", tstSrvTgt(url), goodAccessToken)
 }
 
 func runner(ctx *tstCtx, args ...string) *tstCtx {
@@ -124,11 +108,9 @@ func runner(ctx *tstCtx, args ...string) *tstCtx {
 	return ctx
 }
 
-// help usage
+// -- test help usage -----------------------------------------------------------
 func TestHelp(t *testing.T) {
-	if ctx := runner(newTstCtx(t, ""), "help"); ctx != nil {
-		ctx.assertOnlyInfoContains("USAGE")
-	}
+	runner(newTstCtx(t, ""), "help").assertOnlyInfoContains("USAGE")
 }
 
 // unknown flag should not crash the app
@@ -153,6 +135,8 @@ func TestAppAnyName(t *testing.T) {
 	ctx.appName = name
 	runner(ctx, "-h").assertOnlyInfoContains(name)
 }
+
+// -- test target command -----------------------------------------------------
 
 // should not pick a target if none is set
 func TestTargetNoCurrent(t *testing.T) {
@@ -229,7 +213,18 @@ func TestAddNewTargetFailsIfHealthCheckFails(t *testing.T) {
 	ctx.assertOnlyErrContains("Error checking health of https://radio2.example.com")
 }
 
-func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOkTrue(t *testing.T) {
+// Helper health handler
+func healthHandler(status bool) func(t *testing.T, req *TstReq) *TstReply {
+	return func(t *testing.T, req *TstReq) *TstReply {
+		assert.Empty(t, req.Input)
+		if status {
+			return &TstReply{Output: `{"allOk":true}`, ContentType: "application/json"}
+		}
+		return &TstReply{Output: `{"somethingelse":true}`, ContentType: "application/json"}
+	}
+}
+
+func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOk(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(false)}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
@@ -261,37 +256,89 @@ func TestExitIfHealthFails(t *testing.T) {
 	ctx.assertOnlyErrContains("test health")
 }
 
-// -- Login
+// -- test login -----------------------------------------------------------------------------
+
 func TestCanNotLoginWithNoTarget(t *testing.T) {
 	ctx := runner(newTstCtx(t, " "), "login", "c", "s")
 	ctx.assertOnlyErrContains("no target set")
 }
 
 func TestCanNotLoginWithTargetSetButNoOauthCreds(t *testing.T) {
+	ctx := runner(newTstCtx(t, ""), "login", "-c")
+	ctx.assertInfoErrContains("USAGE", "at least 1 arguments must be given")
+}
+
+func TestCanNotLoginWithTargetSetButUserCreds(t *testing.T) {
 	ctx := runner(newTstCtx(t, ""), "login")
 	ctx.assertInfoErrContains("USAGE", "at least 1 arguments must be given")
 }
 
-func TestCanHandleBadLoginReply(t *testing.T) {
-	h := func(t *testing.T, req *TstReq) *TstReply {
-		assert.NotEmpty(t, req.Input)
-		return &TstReply{Output: "crap"}
-	}
-	paths := map[string]TstHandler{"POST" + vidmTokenPath: h}
-	srv := StartTstServer(t, paths)
+func badLoginReply(t *testing.T, req *TstReq) *TstReply {
+	assert.NotEmpty(t, req.Input)
+	return &TstReply{Output: "crap"}
+}
+
+func TestCanHandleBadUserLoginReply(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: badLoginReply})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
 	ctx.assertOnlyErrContains("invalid")
 }
 
-func TestCanLogin(t *testing.T) {
-	paths := map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
-	srv := StartTstServer(t, paths)
+func TestCanHandleBadOAuthLoginReply(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: badLoginReply})
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
+	ctx.assertOnlyErrContains("invalid")
+}
+
+// in these tests the clientID is "john" and the client secret is "travolta"
+// Adapted from tests written by Fanny, who apparently likes John Travolta
+func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
+	assert.Equal(t, "Basic am9objp0cmF2b2x0YQ==", req.Authorization)
+	assert.Equal(t, "grant_type=client_credentials", req.Input)
+	return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
+}
+
+func TestCanLoginAsOAuthClient(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant})
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
+	assert.Contains(t, ctx.cfg, "authheader: Bearer "+goodAccessToken)
+	ctx.assertOnlyInfoContains("Access token saved")
+}
+
+func tstUserLogin(t *testing.T, req *TstReq) *TstReply {
+	assert.Contains(t, req.Input, `"username": "john"`)
+	assert.Contains(t, req.Input, `"password": "travolta"`)
+	assert.Contains(t, req.Input, `"issueToken": true`)
+	return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
+}
+
+func TestCanLoginAsUser(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: tstUserLogin})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-	assert.Contains(t, ctx.cfg, "clientid: john")
-	assert.Contains(t, ctx.cfg, "clientsecret: travolta")
-	ctx.assertOnlyInfoContains("clientID and clientSecret saved")
+	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
+	ctx.assertOnlyInfoContains("Access token saved")
+}
+
+func TestCanLoginAsUserPromptPassword(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: tstUserLogin})
+	defer srv.Close()
+	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john")
+	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
+	ctx.assertOnlyInfoContains("Access token saved")
+}
+
+// -- test logout
+
+func TestLogout(t *testing.T) {
+	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth("http://grease.com")), "logout")
+	assert.NotContains(t, ctx.cfg, "authheader")
+	assert.NotContains(t, ctx.cfg, goodAccessToken)
+	ctx.assertOnlyInfoContains("Access token removed")
 }
 
 // -- common CLI checks
@@ -309,14 +356,11 @@ func TestCanNotIssueUserCommandWithTooManyArguments(t *testing.T) {
 	}
 }
 
-// Helper function to start the test HTTP server and run the given command
+// Helper function to run the given command
 // @param args the list of arguments for the command
-// @return The mock for users service.
+// @return The test output context.
 func testCliCommand(t *testing.T, args ...string) *tstCtx {
-	paths := map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	return runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), args...)
+	return runner(newTstCtx(t, tstSrvTgtWithAuth("http://frozen.site")), args...)
 }
 
 // Helper to setup mock for the user service
@@ -329,9 +373,8 @@ func setupUsersServiceMock() *mocks.DirectoryService {
 func TestCanAddUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("AddEntity", mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(nil)
-	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
-		ctx.assertOnlyInfoContains("User 'elsa' successfully added")
-	}
+	ctx := testCliCommand(t, "user", "add", "elsa", "frozen")
+	ctx.assertOnlyInfoContains("User 'elsa' successfully added")
 	usersServiceMock.AssertExpectations(t)
 }
 
@@ -339,9 +382,8 @@ func TestDisplayErrorWhenAddUserFails(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("AddEntity",
 		mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(errors.New("test"))
-	if ctx := testCliCommand(t, "user", "add", "elsa", "frozen"); ctx != nil {
-		assert.Contains(t, ctx.err, "Error creating user 'elsa': test")
-	}
+	ctx := testCliCommand(t, "user", "add", "elsa", "frozen")
+	assert.Contains(t, ctx.err, "Error creating user 'elsa': test")
 	usersServiceMock.AssertExpectations(t)
 }
 
@@ -381,6 +423,21 @@ func TestCanUpdateUserPassword(t *testing.T) {
 	usersServiceMock.AssertExpectations(t)
 }
 
+func TestCanUpdateUserPasswordPromptedWithTypo(t *testing.T) {
+	newpassword, pwdCount := "friendsforever", 0
+	getRawPassword = func() ([]byte, error) {
+		if pwdCount = pwdCount + 1; pwdCount == 2 {
+			return []byte("hans-not-friend"), nil
+		}
+		return []byte(newpassword), nil
+	}
+	usersServiceMock := setupUsersServiceMock()
+	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &BasicUser{Pwd: newpassword}).Return()
+	ctx := testCliCommand(t, "user", "password", "elsa")
+	ctx.assertOnlyInfoContains("Passwords didn't match. Try again.")
+	usersServiceMock.AssertExpectations(t)
+}
+
 func TestCanUpdateUserInfo(t *testing.T) {
 	newemail := "elsa@arendelle.com"
 	newgiven := "elsa"
@@ -393,8 +450,8 @@ func TestCanUpdateUserInfo(t *testing.T) {
 
 func TestLoadUsersFromYamlFile(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("LoadEntities", mock.Anything, YAML_USERS_FILE).Return()
-	testCliCommand(t, "user", "load", YAML_USERS_FILE)
+	usersServiceMock.On("LoadEntities", mock.Anything, yamlUsersFile).Return()
+	testCliCommand(t, "user", "load", yamlUsersFile)
 	usersServiceMock.AssertExpectations(t)
 }
 
@@ -440,15 +497,17 @@ func TestCanListGroupsWithFilter(t *testing.T) {
 func TestCanListAccessPolicies(t *testing.T) {
 	h := func(t *testing.T, req *TstReq) *TstReply {
 		assert.Empty(t, req.Input)
+		assert.Equal(t, req.Authorization, goodAuthHeader)
 		return &TstReply{Output: `{"items": [ {"name": "default_access_policy_set"} ]}`, ContentType: "application/json"}
 	}
-	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                       tstClientCredGrant,
-		"GET/SAAS/jersey/manager/api/accessPolicies": h}
-	srv := StartTstServer(t, paths)
+	srv := StartTstServer(t, map[string]TstHandler{"GET/SAAS/jersey/manager/api/accessPolicies": h})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "policies")
 	ctx.assertOnlyInfoContains("---- Access Policies ----\nitems:\n- name: default_access_policy_set")
+}
+
+func TestCantListAccessPoliciesWithoutAuth(t *testing.T) {
+	runner(newTstCtx(t, ""), "policies").assertOnlyErrContains("No access token")
 }
 
 // - Schema
@@ -460,7 +519,6 @@ func TestCannotGetSchemaIfNoTypeSpecified(t *testing.T) {
 func TestCannotGetSchemaforUnknownType(t *testing.T) {
 	unknownSchema := "olaf"
 	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                                                                tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + unknownSchema + "%22": ErrorHandler(404, "test schema")}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
@@ -480,7 +538,6 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 		return &TstReply{Output: `{ "attributes": [], "name": "test", "schema": "urn:scim:schemas:core:1.0"}`, ContentType: "application/json"}
 	}
 	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                                                             tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22": h}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
@@ -504,7 +561,6 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
 	}
 
 	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
@@ -520,7 +576,6 @@ func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 		return &TstReply{Output: `{"showLocalUserStore": false}`, ContentType: "application/json"}
 	}
 	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"PUT/SAAS/jersey/manager/api/localuserstore": h}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
@@ -531,7 +586,6 @@ func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 
 func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
 	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                       tstClientCredGrant,
 		"PUT/SAAS/jersey/manager/api/localuserstore": ErrorHandler(500, "error test")}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
@@ -575,7 +629,6 @@ func TestGetTenantConfiguration(t *testing.T) {
 		return &TstReply{Output: `{}`, ContentType: "application/json"}
 	}
 	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                                         tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
@@ -588,7 +641,6 @@ func TestSetTenantConfiguration(t *testing.T) {
 		return &TstReply{Output: `{}`, ContentType: "application/json"}
 	}
 	paths := map[string]TstHandler{
-		"POST" + vidmTokenPath:                                         tstClientCredGrant,
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()

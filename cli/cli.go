@@ -27,9 +27,10 @@ import (
 )
 
 const (
-	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
 	vidmBasePath      = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
+	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
+	vidmLoginPath     = "/SAAS/API/1.0/REST/auth/system/login"
 )
 
 // Directory service
@@ -62,17 +63,19 @@ func getArgOrPassword(log *Logr, prompt, arg string, repeat bool) string {
 	}
 }
 
-func initCtx(cfg *Config, authn bool) *HttpContext {
-	if cfg.CurrentTarget == "" {
+func InitCtx(cfg *Config, authn bool) *HttpContext {
+	if cfg.CurrentTarget == NoTarget {
 		cfg.Log.Err("Error: no target set\n")
 		return nil
 	}
 	tgt := cfg.Targets[cfg.CurrentTarget]
 	ctx := NewHttpContext(cfg.Log, tgt.Host, vidmBasePath, vidmBaseMediaType)
 	if authn {
-		if err := ctx.ClientCredsGrant(vidmTokenPath, tgt.ClientID, tgt.ClientSecret); err != nil {
-			cfg.Log.Err("Error getting access token: %v\n", err)
+		if hdr := cfg.Targets[cfg.CurrentTarget].AuthHeader; hdr == "" {
+			cfg.Log.Err("No access token saved for current target. Please log in.\n")
 			return nil
+		} else {
+			ctx.Authorization(hdr)
 		}
 	}
 	return ctx
@@ -85,7 +88,6 @@ func initArgs(cfg *Config, c *cli.Context, minArgs, maxArgs int, validateArgs fu
 	} else if maxArgs >= 0 && len(args) > maxArgs {
 		cfg.Log.Err("\nInput Error: at most %d arguments can be given\n\n", maxArgs)
 	} else {
-
 		for i := len(args); i < maxArgs; i++ {
 			args = append(args, "")
 		}
@@ -98,9 +100,8 @@ func initArgs(cfg *Config, c *cli.Context, minArgs, maxArgs int, validateArgs fu
 }
 
 func initCmd(cfg *Config, c *cli.Context, minArgs, maxArgs int, authn bool, validateArgs func([]string) bool) (args []string, ctx *HttpContext) {
-	args = initArgs(cfg, c, minArgs, maxArgs, validateArgs)
-	if args != nil {
-		ctx = initCtx(cfg, authn)
+	if args = initArgs(cfg, c, minArgs, maxArgs, validateArgs); args != nil {
+		ctx = InitCtx(cfg, authn)
 	}
 	return
 }
@@ -119,11 +120,11 @@ func initUserCmd(cfg *Config, c *cli.Context, getPwd bool) (*BasicUser, *HttpCon
 	if getPwd {
 		user.Pwd = getArgOrPassword(cfg.Log, "Password", args[1], true)
 	}
-	return user, initCtx(cfg, true)
+	return user, InitCtx(cfg, true)
 }
 
 func checkTarget(cfg *Config) bool {
-	ctx, output := initCtx(cfg, false), ""
+	ctx, output := InitCtx(cfg, false), ""
 	if ctx == nil {
 		return false
 	}
@@ -312,16 +313,33 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			},
 		},
 		{
-			Name: "login", Usage: "validates and saves clientID and clientSecret",
-			ArgsUsage:   "<clientID> [clientSecret]",
-			Description: "if clientSecret is not given as an argument, user will be prompted to enter it",
+			Name: "login", Usage: "gets an access token as a user or service client",
+			ArgsUsage:   "<name> [password]",
+			Description: "if password is not given as an argument, user will be prompted to enter it",
+			Flags: []cli.Flag{
+				cli.BoolFlag{Name: "client, c", Usage: "authenticate with oauth2 client ID and secret"},
+			},
 			Action: func(c *cli.Context) error {
 				if a, ctx := initCmd(cfg, c, 1, 2, false, nil); ctx != nil {
-					cfg.Targets[cfg.CurrentTarget] = Target{Host: ctx.HostURL,
-						ClientID: a[0], ClientSecret: getArgOrPassword(cfg.Log, "Secret", a[1], false)}
-					if ctx = initCtx(cfg, true); ctx != nil && cfg.Save() {
-						cfg.Log.Info("clientID and clientSecret saved\n")
+					prompt, path, login := "Password", vidmLoginPath, LoginSystemUser
+					if c.Bool("client") {
+						prompt, path, login = "Secret", vidmTokenPath, ClientCredentialsGrant
 					}
+					pwd := getArgOrPassword(cfg.Log, prompt, a[1], false)
+					if authHeader, err := login(ctx, path, a[0], pwd); err != nil {
+						cfg.Log.Err("Error getting access token: %v\n", err)
+					} else if cfg.WithAuthHeader(authHeader).Save() {
+						cfg.Log.Info("Access token saved\n")
+					}
+				}
+				return nil
+			},
+		},
+		{
+			Name: "logout", Usage: "deletes access token from configuration store for current target",
+			Action: func(c *cli.Context) error {
+				if args := initArgs(cfg, c, 0, 0, nil); args != nil && cfg.WithAuthHeader("").Save() {
+					cfg.Log.Info("Access token removed\n")
 				}
 				return nil
 			},
