@@ -5,7 +5,7 @@
 # -- VMware Confidential
 #
 
-.PHONY: all check govet build-testaid generate-mocks build test coverage cover install help 
+.PHONY: all check govet update-build-dependencies build-testaid generate-mocks build test coverage cover install help 
 
 # GO program
 GO=go
@@ -21,9 +21,11 @@ govet:
 	@echo checking go vet...
 	$(GO) tool vet -structtags=false -methods=false .
 
-build:
-	@echo building...
+update-build-dependencies:
 	$(GO) get
+
+build: update-build-dependencies
+	@echo building...
 	$(GO) build
 
 build-testaid:
@@ -35,11 +37,11 @@ generate-mocks: build-testaid
 	$(GOPATH)/bin/mockery -dir=core -name=DirectoryService
 	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService
 
-test: generate-mocks
+test: update-build-dependencies generate-mocks
 	@echo testing...
 	$(GO) test -cover ./util ./core ./cli
 
-coverage: generate-mocks
+coverage: update-build-dependencies generate-mocks
 	@echo generating test coverage report...
 	$(GO) test -coverprofile=util.cover.out ./util
 	$(GO) test -coverprofile=core.cover.out -coverpkg=./util,./core ./core
@@ -51,8 +53,7 @@ coverage: generate-mocks
 
 cover: coverage
 
-# We will probaby have to run "go install github.com/vmware/priam"
-# when ready
+# We will probaby have to run "go install github.com/vmware/priam" when ready
 install:
 	$(GO) install
 

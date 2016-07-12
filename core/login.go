@@ -22,9 +22,9 @@ import (
 )
 
 /* ClientCredsGrant takes a clientID and clientSecret and makes a request for an access token.
- * The access token is returned in a string prefixed by the token type for use in an http
- * authorization header.
- */
+   The access token is returned in a string prefixed by the token type for use in an http
+   authorization header.
+*/
 func ClientCredentialsGrant(ctx *HttpContext, path, clientID, clientSecret string) (authHeader string, err error) {
 	tokenInfo := struct {
 		Access_token, Token_type, Refresh_token, Scope string
@@ -39,10 +39,10 @@ func ClientCredentialsGrant(ctx *HttpContext, path, clientID, clientSecret strin
 }
 
 /* LoginSystemUser takes a username and password and makes a request for an access token.
- * This is not an OAuth2 call but uses a vidm specific API.
- * The access token is returned in a string prefixed by the token type, suitable for use
- * in an http authorization header.
- */
+   This is not an OAuth2 call but uses a vidm specific API.
+   The access token is returned in a string prefixed by the token type, suitable for use
+   in an http authorization header.
+*/
 func LoginSystemUser(ctx *HttpContext, path, user, password string) (authHeader string, err error) {
 	tokenInfo := struct{ SessionToken string }{}
 	inp := fmt.Sprintf(`{"username": "%s", "password": "%s", "issueToken": true}`, user, password)
