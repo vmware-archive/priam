@@ -274,7 +274,7 @@ func TestScimMemberReturnsWhenNoResourceId(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{
 		DEFAULT_GET_USER_URL: ErrorHandler(404, "error scim members")})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
-	ScimMember(ctx, "Users", "userName", "john", "john", false)
+	scimMember(ctx, "Users", "userName", "john", "john", false)
 	AssertErrorContains(t, ctx, "Error getting SCIM Users ID of john")
 }
 
@@ -283,7 +283,7 @@ func TestAddScimMember(t *testing.T) {
 		DEFAULT_GET_USER_URL:  scimDefaultUserHandler(),
 		DEFAULT_POST_USER_URL: scimDefaultUserHandler()})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
-	ScimMember(ctx, "Users", "userName", "john", "john", false)
+	scimMember(ctx, "Users", "userName", "john", "john", false)
 	AssertOnlyInfoContains(t, ctx, "Updated SCIM resource john of type Users\n")
 }
 
@@ -292,7 +292,7 @@ func TestRemoveScimMember(t *testing.T) {
 		DEFAULT_GET_USER_URL:  scimDefaultUserHandler(),
 		DEFAULT_POST_USER_URL: scimDefaultUserHandler()})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
-	ScimMember(ctx, "Users", "userName", "john", "john", true)
+	scimMember(ctx, "Users", "userName", "john", "john", true)
 	AssertOnlyInfoContains(t, ctx, "Updated SCIM resource john of type Users\n")
 }
 
@@ -301,7 +301,7 @@ func TestRemoveScimMemberReturnsErrorIfScimPatchFailed(t *testing.T) {
 		DEFAULT_GET_USER_URL:  scimDefaultUserHandler(),
 		DEFAULT_POST_USER_URL: ErrorHandler(404, "error scim patch members")})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
-	ScimMember(ctx, "Users", "userName", "john", "john", true)
+	scimMember(ctx, "Users", "userName", "john", "john", true)
 	AssertErrorContains(t, ctx, "Error updating SCIM resource john of type Users")
 }
 

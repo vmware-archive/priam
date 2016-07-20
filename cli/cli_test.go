@@ -492,6 +492,20 @@ func TestCanListGroupsWithFilter(t *testing.T) {
 	groupsServiceMock.AssertExpectations(t)
 }
 
+func TestCanAddMemberToGroup(t *testing.T) {
+	groupServiceMock := setupGroupsServiceMock()
+	groupServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", false).Return()
+	testCliCommand(t, "group", "member", "friendsforever", "sven")
+	groupServiceMock.AssertExpectations(t)
+}
+
+func TestCanRemoveMemberFromGroup(t *testing.T) {
+	groupServiceMock := setupGroupsServiceMock()
+	groupServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", true).Return()
+	testCliCommand(t, "group", "member", "--delete", "friendsforever", "sven")
+	groupServiceMock.AssertExpectations(t)
+}
+
 // - Policies
 
 func TestCanListAccessPolicies(t *testing.T) {
@@ -620,6 +634,20 @@ func TestCanDisplayAllRolesWithCountAndFilter(t *testing.T) {
 	rolesServiceMock := setupRolesServiceMock()
 	rolesServiceMock.On("ListEntities", mock.Anything, 2, "filter").Return()
 	testCliCommand(t, "role", "list", "--count", "2", "--filter", "filter")
+	rolesServiceMock.AssertExpectations(t)
+}
+
+func TestCanAddMemberToRole(t *testing.T) {
+	rolesServiceMock := setupRolesServiceMock()
+	rolesServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", false).Return()
+	testCliCommand(t, "role", "member", "friendsforever", "sven")
+	rolesServiceMock.AssertExpectations(t)
+}
+
+func TestCanRemoveMemberFromRole(t *testing.T) {
+	rolesServiceMock := setupRolesServiceMock()
+	rolesServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", true).Return()
+	testCliCommand(t, "role", "member", "--delete", "friendsforever", "sven")
 	rolesServiceMock.AssertExpectations(t)
 }
 

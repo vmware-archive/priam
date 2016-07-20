@@ -280,8 +280,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					ArgsUsage: "<groupname> <username>", Flags: memberFlags,
 					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
-							// @todo Put this in the interface
-							ScimMember(ctx, "Groups", "displayName", args[0], args[1], c.Bool("delete"))
+							groupsService.UpdateMember(ctx, args[0], args[1], c.Bool("delete"))
 						}
 						return nil
 					},
@@ -379,7 +378,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					ArgsUsage: "<rolename> <username>", Flags: memberFlags,
 					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 2, 2, true, nil); ctx != nil {
-							ScimMember(ctx, "Roles", "displayName", args[0], args[1], c.Bool("delete"))
+							rolesService.UpdateMember(ctx, args[0], args[1], c.Bool("delete"))
 						}
 						return nil
 					},

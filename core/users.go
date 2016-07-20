@@ -105,6 +105,10 @@ func (userService SCIMUsersService) ListEntities(ctx *HttpContext, count int, fi
 		"givenName", "familyName", "value")
 }
 
+func (userService SCIMUsersService) UpdateMember(ctx *HttpContext, name, member string, remove bool) {
+	ctx.Log.Err("Not implemented.")
+}
+
 func (userService SCIMUsersService) DeleteEntity(ctx *HttpContext, username string) {
 	scimDelete(ctx, "Users", "userName", username)
 }
@@ -140,6 +144,10 @@ func (groupService SCIMGroupsService) UpdateEntity(ctx *HttpContext, name string
 	ctx.Log.Err("Not implemented.")
 }
 
+func (groupService SCIMGroupsService) UpdateMember(ctx *HttpContext, name, member string, remove bool) {
+	scimMember(ctx, "Groups", "displayName", name, member, remove)
+}
+
 // -- ROLES
 // @todo to put in scim_roles.go
 
@@ -169,6 +177,10 @@ func (roleService SCIMRolesService) DeleteEntity(ctx *HttpContext, username stri
 func (roleService SCIMRolesService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
 	// not implemented
 	ctx.Log.Err("Not implemented.")
+}
+
+func (roleService SCIMRolesService) UpdateMember(ctx *HttpContext, name, member string, remove bool) {
+	scimMember(ctx, "Roles", "displayName", name, member, remove)
 }
 
 // -- SCIM common code
@@ -273,7 +285,7 @@ func scimNameToID(ctx *HttpContext, resType, nameAttr, name string) string {
 	return ""
 }
 
-func ScimMember(ctx *HttpContext, resType, nameAttr, rname, uname string, remove bool) {
+func scimMember(ctx *HttpContext, resType, nameAttr, rname, uname string, remove bool) {
 	rid, uid := scimNameToID(ctx, resType, nameAttr, rname), scimNameToID(ctx, "Users", "userName", uname)
 	if rid == "" || uid == "" {
 		return

@@ -42,4 +42,7 @@ type DirectoryService interface {
 
 	// Create entities from a file
 	LoadEntities(ctx *util.HttpContext, fileName string)
+
+	// Adds or removes a user for entities that have members, like Group or Role
+	UpdateMember(ctx *util.HttpContext, name, member string, remove bool)
 }
