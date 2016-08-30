@@ -1,0 +1,6 @@
+.idea
+*.iml
+coverage.out
+/priam
+/mocks/
+

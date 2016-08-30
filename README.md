@@ -1,30 +1,32 @@
+Start of command line client for VMware Workspace in Go.
+
+Build it:
+    go get -u
+    go build
+
+Test it (basic or with code coverage):
+
+    go test
+    
+    go test -cover
+
+Test it and view code coverage in a browser:
+
+    go test -coverprofile=coverage.out
+    go tool cover -html=coverage.out
+
+To get even fancier with heat maps of code coverage, see http://blog.golang.org/cover
+
+Install it:
+
+    go install
 
 
-# priam
+get help:
 
-## Overview
+    priam help
 
-## Try it out
+get help on specific command (for example, 'target'):
 
-### Prerequisites
-
-* Prereq 1
-* Prereq 2
-* Prereq 3
-
-### Build & Run
-
-1. Step 1
-2. Step 2
-3. Step 3
-
-## Documentation
-
-## Contributing
-
-The priam project team welcomes contributions from the community. If you wish to contribute code and you have not
-signed our contributor license agreement (CLA), our bot will update the issue when you open a Pull Request. For any
-questions about the CLA process, please refer to our [FAQ](https://cla.vmware.com/faq). For more detailed information,
-refer to [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
+    priam help target
+>>>>>>> ccade0b0bae67a103906182d8448f21ddcd6f10b
