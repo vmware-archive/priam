@@ -19,7 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	. "priam/util"
+	. "github.com/vmware/priam/util"
 	"strconv"
 )
 

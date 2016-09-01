@@ -21,8 +21,8 @@ import (
 	"github.com/urfave/cli"
 	"io"
 	"path/filepath"
-	. "priam/core"
-	. "priam/util"
+	. "github.com/vmware/priam/core"
+	. "github.com/vmware/priam/util"
 	"strings"
 )
 

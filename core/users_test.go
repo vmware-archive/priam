@@ -18,8 +18,8 @@ package core
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	. "priam/testaid"
-	. "priam/util"
+	. "github.com/vmware/priam/testaid"
+	. "github.com/vmware/priam/util"
 	"testing"
 )
 

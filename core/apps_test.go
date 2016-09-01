@@ -25,8 +25,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"os"
-	. "priam/testaid"
-	. "priam/util"
+	. "github.com/vmware/priam/testaid"
+	. "github.com/vmware/priam/util"
 	"strings"
 	"testing"
 )

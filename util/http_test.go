@@ -17,7 +17,7 @@ package util
 
 import (
 	"github.com/stretchr/testify/assert"
-	. "priam/testaid"
+	. "github.com/vmware/priam/testaid"
 	"testing"
 )
 

@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
-	. "priam/testaid"
+	. "github.com/vmware/priam/testaid"
 	"testing"
 )
 

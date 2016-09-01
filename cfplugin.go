@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"github.com/cloudfoundry/cli/plugin"
 	"os"
-	"priam/cli"
-	"priam/core"
-	"priam/util"
+	"github.com/vmware/priam/cli"
+	"github.com/vmware/priam/core"
+	"github.com/vmware/priam/util"
 	"strings"
 )
 

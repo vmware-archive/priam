@@ -16,7 +16,7 @@ limitations under the License.
 package core
 
 import (
-	"priam/util"
+	"github.com/vmware/priam/util"
 )
 
 // The directory service interface.

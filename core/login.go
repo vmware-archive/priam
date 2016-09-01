@@ -18,7 +18,7 @@ package core
 import (
 	"fmt"
 	"net/url"
-	. "priam/util"
+	. "github.com/vmware/priam/util"
 )
 
 /* ClientCredsGrant takes a clientID and clientSecret and makes a request for an access token.

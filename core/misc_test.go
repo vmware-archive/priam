@@ -18,8 +18,8 @@ package core
 import (
 	"github.com/stretchr/testify/assert"
 	"net/http/httptest"
-	. "priam/testaid"
-	. "priam/util"
+	. "github.com/vmware/priam/testaid"
+	. "github.com/vmware/priam/util"
 	"testing"
 )
 

@@ -23,10 +23,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
-	. "priam/core"
-	"priam/mocks"
-	. "priam/testaid"
-	. "priam/util"
+	. "github.com/vmware/priam/core"
+	"github.com/vmware/priam/mocks"
+	. "github.com/vmware/priam/testaid"
+	. "github.com/vmware/priam/util"
 	"testing"
 )
 

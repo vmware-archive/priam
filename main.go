@@ -18,7 +18,7 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"priam/cli"
+	"github.com/vmware/priam/cli"
 	"strings"
 )
 

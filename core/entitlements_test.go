@@ -17,7 +17,7 @@ package core
 
 import (
 	"fmt"
-	. "priam/testaid"
+	. "github.com/vmware/priam/testaid"
 	"strings"
 	"testing"
 )

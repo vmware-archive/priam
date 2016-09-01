@@ -18,7 +18,7 @@ package core
 import (
 	"fmt"
 	"github.com/pborman/uuid"
-	. "priam/util"
+	. "github.com/vmware/priam/util"
 	"strings"
 )
 
