@@ -112,6 +112,7 @@ An example of the YAML file for a simple web link:
 
     $ cat my-app.yaml
 ```yaml
+applications:
 - name: my-example-application
   workspace:
     packageVersion: '1.0'
@@ -120,6 +121,38 @@ An example of the YAML file for a simple web link:
     authInfo:
       type: WebAppLink
       targetUrl: "http://www.vmware.com"
+```
+
+To add an application and entitle users to it, you can specify the entitlement in the manifest, then add the application.
+Note that if the application already exists, the application information will only be updated and its entitlements too.
+
+    $ priam app add my-saml-app-entitled.yaml
+    App "fannys-saml-app" added to the catalog
+    Entitled group "ALL USERS" to app "fannys-saml-app".
+
+    $ cat my-saml-app-entitled.yaml
+```yaml
+applications:
+- name: fannys-saml-app
+  workspace:
+    packageVersion: '1.0'
+    description: Demo App for GiHub with entitlements to all users
+    entitleGroup: ALL USERS
+    catalogItemType: Saml20
+    attributeMaps:
+      userName: "${user.userName}"
+      firstName: "${user.firstName}"
+      lastName: "${user.lastName}"
+    accessPolicy: default_access_policy_set
+    authInfo:
+      type: Saml20
+      validityTimeSeconds: 200
+      nameIdFormat: urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified
+      nameId: "${user.userName}"
+      configureAs: "manual"
+      audience: "https://test.fanny.audience"
+      assertionConsumerServiceUrl: "https://test.fanny/a/{domainName}/acs?RelayState=http://mail.google.com/a/{domainName}"
+      recipientName: "https://test.fanny/a/{domainName}/acs"
 ```
 
 ## Contributing
