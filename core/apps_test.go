@@ -178,11 +178,14 @@ applications:
       recipientName: "https://test.fanny/a/{domainName}/acs"
 `
 
+// Handler for adding an application, can contain or not an icon
 func multipartH(t *testing.T, req *TstReq) *TstReply {
 	mediaType, params, err := mime.ParseMediaType(req.ContentType)
 	require.Nil(t, err)
 	gotImage := false
+	expectImage := false
 	if strings.HasPrefix(mediaType, "multipart/") {
+		expectImage = true
 		mr := multipart.NewReader(strings.NewReader(req.Input), params["boundary"])
 		for {
 			p, err := mr.NextPart()
@@ -200,7 +203,10 @@ func multipartH(t *testing.T, req *TstReq) *TstReply {
 			}
 		}
 	}
-	assert.True(t, gotImage, "should get an image")
+	if expectImage {
+		assert.True(t, gotImage, "should get an image")
+	}
+	assert.Equal(t, req.Accept, "catalog.saml20+json")
 	return &TstReply{}
 }
 
@@ -303,7 +309,13 @@ func TestPublishAppJsonError(t *testing.T) {
 	AssertErrorContains(t, ctx, `Error converting app olaf to JSON`)
 }
 
-func TestPublishAppNoIconFile(t *testing.T) {
+func TestPublishNewAppNoIconFile(t *testing.T) {
+	ctx := PublishAppTester(t, appPubEnv{iconFile: noIconFile})
+	AssertOnlyInfoContains(t, ctx, `App "olaf" added to the catalog`)
+	AssertOnlyInfoContains(t, ctx, `Entitled group "ALL USERS" to app "olaf"`)
+}
+
+func TestPublishAppThatExistsNoIconFile(t *testing.T) {
 	ctx := PublishAppTester(t, appPubEnv{appCheckH: appGetH(appSearchResult, 0), iconFile: noIconFile})
 	AssertOnlyInfoContains(t, ctx, `App "olaf" updated to the catalog`)
 	AssertOnlyInfoContains(t, ctx, `Entitled group "ALL USERS" to app "olaf"`)

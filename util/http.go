@@ -31,15 +31,15 @@ import (
 )
 
 type HttpContext struct {
-	Log     *Logr
-	HostURL string
+	Log           *Logr
+	HostURL       string
 
 	/* basePath is a convenience so that many callers can use a short
 	 * portion of a path from a common root. If a path for a given request
 	 * starts with '/', basePath is ignored. Otherwise it is used to prefix
 	 * the given path.
 	 */
-	basePath string
+	basePath      string
 
 	/* baseMediaType is a convenience so that many callers can use a short
 	 * portion of a set of long media type strings.
@@ -94,6 +94,14 @@ func (ctx *HttpContext) traceHeaders(prefix string, hdrs *http.Header) {
 			}
 		}
 	}
+}
+
+// Return the HTTP header of the given name, or empty string if name is not in the headers
+func (ctx *HttpContext) Headers(name string) string {
+	if value, exists := ctx.headers[name]; exists {
+		return value
+	}
+	return ""
 }
 
 func ToJson(input interface{}) (output []byte, err error) {
@@ -217,12 +225,12 @@ func (ctx *HttpContext) FileUploadRequest(method, path, key, mediaType string, c
 	if err = writer.Close(); err != nil {
 		return err
 	}
-	return ctx.ContentType(writer.FormDataContentType()).Request(method, path, buf.Bytes(), outp)
+	return ctx.ContentType(writer.FormDataContentType()).Accept(mediaType).Request(method, path, buf.Bytes(), outp)
 }
 
 // sets the ctx.authHeader with basic auth
 func (ctx *HttpContext) BasicAuth(name, pwd string) *HttpContext {
-	return ctx.Authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd)))
+	return ctx.Authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name + ":" + pwd)))
 }
 
 func (ctx *HttpContext) GetPrintJson(prefix, path, mediaType string) {

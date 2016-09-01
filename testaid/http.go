@@ -45,7 +45,7 @@ func stringOrDefault(v, dfault string) string {
 
 func StartTstServer(t *testing.T, paths map[string]TstHandler) *httptest.Server {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		//fmt.Printf("Request URL=%s%+v\n", r.Method, r.URL)
+		t.Logf("Request URL=%s%+v\n", r.Method, r.URL)
 		if rbody, err := ioutil.ReadAll(r.Body); err != nil {
 			http.Error(w, fmt.Sprintf("error reading request body: %v", err), 404)
 		} else if handler, ok := paths[r.Method+r.URL.String()]; !ok {

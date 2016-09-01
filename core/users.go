@@ -191,7 +191,7 @@ func scimAddUser(ctx *HttpContext, u *BasicUser) error {
 	acct.Name = &nameAttr{FamilyName: StringOrDefault(u.Family, u.Name), GivenName: StringOrDefault(u.Given, u.Name)}
 	acct.Emails = []dispValue{{Value: StringOrDefault(u.Email, u.Name+"@example.com")}}
 	ctx.Log.PP("add user: ", acct)
-	return ctx.Request("POST", "scim/Users", acct, acct)
+	return ctx.Accept("json").Request("POST", "scim/Users", acct, acct)
 }
 
 func scimUpdateUser(ctx *HttpContext, name string, u *BasicUser) {
@@ -223,7 +223,7 @@ func scimGetByName(ctx *HttpContext, resType, nameAttr, name string) (item map[s
 	}{}
 	vals := url.Values{"count": {"10000"}, "filter": {fmt.Sprintf("%s eq \"%s\"", nameAttr, name)}}
 	path := fmt.Sprintf("scim/%v?%v", resType, vals.Encode())
-	if err = ctx.Request("GET", path, nil, &output); err != nil {
+	if err = ctx.Accept("json").Request("GET", path, nil, &output); err != nil {
 		return
 	}
 	for _, v := range output.Resources {
@@ -263,7 +263,7 @@ func scimList(ctx *HttpContext, count int, filter string, resType string, summar
 	}
 	path := fmt.Sprintf("scim/%s?%v", resType, vals.Encode())
 	outp := make(map[string]interface{})
-	if err := ctx.Request("GET", path, nil, &outp); err != nil {
+	if err := ctx.Accept("json").Request("GET", path, nil, &outp); err != nil {
 		ctx.Log.Err("Error getting SCIM resources of type %s: %v\n", resType, err)
 	} else {
 		ctx.Log.PP(resType, outp["Resources"], summaryLabels...)

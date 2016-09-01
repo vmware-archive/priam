@@ -192,7 +192,7 @@ func PublishApps(ctx *HttpContext, manifile string) {
 			continue
 		}
 		if iconFile == "" {
-			err = ctx.ContentType(mtype).Request(method, path, content, nil)
+			err = ctx.Accept(mtype).ContentType(mtype).Request(method, path, content, nil)
 		} else {
 			err = ctx.FileUploadRequest(method, path, "catalogitem", mtype, content, iconFile, nil)
 		}

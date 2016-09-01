@@ -38,6 +38,7 @@ var aBasicUser = func() *BasicUser { return &BasicUser{Name: "john", Given: "tra
 // Helpers to get useful handlers used in the tests
 func scimDefaultUserHandler() func(t *testing.T, req *TstReq) *TstReply {
 	return func(t *testing.T, req *TstReq) *TstReply {
+		assert.Equal(t, "application/json", req.Accept)
 		output := `{"Resources": [{ "userName" : "` + DEFAULT_USERNAME + `", "id": "12345"}]}`
 		return &TstReply{Output: output, ContentType: "application/json"}
 	}
