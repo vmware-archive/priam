@@ -1,10 +1,4 @@
-
-
 # Contributing to priam
-
-## Community
-
-## Getting Started
 
 ## Contribution Flow
 
@@ -75,4 +69,3 @@ and commits.
 
 When opening a new issue, try to roughly follow the commit message format conventions above.
 
-## Repository Structure
