@@ -6,8 +6,9 @@ For now it mostly implements the administrative functions of IDM.
 ## Getting Started
 
 1. If you haven't already, set up a Go workspace according to the [Go docs](http://golang.org/doc).
-2. Install the Go SDK. Normally this is done with "go get".
-3. Setup GOPATH environment variable
+2. To follow the examples below you need to have `make` installed. 
+3. If you want to view code coverage of the test suite with `make coverage` as described below, you need to have `awk` installed.
+4. Setup GOPATH environment variable
 
 	Then:
 	```
@@ -34,7 +35,7 @@ Run the testsuite:
 
     $ make test
 
-Run the testsuite with code coverage (will open the broser with code coverage):
+Run the testsuite with code coverage (will open the browser with code coverage):
 
     $ make coverage
 
