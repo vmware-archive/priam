@@ -49,6 +49,10 @@ To get help on specific command (for example, 'target'):
 
     $ priam help target
 
+or 
+
+    $ priam target -h
+
 ## Examples
 
 You need an IDM organization (like https://xxx.vmwareidentity.com)
