@@ -57,11 +57,10 @@ func StartTstServer(t *testing.T, paths map[string]TstHandler) *httptest.Server 
 				string(rbody)})
 			if reply.Status != 0 && reply.Status != 200 {
 				http.Error(w, reply.StatusMsg, reply.Status)
-			} else {
-				w.Header().Set("Content-Type", stringOrDefault(reply.ContentType, "application/json"))
-				_, err = io.WriteString(w, reply.Output)
-				assert.Nil(t, err)
 			}
+			w.Header().Set("Content-Type", stringOrDefault(reply.ContentType, "application/json"))
+			_, err = io.WriteString(w, reply.Output)
+			assert.Nil(t, err)
 		}
 	}
 	return httptest.NewServer(http.HandlerFunc(handler))

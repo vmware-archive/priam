@@ -17,9 +17,9 @@ package core
 
 import (
 	"github.com/stretchr/testify/assert"
-	"net/http/httptest"
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -47,6 +47,12 @@ func NewTestContext(t *testing.T, paths map[string]TstHandler) (*httptest.Server
 func AssertOnlyInfoContains(t *testing.T, ctx *HttpContext, expected string) {
 	assert.Empty(t, ctx.Log.ErrString(), "Error message should be empty")
 	assert.Contains(t, ctx.Log.InfoString(), expected, "INFO log message should contain '"+expected+"'")
+}
+
+// Assert context error contains the given string, and info is empty
+func AssertOnlyErrorContains(t *testing.T, ctx *HttpContext, expected string) {
+	assert.Empty(t, ctx.Log.InfoString(), "Info message should be empty")
+	assert.Contains(t, ctx.Log.ErrString(), expected, "ERROR log message should contain '"+expected+"'")
 }
 
 // Assert context error contains the given string
