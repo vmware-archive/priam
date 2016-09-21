@@ -36,6 +36,7 @@ generate-mocks: build-testaid
 	$(GO) get github.com/vektra/mockery/.../
 	$(GOPATH)/bin/mockery -dir=core -name=DirectoryService
 	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService
+	$(GOPATH)/bin/mockery -dir=core -name=AppTemplateService
 
 test: update-build-dependencies generate-mocks
 	@echo testing...

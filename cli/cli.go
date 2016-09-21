@@ -19,10 +19,10 @@ import (
 	"fmt"
 	"github.com/howeyc/gopass"
 	"github.com/urfave/cli"
-	"io"
-	"path/filepath"
 	. "github.com/vmware/priam/core"
 	. "github.com/vmware/priam/util"
+	"io"
+	"path/filepath"
 	"strings"
 )
 
@@ -33,11 +33,12 @@ const (
 	vidmLoginPath     = "/SAAS/API/1.0/REST/auth/system/login"
 )
 
-// Directory service
+// service instances for CLI
 var usersService DirectoryService = &SCIMUsersService{}
 var groupsService DirectoryService = &SCIMGroupsService{}
 var rolesService DirectoryService = &SCIMRolesService{}
 var appsService ApplicationService = &IDMApplicationService{}
+var templateService AppTemplateService = &IDMAppTemplateService{}
 
 // called via variable so that tests can provide stub
 var getRawPassword = gopass.GetPasswd
@@ -140,6 +141,21 @@ func checkTarget(cfg *Config) bool {
 	return true
 }
 
+func makeOptionMap(c *cli.Context, flags []cli.Flag, name, value string) map[string]interface{} {
+	omap := map[string]interface{}{name: value}
+	for _, flag := range flags {
+		switch f := flag.(type) {
+		case cli.StringFlag:
+			omap[f.Name] = c.String(f.Name)
+		case cli.BoolFlag:
+			omap[f.Name] = c.Bool(f.Name)
+		case cli.IntFlag:
+			omap[f.Name] = c.Int(f.Name)
+		}
+	}
+	return omap
+}
+
 func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 	var err error
 	var cfg *Config
@@ -189,6 +205,17 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		cli.StringFlag{Name: "family", Usage: "family name of the user account"},
 		cli.StringFlag{Name: "given", Usage: "given name of the user account"},
 	}
+
+	templateFlags := []cli.Flag{
+		cli.IntFlag{Name: "accessTokenTTL", Usage: "seconds that the access token is valid", Value: 480},
+		cli.StringFlag{Name: "authGrantTypes", Value: "authorization_code"},
+		cli.StringFlag{Name: "redirectUri", Value: "horizonapi://oauth2"},
+		cli.BoolFlag{Name: "displayUserGrant", Usage: "prompt for user consent when registering app instance"},
+		cli.IntFlag{Name: "refreshTokenTTL", Usage: "seconds that the refresh token is valid", Value: 2628000},
+		cli.IntFlag{Name: "length", Value: 32},
+		cli.StringFlag{Name: "resourceUuid", Value: "00000000-0000-0000-0000-000000000000"},
+		cli.StringFlag{Name: "scope", Value: "user profile email"},
+		cli.StringFlag{Name: "tokenType", Value: "Bearer"}}
 
 	app.Commands = []cli.Command{
 		{
@@ -417,6 +444,50 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					cfg.ListTargets()
 				}
 				return nil
+			},
+		},
+		{
+			Name: "template", Usage: "oauth2 application template commands",
+			Subcommands: []cli.Command{
+				{
+					Name: "add", Usage: "create an app template", ArgsUsage: "<appProductId>",
+					Flags: templateFlags,
+					Action: func(c *cli.Context) error {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
+							templateService.Add(ctx, args[0],
+								makeOptionMap(c, templateFlags, "appProductId", args[0]))
+						}
+						return nil
+					},
+				},
+				{
+					Name: "get", Usage: "display app template", ArgsUsage: "<appProductId>",
+					Action: func(c *cli.Context) error {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
+							templateService.Get(ctx, args[0])
+						}
+						return nil
+					},
+				},
+				{
+					Name: "delete", Usage: "delete app template", ArgsUsage: "<appProductId>",
+					Action: func(c *cli.Context) error {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
+							templateService.Delete(ctx, args[0])
+						}
+						return nil
+					},
+				},
+				{
+					Name: "list", Usage: "list app templates", ArgsUsage: " ",
+					Flags: pageFlags,
+					Action: func(c *cli.Context) error {
+						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
+							templateService.List(ctx)
+						}
+						return nil
+					},
+				},
 			},
 		},
 		{
