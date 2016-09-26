@@ -38,7 +38,8 @@ var usersService DirectoryService = &SCIMUsersService{}
 var groupsService DirectoryService = &SCIMGroupsService{}
 var rolesService DirectoryService = &SCIMRolesService{}
 var appsService ApplicationService = &IDMApplicationService{}
-var templateService AppTemplateService = &IDMAppTemplateService{}
+var templateService OauthResource = AppTemplateService
+var clientService OauthResource = OauthClientService
 
 // called via variable so that tests can provide stub
 var getRawPassword = gopass.GetPasswd
@@ -156,9 +157,27 @@ func makeOptionMap(c *cli.Context, flags []cli.Flag, name, value string) map[str
 	return omap
 }
 
+func cmdWithAuth1Arg(cfg *Config, cmd func(*HttpContext, string)) func(c *cli.Context) error {
+	return func(c *cli.Context) error {
+		if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
+			cmd(ctx, args[0])
+		}
+		return nil
+	}
+}
+
+func cmdWithAuth0Arg(cfg *Config, cmd func(*HttpContext)) func(c *cli.Context) error {
+	return func(c *cli.Context) error {
+		if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
+			cmd(ctx)
+		}
+		return nil
+	}
+}
+
 func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 	var err error
-	var cfg *Config
+	cfg := &Config{}
 	cli.HelpFlag.Usage = "show help for given command or subcommand"
 
 	// work around error in cli v1.18 by setting package level ErrWriter since
@@ -182,11 +201,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		if c.Bool("json") {
 			log.Style = LJson
 		}
-		fileName := c.String("config")
-		if fileName == "" {
-			fileName = defaultCfgFile
-		}
-		if cfg = NewConfig(log, fileName); cfg == nil {
+		if !cfg.Init(log, StringOrDefault(c.String("config"), defaultCfgFile)) {
 			return fmt.Errorf("app initialization failed\n")
 		}
 		return nil
@@ -209,44 +224,46 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 	templateFlags := []cli.Flag{
 		cli.IntFlag{Name: "accessTokenTTL", Usage: "seconds that the access token is valid", Value: 480},
 		cli.StringFlag{Name: "authGrantTypes", Value: "authorization_code"},
-		cli.StringFlag{Name: "redirectUri", Value: "horizonapi://oauth2"},
 		cli.BoolFlag{Name: "displayUserGrant", Usage: "prompt for user consent when registering app instance"},
-		cli.IntFlag{Name: "refreshTokenTTL", Usage: "seconds that the refresh token is valid", Value: 2628000},
 		cli.IntFlag{Name: "length", Value: 32},
+		cli.StringFlag{Name: "redirectUri", Value: "horizonapi://oauth2"},
+		cli.IntFlag{Name: "refreshTokenTTL", Usage: "seconds that the refresh token is valid", Value: 2628000},
 		cli.StringFlag{Name: "resourceUuid", Value: "00000000-0000-0000-0000-000000000000"},
 		cli.StringFlag{Name: "scope", Value: "user profile email"},
 		cli.StringFlag{Name: "tokenType", Value: "Bearer"}}
+
+	clientFlags := []cli.Flag{
+		cli.IntFlag{Name: "accessTokenTTL", Usage: "seconds that the access token is valid", Value: 480},
+		cli.StringFlag{Name: "authGrantTypes", Value: "authorization_code"},
+		cli.BoolFlag{Name: "displayUserGrant", Usage: "prompt for user consent"},
+		cli.BoolFlag{Name: "inheritanceAllowed"},
+		cli.BoolFlag{Name: "internalSystemClient"},
+		cli.StringFlag{Name: "redirectUri", Value: "horizonapi://oauth2"},
+		cli.IntFlag{Name: "refreshTokenTTL", Usage: "seconds that the refresh token is valid", Value: 2628000},
+		cli.StringFlag{Name: "rememberAs"},
+		cli.StringFlag{Name: "resourceUuid", Value: "00000000-0000-0000-0000-000000000000"},
+		cli.StringFlag{Name: "scope", Value: "user profile email"},
+		cli.StringFlag{Name: "secret"},
+		cli.StringFlag{Name: "strData"},
+		cli.IntFlag{Name: "tokenLength", Value: 32},
+		cli.StringFlag{Name: "tokenType", Value: "Bearer"},
+	}
 
 	app.Commands = []cli.Command{
 		{
 			Name: "app", Usage: "application publishing commands",
 			Subcommands: []cli.Command{
 				{
-					Name: "add", Usage: "add applications to the catalog", ArgsUsage: "[./manifest.yaml]",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 0, 1, true, nil); ctx != nil {
-							appsService.Publish(ctx, args[0])
-						}
-						return nil
-					},
+					Name: "add", Usage: "add applications to the catalog", ArgsUsage: "<manifestYAMLFile>",
+					Action: cmdWithAuth1Arg(cfg, appsService.Publish),
 				},
 				{
 					Name: "delete", Usage: "delete an app from the catalog", ArgsUsage: "<appName>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							appsService.Delete(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, appsService.Delete),
 				},
 				{
 					Name: "get", Usage: "get information about an app", ArgsUsage: "<appName>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							appsService.Display(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, appsService.Display),
 				},
 				{
 					Name: "list", Usage: "list all applications in the catalog", ArgsUsage: " ",
@@ -257,6 +274,34 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 						}
 						return nil
 					},
+				},
+			},
+		},
+		{
+			Name: "client", Usage: "oauth2 client application commands",
+			Subcommands: []cli.Command{
+				{
+					Name: "add", Usage: "create an oauth2 client app", ArgsUsage: "<clientId>",
+					Flags: clientFlags,
+					Action: func(c *cli.Context) error {
+						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
+							clientService.Add(ctx, args[0],
+								makeOptionMap(c, clientFlags, "clientId", args[0]))
+						}
+						return nil
+					},
+				},
+				{
+					Name: "get", Usage: "display oauth2 client app", ArgsUsage: "<name>",
+					Action: cmdWithAuth1Arg(cfg, clientService.Get),
+				},
+				{
+					Name: "delete", Usage: "delete oauth2 client app", ArgsUsage: "<name>",
+					Action: cmdWithAuth1Arg(cfg, clientService.Delete),
+				},
+				{
+					Name: "list", Usage: "list oauth2 client apps", ArgsUsage: " ",
+					Action: cmdWithAuth0Arg(cfg, clientService.List),
 				},
 			},
 		},
@@ -286,12 +331,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Subcommands: []cli.Command{
 				{
 					Name: "get", Usage: "get a specific group", ArgsUsage: "get <groupName>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							groupsService.DisplayEntity(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, groupsService.DisplayEntity),
 				},
 				{
 					Name: "list", Usage: "list all groups", ArgsUsage: " ", Flags: pageFlags,
@@ -384,12 +424,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Subcommands: []cli.Command{
 				{
 					Name: "get", Usage: "get specific SCIM role", ArgsUsage: "<roleName>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							rolesService.DisplayEntity(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, rolesService.DisplayEntity),
 				},
 				{
 					Name: "list", ArgsUsage: " ", Usage: "list all roles", Flags: pageFlags,
@@ -462,31 +497,15 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 				},
 				{
 					Name: "get", Usage: "display app template", ArgsUsage: "<appProductId>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							templateService.Get(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, templateService.Get),
 				},
 				{
 					Name: "delete", Usage: "delete app template", ArgsUsage: "<appProductId>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							templateService.Delete(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, templateService.Delete),
 				},
 				{
 					Name: "list", Usage: "list app templates", ArgsUsage: " ",
-					Flags: pageFlags,
-					Action: func(c *cli.Context) error {
-						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
-							templateService.List(ctx)
-						}
-						return nil
-					},
+					Action: cmdWithAuth0Arg(cfg, templateService.List),
 				},
 			},
 		},
@@ -518,21 +537,11 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 				},
 				{
 					Name: "get", Usage: "display user account", ArgsUsage: "<userName>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							usersService.DisplayEntity(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, usersService.DisplayEntity),
 				},
 				{
 					Name: "delete", Usage: "delete user account", ArgsUsage: "<userName>",
-					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-							usersService.DeleteEntity(ctx, args[0])
-						}
-						return nil
-					},
+					Action: cmdWithAuth1Arg(cfg, usersService.DeleteEntity),
 				},
 				{
 					Name: "list", Usage: "list user accounts", ArgsUsage: " ",
@@ -580,12 +589,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		{
 			Name: "schema", Usage: "get SCIM schema of specific type", ArgsUsage: "<type>",
 			Description: "Supported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
-			Action: func(c *cli.Context) error {
-				if args, ctx := initCmd(cfg, c, 1, 1, true, nil); ctx != nil {
-					CmdSchema(ctx, args[0])
-				}
-				return nil
-			},
+			Action:      cmdWithAuth1Arg(cfg, CmdSchema),
 		},
 	}
 
