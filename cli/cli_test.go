@@ -22,11 +22,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
 	. "github.com/vmware/priam/core"
 	"github.com/vmware/priam/mocks"
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
+	"io/ioutil"
 	"testing"
 )
 
@@ -713,13 +713,6 @@ func TestCanListAppsWithCountAndFilter(t *testing.T) {
 	appsServiceMock.AssertExpectations(t)
 }
 
-func TestCanPublishAnApp(t *testing.T) {
-	appsServiceMock := setupAppsServiceMock()
-	appsServiceMock.On("Publish", mock.Anything, "").Return()
-	testCliCommand(t, "app", "add")
-	appsServiceMock.AssertExpectations(t)
-}
-
 func TestCanPublishAnAppWithASpecificManifest(t *testing.T) {
 	appsServiceMock := setupAppsServiceMock()
 	appsServiceMock.On("Publish", mock.Anything, "my-manifest.yaml").Return()
@@ -750,4 +743,112 @@ func TestGetEntitlementWithNoNameShowsError(t *testing.T) {
 func TestGetEntitlementWithWrongTypeShowsError(t *testing.T) {
 	ctx := runner(newTstCtx(t, " "), "entitlement", "get", "actor", "swayze")
 	ctx.assertInfoErrContains("USAGE", "First parameter of 'get' must be user, group or app")
+}
+
+// - Oauth2 Application Templates
+
+// Helper to setup mock for the app template service
+func setupTemplateServiceMock() *mocks.OauthResource {
+	templServiceMock := new(mocks.OauthResource)
+	templateService = templServiceMock
+	return templServiceMock
+}
+
+func TestCanGetTemplate(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Get", mock.Anything, "makesnow").Return()
+	testCliCommand(t, "template", "get", "makesnow")
+	templServiceMock.AssertExpectations(t)
+}
+
+// Helper to create template map
+func templateInfo(name, scope string, accessTokenTTL int) map[string]interface{} {
+	return map[string]interface{}{"scope": scope, "accessTokenTTL": accessTokenTTL,
+		"authGrantTypes": "authorization_code", "displayUserGrant": false,
+		"resourceUuid": "00000000-0000-0000-0000-000000000000", "tokenType": "Bearer",
+		"appProductId": name, "redirectUri": "horizonapi://oauth2",
+		"refreshTokenTTL": 2628000, "length": 32}
+}
+
+func TestCanAddTemplateWithDefaults(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Add", mock.Anything, "olaf", templateInfo("olaf", "user profile email", 480)).Return()
+	testCliCommand(t, "template", "add", "olaf")
+	templServiceMock.AssertExpectations(t)
+}
+
+func TestCanAddTemplateWithOptions(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Add", mock.Anything, "olaf", templateInfo("olaf", "snow", 0)).Return()
+	testCliCommand(t, "template", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
+	templServiceMock.AssertExpectations(t)
+}
+
+func TestCanDeleteTemplate(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Delete", mock.Anything, "sven").Return()
+	testCliCommand(t, "template", "delete", "sven")
+	templServiceMock.AssertExpectations(t)
+}
+
+func TestCanListTemplates(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("List", mock.Anything).Return()
+	testCliCommand(t, "template", "list")
+	templServiceMock.AssertExpectations(t)
+}
+
+// - Oauth2 Clients
+
+// Helper to setup mock for the app template service
+func setupClientServiceMock() *mocks.OauthResource {
+	clntServiceMock := new(mocks.OauthResource)
+	clientService = clntServiceMock
+	return clntServiceMock
+}
+
+func TestCanGetClient(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Get", mock.Anything, "makesnow").Return()
+	testCliCommand(t, "client", "get", "makesnow")
+	clntServiceMock.AssertExpectations(t)
+}
+
+// Helper to create template map
+func clientInfo(name, scope string, accessTokenTTL int) map[string]interface{} {
+	return map[string]interface{}{"accessTokenTTL": accessTokenTTL,
+		"authGrantTypes": "authorization_code", "clientId": name, "displayUserGrant": false,
+		"inheritanceAllowed": false, "internalSystemClient": false,
+		"redirectUri": "horizonapi://oauth2", "refreshTokenTTL": 2628000, "rememberAs": "",
+		"resourceUuid": "00000000-0000-0000-0000-000000000000", "scope": scope,
+		"secret": "", "strData": "", "tokenLength": 32, "tokenType": "Bearer",
+	}
+}
+
+func TestCanAddClientWithDefaults(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Add", mock.Anything, "olaf", clientInfo("olaf", "user profile email", 480)).Return()
+	testCliCommand(t, "client", "add", "olaf")
+	clntServiceMock.AssertExpectations(t)
+}
+
+func TestCanAddClientWithOptions(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Add", mock.Anything, "olaf", clientInfo("olaf", "snow", 0)).Return()
+	testCliCommand(t, "client", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
+	clntServiceMock.AssertExpectations(t)
+}
+
+func TestCanDeleteClient(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Delete", mock.Anything, "sven").Return()
+	testCliCommand(t, "client", "delete", "sven")
+	clntServiceMock.AssertExpectations(t)
+}
+
+func TestCanListClients(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("List", mock.Anything).Return()
+	testCliCommand(t, "client", "list")
+	clntServiceMock.AssertExpectations(t)
 }

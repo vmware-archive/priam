@@ -19,13 +19,14 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	. "github.com/vmware/priam/testaid"
 	"os"
 	"path/filepath"
-	. "github.com/vmware/priam/testaid"
 	"testing"
 )
 
-const testAppCfg = `---
+func cfgTestSetup(t *testing.T) *Config {
+	const testAppCfg = `---
 currenttarget: familyCountDown
 targets:
   familyCountDown:
@@ -35,15 +36,14 @@ targets:
   staging:
     host: https://earth.example.com
 `
-
-func cfgTestSetup(t *testing.T, cfg string) *Config {
-	cfgFile := WriteTempFile(t, StringOrDefault(cfg, testAppCfg))
+	cfgFile, cfg := WriteTempFile(t, testAppCfg), &Config{}
 	defer cfgFile.Close()
-	return NewConfig(NewBufferedLogr(), cfgFile.Name())
+	require.True(t, cfg.Init(NewBufferedLogr(), cfgFile.Name()))
+	return cfg
 }
 
 func TestTargetDeleteByName(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.DeleteTarget("1", "")
 	assert.Contains(t, cfg.Log.InfoString(), "deleted target 1")
@@ -51,7 +51,7 @@ func TestTargetDeleteByName(t *testing.T) {
 }
 
 func TestTargetDeleteByNameAndURL(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.DeleteTarget("venus.example.com", "1")
 	assert.Contains(t, cfg.Log.InfoString(), "deleted target 1")
@@ -59,7 +59,7 @@ func TestTargetDeleteByNameAndURL(t *testing.T) {
 }
 
 func TestTargetDeleteAll(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.Clear()
 	assert.Contains(t, cfg.Log.InfoString(), "all targets deleted")
@@ -67,7 +67,7 @@ func TestTargetDeleteAll(t *testing.T) {
 }
 
 func TestTargetDeleteByURL(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.DeleteTarget("space.odyssey.example.com", "")
 	assert.Contains(t, cfg.Log.InfoString(), "deleted target familyCountDown")
@@ -75,7 +75,7 @@ func TestTargetDeleteByURL(t *testing.T) {
 }
 
 func TestTargetDeleteCurrent(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.DeleteTarget("", "")
 	assert.Contains(t, cfg.Log.InfoString(), "deleted target familyCountDown")
@@ -83,20 +83,20 @@ func TestTargetDeleteCurrent(t *testing.T) {
 }
 
 func TestTargetDeleteSpecificCurrent(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.DeleteTarget("familyCountDown", "")
 	assert.Contains(t, cfg.Log.InfoString(), "deleted target familyCountDown")
 	assert.NotContains(t, GetTempFile(t, cfg.fileName), "space.odyssey.example.com")
 
 	// ensure current is not set or chosen
-	cfg = NewConfig(NewBufferedLogr(), cfg.fileName)
+	assert.True(t, cfg.Init(NewBufferedLogr(), cfg.fileName))
 	cfg.PrintTarget("current")
 	assert.Equal(t, "no target set\n", cfg.Log.InfoString())
 }
 
 func TestTargetDeleteSpecific(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.DeleteTarget("staging", "")
 	assert.Contains(t, cfg.Log.InfoString(), "deleted target staging")
@@ -104,14 +104,14 @@ func TestTargetDeleteSpecific(t *testing.T) {
 }
 
 func TestTargetDeleteNotFound(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.DeleteTarget("sven", "")
 	assert.Contains(t, cfg.Log.InfoString(), "nothing deleted, no such target found")
 }
 
 func TestTargetDeleteCurrentNotSet(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.CurrentTarget = ""
 	cfg.DeleteTarget("", "")
@@ -119,7 +119,7 @@ func TestTargetDeleteCurrentNotSet(t *testing.T) {
 }
 
 func TestTarget(t *testing.T) {
-	cfg := cfgTestSetup(t, "")
+	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.SetTarget("", "", nil)
 	assert.Contains(t, "current target is: familyCountDown, https://space.odyssey.example.com\n", cfg.Log.InfoString())
@@ -152,18 +152,17 @@ func TestYamlMarshalError(t *testing.T) {
 // creates and inits a config file, removes read privilege,
 // calls newAppConfig, tests error
 func TestErrorReadingConfigFile(t *testing.T) {
-	assert, log, cfgFile := assert.New(t), NewBufferedLogr(), WriteTempFile(t, "---\n")
+	assert, log, cfgFile, cfg := assert.New(t), NewBufferedLogr(), WriteTempFile(t, "---\n"), &Config{}
 	defer CleanupTempFile(cfgFile)
 	require.Nil(t, cfgFile.Chmod(0))
-	assert.Nil(NewConfig(log, cfgFile.Name()))
+	assert.False(cfg.Init(log, cfgFile.Name()))
 	assert.Contains(log.ErrString(), "could not read config file "+cfgFile.Name())
 }
 
 func TestErrorWritingConfigFile(t *testing.T) {
-	assert, log, cfgFile := assert.New(t), NewBufferedLogr(), WriteTempFile(t, "---\n")
+	assert, log, cfgFile, cfg := assert.New(t), NewBufferedLogr(), WriteTempFile(t, "---\n"), &Config{}
 	defer CleanupTempFile(cfgFile)
-	cfg := NewConfig(log, cfgFile.Name())
-	assert.NotNil(cfg)
+	assert.True(cfg.Init(log, cfgFile.Name()))
 	require.Nil(t, cfgFile.Chmod(0))
 	assert.False(cfg.Save())
 	assert.Contains(log.ErrString(), "could not write config file "+cfgFile.Name())
