@@ -317,6 +317,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Description: "if password is not given as an argument, user will be prompted to enter it",
 			Flags: []cli.Flag{
 				cli.BoolFlag{Name: "client, c", Usage: "authenticate with oauth2 client ID and secret"},
+				cli.StringFlag{Name: "domain, d", Usage: "specifies the user's domain (default is 'Local Users')"},
 			},
 			Action: func(c *cli.Context) error {
 				if a, ctx := initCmd(cfg, c, 1, 2, false, nil); ctx != nil {
@@ -324,8 +325,11 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					if c.Bool("client") {
 						prompt, path, login = "Secret", vidmTokenPath, ClientCredentialsGrant
 					}
+
+					domain := StringOrDefault(c.String("domain"), LocalUserDomain)
+					cfg.Log.Info(fmt.Sprintf("Domain: %s\n", domain))
 					pwd := getArgOrPassword(cfg.Log, prompt, a[1], false)
-					if authHeader, err := login(ctx, path, a[0], pwd); err != nil {
+					if authHeader, err := login(ctx, path, a[0], pwd, domain); err != nil {
 						cfg.Log.Err("Error getting access token: %v\n", err)
 					} else if cfg.WithAuthHeader(authHeader).Save() {
 						cfg.Log.Info("Access token saved\n")

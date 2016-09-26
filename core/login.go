@@ -17,15 +17,18 @@ package core
 
 import (
 	"fmt"
-	"net/url"
 	. "github.com/vmware/priam/util"
+	"net/url"
 )
+
+/* Local user domain as defined in IDM (might change in the future when multiple local domains will be supported) . */
+const LocalUserDomain = "Local Users"
 
 /* ClientCredsGrant takes a clientID and clientSecret and makes a request for an access token.
    The access token is returned in a string prefixed by the token type for use in an http
    authorization header.
 */
-func ClientCredentialsGrant(ctx *HttpContext, path, clientID, clientSecret string) (authHeader string, err error) {
+func ClientCredentialsGrant(ctx *HttpContext, path, clientID, clientSecret string, unused string) (authHeader string, err error) {
 	tokenInfo := struct {
 		Access_token, Token_type, Refresh_token, Scope string
 		Expires_in                                     int
@@ -38,14 +41,14 @@ func ClientCredentialsGrant(ctx *HttpContext, path, clientID, clientSecret strin
 	return
 }
 
-/* LoginSystemUser takes a username and password and makes a request for an access token.
+/* LoginSystemUser takes a username, password and domain and makes a request for an access token.
    This is not an OAuth2 call but uses a vidm specific API.
    The access token is returned in a string prefixed by the token type, suitable for use
    in an http authorization header.
 */
-func LoginSystemUser(ctx *HttpContext, path, user, password string) (authHeader string, err error) {
+func LoginSystemUser(ctx *HttpContext, path, user, password string, domain string) (authHeader string, err error) {
 	tokenInfo := struct{ SessionToken string }{}
-	inp := fmt.Sprintf(`{"username": "%s", "password": "%s", "issueToken": true}`, user, password)
+	inp := fmt.Sprintf(`{"username": "%s", "password": "%s", "domain": "%s", "issueToken": true}`, user, password, domain)
 	if err = ctx.ContentType("json").Accept("json").Request("POST", path, inp, &tokenInfo); err == nil {
 		authHeader = "HZN " + tokenInfo.SessionToken
 	}

@@ -23,18 +23,19 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
-	. "github.com/vmware/priam/core"
 	"github.com/vmware/priam/mocks"
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
 	"testing"
+	. "github.com/vmware/priam/core"
+	"github.com/vmware/priam/core"
 )
 
 const (
-	yamlUsersFile   = "../resources/newusers.yaml"
+	yamlUsersFile = "../resources/newusers.yaml"
 	goodAccessToken = "travolta.was.here"
-	goodAuthHeader  = "Bearer " + goodAccessToken
-	badAccessToken  = "travolta.has.gone"
+	goodAuthHeader = "Bearer " + goodAccessToken
+	badAccessToken = "travolta.has.gone"
 )
 
 type UsersServiceMock struct {
@@ -54,17 +55,17 @@ func (ctx *tstCtx) printOut() *tstCtx {
 
 func (ctx *tstCtx) assertOnlyInfoContains(expected string) {
 	assert.Empty(ctx.t, ctx.err, "Error message should be empty")
-	assert.Contains(ctx.t, ctx.info, expected, "Info message should contain '"+expected+"'")
+	assert.Contains(ctx.t, ctx.info, expected, "Info message should contain '" + expected + "'")
 }
 
 func (ctx *tstCtx) assertOnlyErrContains(expected string) {
 	assert.Empty(ctx.t, ctx.info, "Info message should be empty")
-	assert.Contains(ctx.t, ctx.err, expected, "Error should contain '"+expected+"'")
+	assert.Contains(ctx.t, ctx.err, expected, "Error should contain '" + expected + "'")
 }
 
 func (ctx *tstCtx) assertInfoErrContains(expectedInfo, expectedErr string) {
-	assert.Contains(ctx.t, ctx.info, expectedInfo, "Info message should contain '"+expectedInfo+"'")
-	assert.Contains(ctx.t, ctx.err, expectedErr, "Error should contain '"+expectedErr+"'")
+	assert.Contains(ctx.t, ctx.info, expectedInfo, "Info message should contain '" + expectedInfo + "'")
+	assert.Contains(ctx.t, ctx.err, expectedErr, "Error should contain '" + expectedErr + "'")
 }
 
 func newTstCtx(t *testing.T, cfg string) *tstCtx {
@@ -282,14 +283,14 @@ func TestCanHandleBadUserLoginReply(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: badLoginReply})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-	ctx.assertOnlyErrContains("invalid")
+	ctx.assertInfoErrContains("Domain: " + core.LocalUserDomain, "invalid")
 }
 
 func TestCanHandleBadOAuthLoginReply(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: badLoginReply})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-	ctx.assertOnlyErrContains("invalid")
+	ctx.assertInfoErrContains("Domain: " + core.LocalUserDomain, "invalid")
 }
 
 // in these tests the clientID is "john" and the client secret is "travolta"
@@ -300,36 +301,57 @@ func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
 	return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
 }
 
+// Helper function for system login
+func assertSystemLoginSucceeded(t *testing.T, ctx *tstCtx, domain string) {
+	assert.Contains(t, ctx.cfg, "authheader: HZN " + goodAccessToken)
+	ctx.assertOnlyInfoContains("Access token saved")
+	ctx.assertOnlyInfoContains("Domain: " + domain)
+}
+
+// Helper function for OAuth2 login
+func assertOAuth2LoginSucceeded(t *testing.T, ctx *tstCtx) {
+	assert.Contains(t, ctx.cfg, "authheader: Bearer " + goodAccessToken)
+	ctx.assertOnlyInfoContains("Access token saved")
+}
+
 func TestCanLoginAsOAuthClient(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-	assert.Contains(t, ctx.cfg, "authheader: Bearer "+goodAccessToken)
-	ctx.assertOnlyInfoContains("Access token saved")
+	assertOAuth2LoginSucceeded(t, ctx);
 }
 
-func tstUserLogin(t *testing.T, req *TstReq) *TstReply {
-	assert.Contains(t, req.Input, `"username": "john"`)
-	assert.Contains(t, req.Input, `"password": "travolta"`)
-	assert.Contains(t, req.Input, `"issueToken": true`)
-	return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
+// Helper methods to check input login request
+func userLoginHandler(expectedDomain string) func(t *testing.T, req *TstReq) *TstReply {
+	return func(t *testing.T, req *TstReq) *TstReply {
+		assert.Contains(t, req.Input, `"username": "john"`)
+		assert.Contains(t, req.Input, `"password": "travolta"`)
+		assert.Contains(t, req.Input, `"issueToken": true`)
+		assert.Contains(t, req.Input, fmt.Sprintf(`"domain": "%s"`, expectedDomain))
+		return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
+	}
 }
 
 func TestCanLoginAsUser(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: tstUserLogin})
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler(core.LocalUserDomain)})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
-	ctx.assertOnlyInfoContains("Access token saved")
+	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain);
 }
 
 func TestCanLoginAsUserPromptPassword(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: tstUserLogin})
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler(core.LocalUserDomain)})
 	defer srv.Close()
 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john")
-	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
-	ctx.assertOnlyInfoContains("Access token saved")
+	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain);
+}
+
+func TestCanSpecifyUserDomain(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler("blackrockcity.com")})
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-d", "blackrockcity.com", "john", "travolta")
+	assertSystemLoginSucceeded(t, ctx, "blackrockcity.com")
 }
 
 // -- test logout
