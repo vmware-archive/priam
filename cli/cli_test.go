@@ -791,6 +791,10 @@ func TestCanDeleteTemplate(t *testing.T) {
 	templServiceMock.AssertExpectations(t)
 }
 
+func TestCannotDeleteTemplateIfNoNameSpecified(t *testing.T) {
+	testCliCommand(t, "template", "delete").assertInfoErrContains("USAGE", "Input Error: at least 1 arguments must be given")
+}
+
 func TestCanListTemplates(t *testing.T) {
 	templServiceMock := setupTemplateServiceMock()
 	templServiceMock.On("List", mock.Anything).Return()
@@ -800,7 +804,7 @@ func TestCanListTemplates(t *testing.T) {
 
 // - Oauth2 Clients
 
-// Helper to setup mock for the app template service
+// Helper to setup mock for the client service
 func setupClientServiceMock() *mocks.OauthResource {
 	clntServiceMock := new(mocks.OauthResource)
 	clientService = clntServiceMock
@@ -814,7 +818,7 @@ func TestCanGetClient(t *testing.T) {
 	clntServiceMock.AssertExpectations(t)
 }
 
-// Helper to create template map
+// Helper to create client map
 func clientInfo(name, scope string, accessTokenTTL int) map[string]interface{} {
 	return map[string]interface{}{"accessTokenTTL": accessTokenTTL,
 		"authGrantTypes": "authorization_code", "clientId": name, "displayUserGrant": false,
@@ -844,6 +848,10 @@ func TestCanDeleteClient(t *testing.T) {
 	clntServiceMock.On("Delete", mock.Anything, "sven").Return()
 	testCliCommand(t, "client", "delete", "sven")
 	clntServiceMock.AssertExpectations(t)
+}
+
+func TestCannotDeleteClientIfNoNameSpecified(t *testing.T) {
+	testCliCommand(t, "client", "delete").assertInfoErrContains("USAGE", "Input Error: at least 1 arguments must be given")
 }
 
 func TestCanListClients(t *testing.T) {

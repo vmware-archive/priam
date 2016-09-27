@@ -19,7 +19,7 @@ import (
 	. "github.com/vmware/priam/util"
 )
 
-// The oauth reseource service interface.
+// The oauth resource service interface.
 type OauthResource interface {
 	// Add creates a new oauth resource
 	Add(ctx *HttpContext, name string, info map[string]interface{})
