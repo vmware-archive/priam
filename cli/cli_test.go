@@ -353,7 +353,6 @@ func TestLogout(t *testing.T) {
 
 func TestPanicOnUnsupportedOptionType(t *testing.T) {
 	assert.Panics(t, func() { makeOptionMap(nil, []cli.Flag{cli.IntSliceFlag{}}, "n", "v") })
-
 }
 func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
 	ctx := runner(newTstCtx(t, ""), "app", "get", "too", "many", "args")
