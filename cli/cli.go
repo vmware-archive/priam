@@ -152,6 +152,8 @@ func makeOptionMap(c *cli.Context, flags []cli.Flag, name, value string) map[str
 			omap[f.Name] = c.Bool(f.Name)
 		case cli.IntFlag:
 			omap[f.Name] = c.Int(f.Name)
+		default:
+			panic("option type not supported")
 		}
 	}
 	return omap

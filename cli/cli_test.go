@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/urfave/cli"
 	. "github.com/vmware/priam/core"
 	"github.com/vmware/priam/mocks"
 	. "github.com/vmware/priam/testaid"
@@ -332,6 +333,13 @@ func TestCanLoginAsUserPromptPassword(t *testing.T) {
 	ctx.assertOnlyInfoContains("Access token saved")
 }
 
+func TestPanicIfCantGetPassword(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: tstUserLogin})
+	defer srv.Close()
+	getRawPassword = func() ([]byte, error) { return nil, errors.New("getRawPassword failed") }
+	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john") })
+}
+
 // -- test logout
 
 func TestLogout(t *testing.T) {
@@ -343,6 +351,10 @@ func TestLogout(t *testing.T) {
 
 // -- common CLI checks
 
+func TestPanicOnUnsupportedOptionType(t *testing.T) {
+	assert.Panics(t, func() { makeOptionMap(nil, []cli.Flag{cli.IntSliceFlag{}}, "n", "v") })
+
+}
 func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
 	ctx := runner(newTstCtx(t, ""), "app", "get", "too", "many", "args")
 	ctx.assertInfoErrContains("USAGE", "at most 1 arguments can be given")
