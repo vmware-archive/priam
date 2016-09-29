@@ -55,23 +55,22 @@ func PutYamlFile(filename string, input interface{}) error {
 	}
 }
 
-func NewConfig(log *Logr, fileName string) *Config {
-	appCfg := &Config{}
-	if err := GetYamlFile(fileName, appCfg); err != nil && !os.IsNotExist(err) {
+func (cfg *Config) Init(log *Logr, fileName string) bool {
+	if err := GetYamlFile(fileName, cfg); err != nil && !os.IsNotExist(err) {
 		log.Err("could not read config file %s, error: %v\n", fileName, err)
-		return nil
+		return false
 	}
 
 	// get yaml file clears all fields, so these must be set after unmarshalling
-	appCfg.Log, appCfg.fileName = log, fileName
+	cfg.Log, cfg.fileName = log, fileName
 
-	if appCfg.Targets == nil {
-		appCfg.Targets = make(map[string]Target)
-		appCfg.CurrentTarget = NoTarget
-	} else if appCfg.CurrentTarget == NoTarget || appCfg.Targets[appCfg.CurrentTarget] == (Target{}) {
-		appCfg.CurrentTarget = NoTarget
+	if cfg.Targets == nil {
+		cfg.Targets = make(map[string]Target)
+		cfg.CurrentTarget = NoTarget
+	} else if cfg.CurrentTarget == NoTarget || cfg.Targets[cfg.CurrentTarget] == (Target{}) {
+		cfg.CurrentTarget = NoTarget
 	}
-	return appCfg
+	return true
 }
 
 func (cfg *Config) Save() bool {

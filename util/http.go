@@ -31,15 +31,15 @@ import (
 )
 
 type HttpContext struct {
-	Log           *Logr
-	HostURL       string
+	Log     *Logr
+	HostURL string
 
 	/* basePath is a convenience so that many callers can use a short
 	 * portion of a path from a common root. If a path for a given request
 	 * starts with '/', basePath is ignored. Otherwise it is used to prefix
 	 * the given path.
 	 */
-	basePath      string
+	basePath string
 
 	/* baseMediaType is a convenience so that many callers can use a short
 	 * portion of a set of long media type strings.
@@ -230,14 +230,14 @@ func (ctx *HttpContext) FileUploadRequest(method, path, key, mediaType string, c
 
 // sets the ctx.authHeader with basic auth
 func (ctx *HttpContext) BasicAuth(name, pwd string) *HttpContext {
-	return ctx.Authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name + ":" + pwd)))
+	return ctx.Authorization("Basic " + base64.StdEncoding.EncodeToString([]byte(name+":"+pwd)))
 }
 
-func (ctx *HttpContext) GetPrintJson(prefix, path, mediaType string) {
+func (ctx *HttpContext) GetPrintJson(prefix, path, mediaType string, filter ...string) {
 	var outp interface{}
 	if err := ctx.Accept(mediaType).Request("GET", path, nil, &outp); err != nil {
-		ctx.Log.Err("Error: %v\n", err)
+		ctx.Log.Err("%s\nError: %v\n", prefix, err)
 	} else {
-		ctx.Log.PP(prefix, outp)
+		ctx.Log.PP(prefix, outp, filter...)
 	}
 }

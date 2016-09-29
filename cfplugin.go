@@ -19,10 +19,10 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cloudfoundry/cli/plugin"
-	"os"
 	"github.com/vmware/priam/cli"
 	"github.com/vmware/priam/core"
 	"github.com/vmware/priam/util"
+	"os"
 	"strings"
 )
 
@@ -89,7 +89,7 @@ func (c *CfPriam) Publish(cliConn plugin.CliConnection, args []string) {
 	// when cf execs a plugin it sets stdin and stdout but not stderr, so use
 	// stdout for OutW and ErrW
 	log := &util.Logr{TraceOn: *trace, ErrW: os.Stdout, OutW: os.Stdout}
-	if cfg := util.NewConfig(log, c.defaultConfigFile); cfg != nil {
+	if cfg := &(util.Config{}); cfg.Init(log, c.defaultConfigFile) {
 		if ctx := cli.InitCtx(cfg, true); ctx != nil {
 			core.PublishApps(ctx, *manifile)
 		}
