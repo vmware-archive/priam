@@ -22,20 +22,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
+	"github.com/urfave/cli"
+	"github.com/vmware/priam/core"
+	. "github.com/vmware/priam/core"
 	"github.com/vmware/priam/mocks"
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
+	"io/ioutil"
 	"testing"
-	. "github.com/vmware/priam/core"
-	"github.com/vmware/priam/core"
 )
 
 const (
-	yamlUsersFile = "../resources/newusers.yaml"
+	yamlUsersFile   = "../resources/newusers.yaml"
 	goodAccessToken = "travolta.was.here"
-	goodAuthHeader = "Bearer " + goodAccessToken
-	badAccessToken = "travolta.has.gone"
+	goodAuthHeader  = "Bearer " + goodAccessToken
+	badAccessToken  = "travolta.has.gone"
 )
 
 type UsersServiceMock struct {
@@ -55,17 +56,17 @@ func (ctx *tstCtx) printOut() *tstCtx {
 
 func (ctx *tstCtx) assertOnlyInfoContains(expected string) {
 	assert.Empty(ctx.t, ctx.err, "Error message should be empty")
-	assert.Contains(ctx.t, ctx.info, expected, "Info message should contain '" + expected + "'")
+	assert.Contains(ctx.t, ctx.info, expected, "Info message should contain '"+expected+"'")
 }
 
 func (ctx *tstCtx) assertOnlyErrContains(expected string) {
 	assert.Empty(ctx.t, ctx.info, "Info message should be empty")
-	assert.Contains(ctx.t, ctx.err, expected, "Error should contain '" + expected + "'")
+	assert.Contains(ctx.t, ctx.err, expected, "Error should contain '"+expected+"'")
 }
 
 func (ctx *tstCtx) assertInfoErrContains(expectedInfo, expectedErr string) {
-	assert.Contains(ctx.t, ctx.info, expectedInfo, "Info message should contain '" + expectedInfo + "'")
-	assert.Contains(ctx.t, ctx.err, expectedErr, "Error should contain '" + expectedErr + "'")
+	assert.Contains(ctx.t, ctx.info, expectedInfo, "Info message should contain '"+expectedInfo+"'")
+	assert.Contains(ctx.t, ctx.err, expectedErr, "Error should contain '"+expectedErr+"'")
 }
 
 func newTstCtx(t *testing.T, cfg string) *tstCtx {
@@ -283,14 +284,14 @@ func TestCanHandleBadUserLoginReply(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: badLoginReply})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-	ctx.assertInfoErrContains("Domain: " + core.LocalUserDomain, "invalid")
+	ctx.assertInfoErrContains("Domain: "+core.LocalUserDomain, "invalid")
 }
 
 func TestCanHandleBadOAuthLoginReply(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: badLoginReply})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-	ctx.assertInfoErrContains("Domain: " + core.LocalUserDomain, "invalid")
+	ctx.assertInfoErrContains("Domain: "+core.LocalUserDomain, "invalid")
 }
 
 // in these tests the clientID is "john" and the client secret is "travolta"
@@ -303,14 +304,14 @@ func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
 
 // Helper function for system login
 func assertSystemLoginSucceeded(t *testing.T, ctx *tstCtx, domain string) {
-	assert.Contains(t, ctx.cfg, "authheader: HZN " + goodAccessToken)
+	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
 	ctx.assertOnlyInfoContains("Access token saved")
 	ctx.assertOnlyInfoContains("Domain: " + domain)
 }
 
 // Helper function for OAuth2 login
 func assertOAuth2LoginSucceeded(t *testing.T, ctx *tstCtx) {
-	assert.Contains(t, ctx.cfg, "authheader: Bearer " + goodAccessToken)
+	assert.Contains(t, ctx.cfg, "authheader: Bearer "+goodAccessToken)
 	ctx.assertOnlyInfoContains("Access token saved")
 }
 
@@ -318,7 +319,7 @@ func TestCanLoginAsOAuthClient(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-	assertOAuth2LoginSucceeded(t, ctx);
+	assertOAuth2LoginSucceeded(t, ctx)
 }
 
 // Helper methods to check input login request
@@ -336,7 +337,7 @@ func TestCanLoginAsUser(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler(core.LocalUserDomain)})
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain);
+	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain)
 }
 
 func TestCanLoginAsUserPromptPassword(t *testing.T) {
@@ -344,7 +345,7 @@ func TestCanLoginAsUserPromptPassword(t *testing.T) {
 	defer srv.Close()
 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john")
-	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain);
+	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain)
 }
 
 func TestCanSpecifyUserDomain(t *testing.T) {
@@ -352,6 +353,13 @@ func TestCanSpecifyUserDomain(t *testing.T) {
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-d", "blackrockcity.com", "john", "travolta")
 	assertSystemLoginSucceeded(t, ctx, "blackrockcity.com")
+}
+
+func TestPanicIfCantGetPassword(t *testing.T) {
+	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler("blackrockcity.com")})
+	defer srv.Close()
+	getRawPassword = func() ([]byte, error) { return nil, errors.New("getRawPassword failed") }
+	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john") })
 }
 
 // -- test logout
@@ -365,6 +373,9 @@ func TestLogout(t *testing.T) {
 
 // -- common CLI checks
 
+func TestPanicOnUnsupportedOptionType(t *testing.T) {
+	assert.Panics(t, func() { makeOptionMap(nil, []cli.Flag{cli.IntSliceFlag{}}, "n", "v") })
+}
 func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
 	ctx := runner(newTstCtx(t, ""), "app", "get", "too", "many", "args")
 	ctx.assertInfoErrContains("USAGE", "at most 1 arguments can be given")
@@ -735,13 +746,6 @@ func TestCanListAppsWithCountAndFilter(t *testing.T) {
 	appsServiceMock.AssertExpectations(t)
 }
 
-func TestCanPublishAnApp(t *testing.T) {
-	appsServiceMock := setupAppsServiceMock()
-	appsServiceMock.On("Publish", mock.Anything, "").Return()
-	testCliCommand(t, "app", "add")
-	appsServiceMock.AssertExpectations(t)
-}
-
 func TestCanPublishAnAppWithASpecificManifest(t *testing.T) {
 	appsServiceMock := setupAppsServiceMock()
 	appsServiceMock.On("Publish", mock.Anything, "my-manifest.yaml").Return()
@@ -772,4 +776,120 @@ func TestGetEntitlementWithNoNameShowsError(t *testing.T) {
 func TestGetEntitlementWithWrongTypeShowsError(t *testing.T) {
 	ctx := runner(newTstCtx(t, " "), "entitlement", "get", "actor", "swayze")
 	ctx.assertInfoErrContains("USAGE", "First parameter of 'get' must be user, group or app")
+}
+
+// - Oauth2 Application Templates
+
+// Helper to setup mock for the app template service
+func setupTemplateServiceMock() *mocks.OauthResource {
+	templServiceMock := new(mocks.OauthResource)
+	templateService = templServiceMock
+	return templServiceMock
+}
+
+func TestCanGetTemplate(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Get", mock.Anything, "makesnow").Return()
+	testCliCommand(t, "template", "get", "makesnow")
+	templServiceMock.AssertExpectations(t)
+}
+
+// Helper to create template map
+func templateInfo(name, scope string, accessTokenTTL int) map[string]interface{} {
+	return map[string]interface{}{"scope": scope, "accessTokenTTL": accessTokenTTL,
+		"authGrantTypes": "authorization_code", "displayUserGrant": false,
+		"resourceUuid": "00000000-0000-0000-0000-000000000000", "tokenType": "Bearer",
+		"appProductId": name, "redirectUri": "horizonapi://oauth2",
+		"refreshTokenTTL": 2628000, "length": 32}
+}
+
+func TestCanAddTemplateWithDefaults(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Add", mock.Anything, "olaf", templateInfo("olaf", "user profile email", 480)).Return()
+	testCliCommand(t, "template", "add", "olaf")
+	templServiceMock.AssertExpectations(t)
+}
+
+func TestCanAddTemplateWithOptions(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Add", mock.Anything, "olaf", templateInfo("olaf", "snow", 0)).Return()
+	testCliCommand(t, "template", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
+	templServiceMock.AssertExpectations(t)
+}
+
+func TestCanDeleteTemplate(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("Delete", mock.Anything, "sven").Return()
+	testCliCommand(t, "template", "delete", "sven")
+	templServiceMock.AssertExpectations(t)
+}
+
+func TestCannotDeleteTemplateIfNoNameSpecified(t *testing.T) {
+	testCliCommand(t, "template", "delete").assertInfoErrContains("USAGE", "Input Error: at least 1 arguments must be given")
+}
+
+func TestCanListTemplates(t *testing.T) {
+	templServiceMock := setupTemplateServiceMock()
+	templServiceMock.On("List", mock.Anything).Return()
+	testCliCommand(t, "template", "list")
+	templServiceMock.AssertExpectations(t)
+}
+
+// - Oauth2 Clients
+
+// Helper to setup mock for the client service
+func setupClientServiceMock() *mocks.OauthResource {
+	clntServiceMock := new(mocks.OauthResource)
+	clientService = clntServiceMock
+	return clntServiceMock
+}
+
+func TestCanGetClient(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Get", mock.Anything, "makesnow").Return()
+	testCliCommand(t, "client", "get", "makesnow")
+	clntServiceMock.AssertExpectations(t)
+}
+
+// Helper to create client map
+func clientInfo(name, scope string, accessTokenTTL int) map[string]interface{} {
+	return map[string]interface{}{"accessTokenTTL": accessTokenTTL,
+		"authGrantTypes": "authorization_code", "clientId": name, "displayUserGrant": false,
+		"inheritanceAllowed": false, "internalSystemClient": false,
+		"redirectUri": "horizonapi://oauth2", "refreshTokenTTL": 2628000, "rememberAs": "",
+		"resourceUuid": "00000000-0000-0000-0000-000000000000", "scope": scope,
+		"secret": "", "strData": "", "tokenLength": 32, "tokenType": "Bearer",
+	}
+}
+
+func TestCanAddClientWithDefaults(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Add", mock.Anything, "olaf", clientInfo("olaf", "user profile email", 480)).Return()
+	testCliCommand(t, "client", "add", "olaf")
+	clntServiceMock.AssertExpectations(t)
+}
+
+func TestCanAddClientWithOptions(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Add", mock.Anything, "olaf", clientInfo("olaf", "snow", 0)).Return()
+	testCliCommand(t, "client", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
+	clntServiceMock.AssertExpectations(t)
+}
+
+func TestCanDeleteClient(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Delete", mock.Anything, "sven").Return()
+	testCliCommand(t, "client", "delete", "sven")
+	clntServiceMock.AssertExpectations(t)
+}
+
+func TestCannotDeleteClientIfNoNameSpecified(t *testing.T) {
+	testCliCommand(t, "client", "delete").assertInfoErrContains("USAGE", "Input Error: at least 1 arguments must be given")
+}
+
+func TestCanListClients(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("List", mock.Anything).Return()
+	testCliCommand(t, "client", "list")
+	clntServiceMock.AssertExpectations(t)
 }
