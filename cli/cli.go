@@ -16,12 +16,14 @@ limitations under the License.
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/howeyc/gopass"
 	"github.com/urfave/cli"
 	. "github.com/vmware/priam/core"
 	. "github.com/vmware/priam/util"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -29,8 +31,6 @@ import (
 const (
 	vidmBasePath      = "/SAAS/jersey/manager/api/"
 	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
-	vidmTokenPath     = "/SAAS/API/1.0/oauth2/token"
-	vidmLoginPath     = "/SAAS/API/1.0/REST/auth/system/login"
 )
 
 // service instances for CLI
@@ -40,9 +40,12 @@ var rolesService DirectoryService = &SCIMRolesService{}
 var appsService ApplicationService = &IDMApplicationService{}
 var templateService OauthResource = AppTemplateService
 var clientService OauthResource = OauthClientService
+var tokenService TokenGrants = TokenService{
+	"/SAAS/auth/oauth2/authorize", "/SAAS/auth/oauthtoken", "/SAAS/API/1.0/REST/auth/system/login",
+	"priam", "not-a-secret"}
 
-// called via variable so that tests can provide stub
-var getRawPassword = gopass.GetPasswd
+var getRawPassword = gopass.GetPasswd // called via variable so that tests can provide stub
+var consoleInput io.Reader = os.Stdin // will be set to other readers for tests
 
 func getArgOrPassword(log *Logr, prompt, arg string, repeat bool) string {
 	getPwd := func(prompt string) string {
@@ -65,6 +68,19 @@ func getArgOrPassword(log *Logr, prompt, arg string, repeat bool) string {
 	}
 }
 
+func getOptionalArg(log *Logr, prompt, arg string) string {
+	if arg != "" {
+		return arg
+	}
+	log.Info("%s: ", prompt)
+	scanner := bufio.NewScanner(consoleInput)
+	scanner.Scan()
+	if err := scanner.Err(); err != nil {
+		panic(err)
+	}
+	return scanner.Text()
+}
+
 func InitCtx(cfg *Config, authn bool) *HttpContext {
 	if cfg.CurrentTarget == NoTarget {
 		cfg.Log.Err("Error: no target set\n")
@@ -73,11 +89,11 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 	tgt := cfg.Targets[cfg.CurrentTarget]
 	ctx := NewHttpContext(cfg.Log, tgt.Host, vidmBasePath, vidmBaseMediaType)
 	if authn {
-		if hdr := cfg.Targets[cfg.CurrentTarget].AuthHeader; hdr == "" {
+		if token := cfg.Targets[cfg.CurrentTarget].AccessToken; token == "" {
 			cfg.Log.Err("No access token saved for current target. Please log in.\n")
 			return nil
 		} else {
-			ctx.Authorization(hdr)
+			ctx.Authorization(cfg.Targets[cfg.CurrentTarget].AccessTokenType + " " + token)
 		}
 	}
 	return ctx
@@ -382,25 +398,34 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		},
 		{
 			Name: "login", Usage: "gets an access token as a user or service client",
-			ArgsUsage:   "<name> [password]",
-			Description: "if password is not given as an argument, user will be prompted to enter it",
+			ArgsUsage:   "[name] [password]",
+			Description: "if name or password are not given as arguments, user will be prompted",
 			Flags: []cli.Flag{
+				cli.BoolFlag{Name: "authcode, a", Usage: "use browser to authenticate via oauth2 authorization code grant"},
 				cli.BoolFlag{Name: "client, c", Usage: "authenticate with oauth2 client ID and secret"},
-				cli.StringFlag{Name: "domain, d", Usage: "specifies the user's domain (default is 'Local Users')"},
 			},
-			Action: func(c *cli.Context) error {
-				if a, ctx := initCmd(cfg, c, 1, 2, false, nil); ctx != nil {
-					prompt, path, login := "Password", vidmLoginPath, LoginSystemUser
-					if c.Bool("client") {
-						prompt, path, login = "Secret", vidmTokenPath, ClientCredentialsGrant
+			Action: func(c *cli.Context) (err error) {
+				if a, ctx := initCmd(cfg, c, 0, 2, false, nil); ctx != nil {
+					tokenInfo := TokenInfo{}
+					if c.Bool("authcode") {
+						if tokenInfo, err = tokenService.AuthCodeGrant(ctx, a[0]); err != nil {
+							cfg.Log.Err("Error getting tokens via browser: %v\n", err)
+							return nil
+						}
+					} else {
+						promptN, promptP, loginFunc := "Username", "Password", tokenService.LoginSystemUser
+						if c.Bool("client") {
+							promptN, promptP, loginFunc = "Client ID", "Secret", tokenService.ClientCredentialsGrant
+						}
+						name := getOptionalArg(cfg.Log, promptN, a[0])
+						pwd := getArgOrPassword(cfg.Log, promptP, a[1], false)
+						if tokenInfo, err = loginFunc(ctx, name, pwd); err != nil {
+							cfg.Log.Err("Error getting access token: %v\n", err)
+							return nil
+						}
 					}
-
-					domain := StringOrDefault(c.String("domain"), LocalUserDomain)
-					cfg.Log.Info(fmt.Sprintf("Domain: %s\n", domain))
-					pwd := getArgOrPassword(cfg.Log, prompt, a[1], false)
-					if authHeader, err := login(ctx, path, a[0], pwd, domain); err != nil {
-						cfg.Log.Err("Error getting access token: %v\n", err)
-					} else if cfg.WithAuthHeader(authHeader).Save() {
+					if cfg.WithTokens(tokenInfo.AccessTokenType, tokenInfo.AccessToken,
+						tokenInfo.RefreshToken, tokenInfo.IDToken).Save() {
 						cfg.Log.Info("Access token saved\n")
 					}
 				}
@@ -410,7 +435,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		{
 			Name: "logout", Usage: "deletes access token from configuration store for current target",
 			Action: func(c *cli.Context) error {
-				if args := initArgs(cfg, c, 0, 0, nil); args != nil && cfg.WithAuthHeader("").Save() {
+				if args := initArgs(cfg, c, 0, 0, nil); args != nil && cfg.WithTokens("", "", "", "").Save() {
 					cfg.Log.Info("Access token removed\n")
 				}
 				return nil

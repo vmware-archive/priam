@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli"
-	"github.com/vmware/priam/core"
 	. "github.com/vmware/priam/core"
 	"github.com/vmware/priam/mocks"
 	. "github.com/vmware/priam/testaid"
@@ -39,9 +38,9 @@ const (
 	badAccessToken  = "travolta.has.gone"
 )
 
-type UsersServiceMock struct {
-	mock.Mock
-}
+// type UsersServiceMock struct {
+// 	mock.Mock
+// }
 
 type tstCtx struct {
 	t                              *testing.T
@@ -88,7 +87,7 @@ func tstSrvTgt(url string) string {
 }
 
 func tstSrvTgtWithAuth(url string) string {
-	return fmt.Sprintf("%s    authheader: Bearer %s\n", tstSrvTgt(url), goodAccessToken)
+	return fmt.Sprintf("%s    accesstokentype: Bearer\n    accesstoken: %s\n", tstSrvTgt(url), goodAccessToken)
 }
 
 func runner(ctx *tstCtx, args ...string) *tstCtx {
@@ -108,6 +107,14 @@ func runner(ctx *tstCtx, args ...string) *tstCtx {
 		fmt.Printf("----------------error:\n%s\n", ctx.err)
 	}
 	return ctx
+}
+
+/* Helper function to run the given command with a non-existent target and a valid authorization
+   header. Useful for mocked services. Params are the testing pointer and the list of arguments
+   for the command. Returns the test output context.
+*/
+func testCliCommand(t *testing.T, args ...string) *tstCtx {
+	return runner(newTstCtx(t, tstSrvTgtWithAuth("http://frozen.site")), args...)
 }
 
 // -- test help usage -----------------------------------------------------------
@@ -265,102 +272,117 @@ func TestCanNotLoginWithNoTarget(t *testing.T) {
 	ctx.assertOnlyErrContains("no target set")
 }
 
-func TestCanNotLoginWithTargetSetButNoOauthCreds(t *testing.T) {
-	ctx := runner(newTstCtx(t, ""), "login", "-c")
-	ctx.assertInfoErrContains("USAGE", "at least 1 arguments must be given")
-}
-
-func TestCanNotLoginWithTargetSetButUserCreds(t *testing.T) {
-	ctx := runner(newTstCtx(t, ""), "login")
-	ctx.assertInfoErrContains("USAGE", "at least 1 arguments must be given")
-}
-
-func badLoginReply(t *testing.T, req *TstReq) *TstReply {
-	assert.NotEmpty(t, req.Input)
-	return &TstReply{Output: "crap"}
+// Helper to setup mock for the token service
+func setupTokenServiceMock() *mocks.TokenGrants {
+	tokenServiceMock := new(mocks.TokenGrants)
+	tokenService = tokenServiceMock
+	return tokenServiceMock
 }
 
 func TestCanHandleBadUserLoginReply(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: badLoginReply})
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-	ctx.assertInfoErrContains("Domain: "+core.LocalUserDomain, "invalid")
+	tsMock := setupTokenServiceMock()
+	tsMock.On("LoginSystemUser", mock.Anything, "john", "travolta").Return(TokenInfo{}, errors.New("crap"))
+	ctx := testCliCommand(t, "login", "john", "travolta")
+	tsMock.AssertExpectations(t)
+	ctx.assertOnlyErrContains("Error getting access token: crap")
 }
 
-func TestCanHandleBadOAuthLoginReply(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: badLoginReply})
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-	ctx.assertInfoErrContains("Domain: "+core.LocalUserDomain, "invalid")
-}
+// func TestCanHandleBadOAuthLoginReply(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: badLoginReply})
+// 	defer srv.Close()
+// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
+// 	ctx.assertOnlyErrContains("invalid")
+// }
 
-// in these tests the clientID is "john" and the client secret is "travolta"
-// Adapted from tests written by Fanny, who apparently likes John Travolta
-func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
-	assert.Equal(t, "Basic am9objp0cmF2b2x0YQ==", req.Authorization)
-	assert.Equal(t, "grant_type=client_credentials", req.Input)
-	return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
-}
+// // in these tests the clientID is "john" and the client secret is "travolta"
+// // Adapted from tests written by Fanny, who apparently likes John Travolta
+// func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
+// 	assert.Equal(t, "Basic am9objp0cmF2b2x0YQ==", req.Authorization)
+// 	assert.Equal(t, "grant_type=client_credentials", req.Input)
+// 	return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
+// }
 
-// Helper function for system login
-func assertSystemLoginSucceeded(t *testing.T, ctx *tstCtx, domain string) {
-	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
-	ctx.assertOnlyInfoContains("Access token saved")
-	ctx.assertOnlyInfoContains("Domain: " + domain)
-}
+// // Helper function for system login
+// func assertSystemLoginSucceeded(t *testing.T, ctx *tstCtx) {
+// 	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
+// 	ctx.assertOnlyInfoContains("Access token saved")
+// }
 
-// Helper function for OAuth2 login
-func assertOAuth2LoginSucceeded(t *testing.T, ctx *tstCtx) {
-	assert.Contains(t, ctx.cfg, "authheader: Bearer "+goodAccessToken)
-	ctx.assertOnlyInfoContains("Access token saved")
-}
+// // Helper function for OAuth2 login
+// func assertOAuth2LoginSucceeded(t *testing.T, ctx *tstCtx) {
+// 	assert.Contains(t, ctx.cfg, "authheader: Bearer "+goodAccessToken)
+// 	ctx.assertOnlyInfoContains("Access token saved")
+// }
 
-func TestCanLoginAsOAuthClient(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmTokenPath: tstClientCredGrant})
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-	assertOAuth2LoginSucceeded(t, ctx)
-}
+// func TestCanLoginAsOAuthClient(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: tstClientCredGrant})
+// 	defer srv.Close()
+// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
+// 	assertOAuth2LoginSucceeded(t, ctx)
+// }
 
-// Helper methods to check input login request
-func userLoginHandler(expectedDomain string) func(t *testing.T, req *TstReq) *TstReply {
-	return func(t *testing.T, req *TstReq) *TstReply {
-		assert.Contains(t, req.Input, `"username": "john"`)
-		assert.Contains(t, req.Input, `"password": "travolta"`)
-		assert.Contains(t, req.Input, `"issueToken": true`)
-		assert.Contains(t, req.Input, fmt.Sprintf(`"domain": "%s"`, expectedDomain))
-		return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
-	}
-}
+// func TestPromptForOauthClient(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: tstClientCredGrant})
+// 	defer srv.Close()
+// 	consoleInput = strings.NewReader("john")
+// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
+// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c")
+// 	assertOAuth2LoginSucceeded(t, ctx)
+// 	ctx.assertOnlyInfoContains("Client ID: ")
+// 	ctx.assertOnlyInfoContains("Secret: ")
+// }
 
-func TestCanLoginAsUser(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler(core.LocalUserDomain)})
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain)
-}
+// // Helper methods to check input login request
+// func userLoginHandler() func(t *testing.T, req *TstReq) *TstReply {
+// 	return func(t *testing.T, req *TstReq) *TstReply {
+// 		assert.Contains(t, req.Input, `"username": "john"`)
+// 		assert.Contains(t, req.Input, `"password": "travolta"`)
+// 		assert.Contains(t, req.Input, `"issueToken": true`)
+// 		return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
+// 	}
+// }
 
-func TestCanLoginAsUserPromptPassword(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler(core.LocalUserDomain)})
-	defer srv.Close()
-	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john")
-	assertSystemLoginSucceeded(t, ctx, core.LocalUserDomain)
-}
+// func TestCanLoginAsUser(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
+// 	defer srv.Close()
+// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
+// 	assertSystemLoginSucceeded(t, ctx)
+// }
 
-func TestCanSpecifyUserDomain(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler("blackrockcity.com")})
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-d", "blackrockcity.com", "john", "travolta")
-	assertSystemLoginSucceeded(t, ctx, "blackrockcity.com")
-}
+// func TestCanLoginAsUserPromptPassword(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
+// 	defer srv.Close()
+// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
+// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john")
+// 	assertSystemLoginSucceeded(t, ctx)
+// 	ctx.assertOnlyInfoContains("Password: ")
+// }
 
-func TestPanicIfCantGetPassword(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{"POST" + vidmLoginPath: userLoginHandler("blackrockcity.com")})
-	defer srv.Close()
-	getRawPassword = func() ([]byte, error) { return nil, errors.New("getRawPassword failed") }
-	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john") })
-}
+// func TestPromptForSystemUserCreds(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
+// 	defer srv.Close()
+// 	consoleInput = strings.NewReader("john")
+// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
+// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login")
+// 	assertSystemLoginSucceeded(t, ctx)
+// 	ctx.assertOnlyInfoContains("Password: ")
+// 	ctx.assertOnlyInfoContains("Username: ")
+// }
+
+// func TestPanicIfCantGetUserName(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
+// 	defer srv.Close()
+// 	consoleInput = strings.NewReader("")
+// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
+// 	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login") })
+// }
+
+// func TestPanicIfCantGetPassword(t *testing.T) {
+// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
+// 	defer srv.Close()
+// 	getRawPassword = func() ([]byte, error) { return nil, errors.New("getRawPassword failed") }
+// 	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john") })
+// }
 
 // -- test logout
 
@@ -376,6 +398,7 @@ func TestLogout(t *testing.T) {
 func TestPanicOnUnsupportedOptionType(t *testing.T) {
 	assert.Panics(t, func() { makeOptionMap(nil, []cli.Flag{cli.IntSliceFlag{}}, "n", "v") })
 }
+
 func TestCanNotRunACommandWithTooManyArguments(t *testing.T) {
 	ctx := runner(newTstCtx(t, ""), "app", "get", "too", "many", "args")
 	ctx.assertInfoErrContains("USAGE", "at most 1 arguments can be given")
@@ -387,13 +410,6 @@ func TestCanNotIssueUserCommandWithTooManyArguments(t *testing.T) {
 		ctx := runner(newTstCtx(t, ""), "user", command, "too", "many", "args")
 		ctx.assertInfoErrContains("USAGE", "Input Error: at most")
 	}
-}
-
-// Helper function to run the given command
-// @param args the list of arguments for the command
-// @return The test output context.
-func testCliCommand(t *testing.T, args ...string) *tstCtx {
-	return runner(newTstCtx(t, tstSrvTgtWithAuth("http://frozen.site")), args...)
 }
 
 // Helper to setup mock for the user service
