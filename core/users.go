@@ -18,8 +18,8 @@ package core
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	. "github.com/vmware/priam/util"
+	"net/url"
 	"strconv"
 )
 

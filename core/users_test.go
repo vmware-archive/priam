@@ -153,7 +153,7 @@ func TestScimListWithNonExistingSummaryLabelsPrintsEmpty(t *testing.T) {
 	// go 1.7.3 and + keep it
 	srv := StartTstServer(t, map[string]TstHandler{
 		"GET/scim/Users?": scimDefaultUserHandler(),
-		"GET/scim/Users": scimDefaultUserHandler(),
+		"GET/scim/Users":  scimDefaultUserHandler(),
 	})
 	defer srv.Close()
 

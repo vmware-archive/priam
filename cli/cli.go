@@ -42,10 +42,10 @@ var templateService OauthResource = AppTemplateService
 var clientService OauthResource = OauthClientService
 
 var tokenService TokenGrants = TokenService{
-	AuthorizePath: "/SAAS/auth/oauth2/authorize",
-	TokenPath: "/SAAS/auth/oauthtoken",
-	LoginPath: "/SAAS/API/1.0/REST/auth/system/login",
-	CliClientID: "priam",
+	AuthorizePath:   "/SAAS/auth/oauth2/authorize",
+	TokenPath:       "/SAAS/auth/oauthtoken",
+	LoginPath:       "/SAAS/API/1.0/REST/auth/system/login",
+	CliClientID:     "priam",
 	CliClientSecret: "not-a-secret"}
 
 var getRawPassword = gopass.GetPasswd // called via variable so that tests can provide stub
@@ -483,6 +483,11 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			},
 		},
 		{
+			Name: "schema", Usage: "get SCIM schema of specific type", ArgsUsage: "<type>",
+			Description: "Supported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
+			Action:      cmdWithAuth1Arg(cfg, CmdSchema),
+		},
+		{
 			Name: "target", Usage: "set or display the target workspace instance",
 			ArgsUsage: "[newTargetURL] [targetName]",
 			Flags: []cli.Flag{
@@ -554,6 +559,20 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			},
 		},
 		{
+			Name: "token", Usage: "token operations",
+			Subcommands: []cli.Command{
+				{
+					Name: "validate", Usage: "validate the current ID token (if logged in)", ArgsUsage: " ",
+					Action: func(c *cli.Context) error {
+						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
+							tokenService.ValidateIDToken(ctx, cfg.IdToken())
+						}
+						return nil
+					},
+				},
+			},
+		},
+		{
 			Name: "user", Usage: "user account commands",
 			Subcommands: []cli.Command{
 				{
@@ -620,11 +639,6 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					},
 				},
 			},
-		},
-		{
-			Name: "schema", Usage: "get SCIM schema of specific type", ArgsUsage: "<type>",
-			Description: "Supported types are User, Group, Role, PasswordState, ServiceProviderConfig\n",
-			Action:      cmdWithAuth1Arg(cfg, CmdSchema),
 		},
 	}
 

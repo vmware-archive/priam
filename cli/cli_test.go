@@ -37,6 +37,7 @@ const (
 	goodAccessToken = "travolta.was.here"
 	goodAuthHeader  = "Bearer " + goodAccessToken
 	badAccessToken  = "travolta.has.gone"
+	goodIdToken     = "this.is.me"
 )
 
 type tstCtx struct {
@@ -53,6 +54,12 @@ func (ctx *tstCtx) printOut() *tstCtx {
 func (ctx *tstCtx) assertOnlyInfoContains(expected string) {
 	assert.Empty(ctx.t, ctx.err, "Error message should be empty")
 	assert.Contains(ctx.t, ctx.info, expected, "Info message should contain '"+expected+"'")
+}
+
+/* Strict match. */
+func (ctx *tstCtx) assertOnlyInfoEquals(expected string) {
+	assert.Empty(ctx.t, ctx.err, "Error message should be empty")
+	assert.Equal(ctx.t, ctx.info, expected, "Info message should equal '"+expected+"'")
 }
 
 func (ctx *tstCtx) assertOnlyErrContains(expected string) {
@@ -84,7 +91,7 @@ func tstSrvTgt(url string) string {
 }
 
 func tstSrvTgtWithAuth(url string) string {
-	return fmt.Sprintf("%s    accesstokentype: Bearer\n    accesstoken: %s\n", tstSrvTgt(url), goodAccessToken)
+	return fmt.Sprintf("%s    accesstokentype: Bearer\n    accesstoken: %s\n    idtoken: %s\n", tstSrvTgt(url), goodAccessToken, goodIdToken)
 }
 
 func runner(ctx *tstCtx, args ...string) *tstCtx {
@@ -885,4 +892,32 @@ func TestCanListClients(t *testing.T) {
 	clntServiceMock := setupClientServiceMock()
 	clntServiceMock.On("List", mock.Anything).Return()
 	testMockCommand(t, &clntServiceMock.Mock, "client", "list")
+}
+
+// Token
+
+func TestCanValidateIDToken(t *testing.T) {
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("ValidateIDToken", mock.Anything, goodIdToken).Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "validate")
+}
+
+func TestCanValidateABadIDToken(t *testing.T) {
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("ValidateIDToken", mock.Anything, goodIdToken).Return(errors.New("bad bad bad"))
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "validate")
+}
+
+func TestPrintErrorOnValidateIfNotLoggedIn(t *testing.T) {
+	tokenServiceMock := setupTokenServiceMock()
+	runner(newTstCtx(t, tstSrvTgt("http://not.logged.in")), "token", "validate")
+	tokenServiceMock.AssertExpectations(t)
+}
+
+func TestPassEmptyTokenForValidationIfNoIDTokenSaved(t *testing.T) {
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("ValidateIDToken", mock.Anything, "").Return(errors.New("bad bad bad"))
+	serverTarget := fmt.Sprintf("%s    accesstokentype: Bearer\n    accesstoken: %s\n", tstSrvTgt("http://no.id.token.site"), goodAccessToken)
+	runner(newTstCtx(t, serverTarget), "token", "validate")
+	tokenServiceMock.AssertExpectations(t)
 }

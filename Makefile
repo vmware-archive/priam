@@ -56,9 +56,12 @@ coverage: update-build-dependencies generate-mocks
 
 cover: coverage
 
-# We will probaby have to run "go install github.com/vmware/priam" when ready
 install:
 	$(GO) install
+
+clean:
+	$(GO) clean
+	rm -rf mocks/*
 
 help:
 	@echo 'Priam Makefile help'
@@ -66,6 +69,7 @@ help:
 	@echo 'Targets:'
 	@echo '   help          - print this help'
 	@echo '   all           - build and test priam'
+	@echo '   clean         - clean go objects'
 	@echo '   test          - run priam tests'
 	@echo '   install       - install the priam binary'
 	@echo '   coverage      - test and open coverage result in the browser'

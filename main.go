@@ -16,9 +16,9 @@ limitations under the License.
 package main
 
 import (
+	"github.com/vmware/priam/cli"
 	"os"
 	"path/filepath"
-	"github.com/vmware/priam/cli"
 	"strings"
 )
 
