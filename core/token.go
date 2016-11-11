@@ -18,6 +18,7 @@ package core
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/toqueteos/webbrowser"
 	. "github.com/vmware/priam/util"
@@ -66,8 +67,11 @@ func (ts TokenService) LoginSystemUser(ctx *HttpContext, user, password string) 
 	outp := struct{ SessionToken string }{}
 	inp := fmt.Sprintf(`{"username": "%s", "password": "%s", "issueToken": true}`, user, password)
 	if err = ctx.ContentType("json").Accept("json").Request("POST", ts.LoginPath, inp, &outp); err == nil {
-		ti.AccessTokenType = "HZN"
-		ti.AccessToken = outp.SessionToken
+		if token := outp.SessionToken; token == "" {
+			err = errors.New("Invalid response: no token in reply from server")
+		} else {
+			ti.AccessTokenType, ti.AccessToken = "HZN", token
+		}
 	}
 	return
 }
@@ -83,8 +87,10 @@ func GenerateRandomString(randomByteCount int) string {
 	return base64.URLEncoding.EncodeToString(b)
 }
 
-var catcherAddress, catcherPort = "", "8888"
+var catcherAddress, catcherPort, catcherPath = "", "8888", "/authcodecatcher"
 var authCodeDelivery, authStateDelivery = make(chan string, 1), make(chan string, 1)
+var browserLauncher = webbrowser.Open
+var catcherHost = "http://localhost:" + catcherPort
 
 // AuthCodeCatcher receives oauth2 authorization codes
 func AuthCodeCatcher(w http.ResponseWriter, req *http.Request) {
@@ -92,11 +98,13 @@ func AuthCodeCatcher(w http.ResponseWriter, req *http.Request) {
 	code, state, errType := values.Get("code"), values.Get("state"), values.Get("error")
 	if state != <-authStateDelivery || code != "" && errType != "" || code == "" && errType == "" {
 		io.WriteString(w, "Invalid authorization code response from server.\n")
+		authCodeDelivery <- ""
 	} else if code != "" {
-		authCodeDelivery <- code
 		io.WriteString(w, "Authorization code received. Please close this page.\n")
+		authCodeDelivery <- code
 	} else {
 		io.WriteString(w, fmt.Sprintf("Error: %s\nDescription: %s\n", errType, values.Get("error_description")))
+		authCodeDelivery <- ""
 	}
 }
 
@@ -109,7 +117,7 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 		if listener, err := net.Listen("tcp", ":"+catcherPort); err != nil {
 			return ti, err
 		} else {
-			http.HandleFunc("/authcodecatcher", AuthCodeCatcher)
+			http.HandleFunc(catcherPath, AuthCodeCatcher)
 			go func() {
 				err := http.Serve(listener, nil)
 				ctx.Log.Err("Local http authcode catcher exited: %v\n", err)
@@ -119,7 +127,7 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 		ctx.Log.Info("local server listening on: %s\n", catcherAddress)
 	}
 
-	state, redirUri := GenerateRandomString(32), "http://localhost:"+catcherPort+"/authcodecatcher"
+	state, redirUri := GenerateRandomString(32), catcherHost+catcherPath
 	authStateDelivery <- state
 	vals := url.Values{"response_type": {"code"}, "client_id": {ts.CliClientID},
 		"state": {state}, "redirect_uri": {redirUri}}
@@ -128,12 +136,15 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 	}
 	authUrl := fmt.Sprintf("%s%s?%s", ctx.HostURL, ts.AuthorizePath, vals.Encode())
 	ctx.Log.Info("launching browser with %s\n", authUrl)
-	webbrowser.Open(authUrl)
-	authcode := <-authCodeDelivery
-	ctx.Log.Info("caught authcode: %s\n", authcode)
-	inp := url.Values{"grant_type": {"authorization_code"}, "code": {authcode},
-		"redirect_uri": {redirUri}, "client_id": {ts.CliClientID}}.Encode()
-	ctx.BasicAuth(ts.CliClientID, ts.CliClientSecret).ContentType("application/x-www-form-urlencoded")
-	err = ctx.Request("POST", ts.TokenPath, inp, &ti)
+	browserLauncher(authUrl)
+	if authcode := <-authCodeDelivery; authcode == "" {
+		err = errors.New("failed to get authorization code from server. See browser for error message.")
+	} else {
+		ctx.Log.Info("caught authcode: %s\n", authcode)
+		inp := url.Values{"grant_type": {"authorization_code"}, "code": {authcode},
+			"redirect_uri": {redirUri}, "client_id": {ts.CliClientID}}.Encode()
+		ctx.BasicAuth(ts.CliClientID, ts.CliClientSecret).ContentType("application/x-www-form-urlencoded")
+		err = ctx.Request("POST", ts.TokenPath, inp, &ti)
+	}
 	return
 }

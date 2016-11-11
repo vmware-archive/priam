@@ -28,6 +28,7 @@ import (
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
 	"io/ioutil"
+	"strings"
 	"testing"
 )
 
@@ -37,10 +38,6 @@ const (
 	goodAuthHeader  = "Bearer " + goodAccessToken
 	badAccessToken  = "travolta.has.gone"
 )
-
-// type UsersServiceMock struct {
-// 	mock.Mock
-// }
 
 type tstCtx struct {
 	t                              *testing.T
@@ -110,11 +107,27 @@ func runner(ctx *tstCtx, args ...string) *tstCtx {
 }
 
 /* Helper function to run the given command with a non-existent target and a valid authorization
-   header. Useful for mocked services. Params are the testing pointer and the list of arguments
-   for the command. Returns the test output context.
+   header. Params are the testing pointer and the list of arguments for the command.
+   Returns the test output context.
 */
 func testCliCommand(t *testing.T, args ...string) *tstCtx {
 	return runner(newTstCtx(t, tstSrvTgtWithAuth("http://frozen.site")), args...)
+}
+
+/* Helper function to run the given command with a non-existent target and a valid authorization
+   header. Checks mocked expectations. Params are the testing pointer, a mocked interface
+   and the list of arguments for the command. Returns the test output context.
+*/
+func testMockCommand(t *testing.T, m *mock.Mock, args ...string) (ctx *tstCtx) {
+	ctx = runner(newTstCtx(t, tstSrvTgtWithAuth("http://frozen.site")), args...)
+	m.AssertExpectations(t)
+	return
+}
+
+func runWithServer(t *testing.T, paths map[string]TstHandler, args ...string) *tstCtx {
+	srv := StartTstServer(t, paths)
+	defer srv.Close()
+	return runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), args...)
 }
 
 // -- test help usage -----------------------------------------------------------
@@ -216,9 +229,7 @@ func TestAddNewTargetWithName(t *testing.T) {
 
 func TestAddNewTargetFailsIfHealthCheckFails(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(500, "favourite 500 error")}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", "radio2.example.com", "sassoon")
+	ctx := runWithServer(t, paths, "target", "radio2.example.com", "sassoon")
 	ctx.assertOnlyErrContains("Error checking health of https://radio2.example.com")
 }
 
@@ -251,18 +262,12 @@ func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
 
 func TestHealth(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "health")
-	ctx.assertOnlyInfoContains("allOk")
+	runWithServer(t, paths, "health").assertOnlyInfoContains("allOk")
 }
 
 func TestExitIfHealthFails(t *testing.T) {
 	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(404, "test health")}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "health")
-	ctx.assertOnlyErrContains("test health")
+	runWithServer(t, paths, "health").assertOnlyErrContains("test health")
 }
 
 // -- test login -----------------------------------------------------------------------------
@@ -282,113 +287,138 @@ func setupTokenServiceMock() *mocks.TokenGrants {
 func TestCanHandleBadUserLoginReply(t *testing.T) {
 	tsMock := setupTokenServiceMock()
 	tsMock.On("LoginSystemUser", mock.Anything, "john", "travolta").Return(TokenInfo{}, errors.New("crap"))
-	ctx := testCliCommand(t, "login", "john", "travolta")
-	tsMock.AssertExpectations(t)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "john", "travolta")
 	ctx.assertOnlyErrContains("Error getting access token: crap")
 }
 
-// func TestCanHandleBadOAuthLoginReply(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: badLoginReply})
-// 	defer srv.Close()
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-// 	ctx.assertOnlyErrContains("invalid")
-// }
+func TestCanHandleBadOAuthClientCredentialsGrantReply(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("ClientCredentialsGrant", mock.Anything, "john", "travolta").Return(TokenInfo{}, errors.New("crap"))
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-c", "john", "travolta")
+	ctx.assertOnlyErrContains("Error getting access token: crap")
+}
 
-// // in these tests the clientID is "john" and the client secret is "travolta"
-// // Adapted from tests written by Fanny, who apparently likes John Travolta
-// func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
-// 	assert.Equal(t, "Basic am9objp0cmF2b2x0YQ==", req.Authorization)
-// 	assert.Equal(t, "grant_type=client_credentials", req.Input)
-// 	return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
-// }
+// Helper function for OAuth2 login
+func assertLoginSucceeded(t *testing.T, tokenType string, ctx *tstCtx) {
+	assert.Contains(t, ctx.cfg, "accesstokentype: "+tokenType)
+	assert.Contains(t, ctx.cfg, "accesstoken: "+goodAccessToken)
+	ctx.assertOnlyInfoContains("Access token saved")
+}
 
-// // Helper function for system login
-// func assertSystemLoginSucceeded(t *testing.T, ctx *tstCtx) {
-// 	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
-// 	ctx.assertOnlyInfoContains("Access token saved")
-// }
+func TestCanLoginAsOAuthClient(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("ClientCredentialsGrant", mock.Anything, "john", "travolta").
+		Return(TokenInfo{AccessTokenType: "Bearer", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-c", "john", "travolta")
+	assertLoginSucceeded(t, "Bearer", ctx)
+}
 
-// // Helper function for OAuth2 login
-// func assertOAuth2LoginSucceeded(t *testing.T, ctx *tstCtx) {
-// 	assert.Contains(t, ctx.cfg, "authheader: Bearer "+goodAccessToken)
-// 	ctx.assertOnlyInfoContains("Access token saved")
-// }
+func TestPromptForOauthClient(t *testing.T) {
+	consoleInput = strings.NewReader("john")
+	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
+	tsMock := setupTokenServiceMock()
+	tsMock.On("ClientCredentialsGrant", mock.Anything, "john", "travolta").
+		Return(TokenInfo{AccessTokenType: "Bearer", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-c")
+	assertLoginSucceeded(t, "Bearer", ctx)
+	ctx.assertOnlyInfoContains("Client ID: ")
+	ctx.assertOnlyInfoContains("Secret: ")
+}
 
-// func TestCanLoginAsOAuthClient(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: tstClientCredGrant})
-// 	defer srv.Close()
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-// 	assertOAuth2LoginSucceeded(t, ctx)
-// }
+func TestCanLoginAsSystemUser(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("LoginSystemUser", mock.Anything, "john", "travolta").
+		Return(TokenInfo{AccessTokenType: "HZN", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "john", "travolta")
+	assertLoginSucceeded(t, "HZN", ctx)
+}
 
-// func TestPromptForOauthClient(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: tstClientCredGrant})
-// 	defer srv.Close()
-// 	consoleInput = strings.NewReader("john")
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c")
-// 	assertOAuth2LoginSucceeded(t, ctx)
-// 	ctx.assertOnlyInfoContains("Client ID: ")
-// 	ctx.assertOnlyInfoContains("Secret: ")
-// }
+func TestCanLoginAsUserPromptPassword(t *testing.T) {
+	getRawPassword = func() ([]byte, error) { return []byte("TravoLta"), nil }
+	tsMock := setupTokenServiceMock()
+	tsMock.On("LoginSystemUser", mock.Anything, "jon", "TravoLta").
+		Return(TokenInfo{AccessTokenType: "HZN", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "jon")
+	assertLoginSucceeded(t, "HZN", ctx)
+	ctx.assertOnlyInfoContains("Password: ")
+}
 
-// // Helper methods to check input login request
-// func userLoginHandler() func(t *testing.T, req *TstReq) *TstReply {
-// 	return func(t *testing.T, req *TstReq) *TstReply {
-// 		assert.Contains(t, req.Input, `"username": "john"`)
-// 		assert.Contains(t, req.Input, `"password": "travolta"`)
-// 		assert.Contains(t, req.Input, `"issueToken": true`)
-// 		return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
-// 	}
-// }
+func TestPromptForSystemUserCreds(t *testing.T) {
+	consoleInput = strings.NewReader("olivia")
+	getRawPassword = func() ([]byte, error) { return []byte("grease"), nil }
+	tsMock := setupTokenServiceMock()
+	tsMock.On("LoginSystemUser", mock.Anything, "olivia", "grease").
+		Return(TokenInfo{AccessTokenType: "HZN", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login")
+	assertLoginSucceeded(t, "HZN", ctx)
+	ctx.assertOnlyInfoContains("Password: ")
+	ctx.assertOnlyInfoContains("Username: ")
+}
 
-// func TestCanLoginAsUser(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-// 	assertSystemLoginSucceeded(t, ctx)
-// }
+// roll our own panic handler since AssertExpectations also panics and assert.Panics can't distinguish which panic.
+func catchPanic(f func()) (msg string) {
+	defer func() {
+		if err := recover(); err != nil {
+			msg = fmt.Sprintf("%v", err)
+		}
+	}()
+	f()
+	return
+}
 
-// func TestCanLoginAsUserPromptPassword(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john")
-// 	assertSystemLoginSucceeded(t, ctx)
-// 	ctx.assertOnlyInfoContains("Password: ")
-// }
+type badReader struct{}
 
-// func TestPromptForSystemUserCreds(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	consoleInput = strings.NewReader("john")
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login")
-// 	assertSystemLoginSucceeded(t, ctx)
-// 	ctx.assertOnlyInfoContains("Password: ")
-// 	ctx.assertOnlyInfoContains("Username: ")
-// }
+func (br badReader) Read(p []byte) (int, error) {
+	return 0, errors.New("bad console input")
+}
 
-// func TestPanicIfCantGetUserName(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	consoleInput = strings.NewReader("")
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login") })
-// }
+func TestPanicIfCantGetUserName(t *testing.T) {
+	consoleInput = badReader{}
+	getRawPassword = func() ([]byte, error) { return []byte(""), nil }
+	tsMock := setupTokenServiceMock()
+	msg := catchPanic(func() { testMockCommand(t, &tsMock.Mock, "login") })
+	assert.Equal(t, "bad console input", msg)
+	tsMock.AssertExpectations(t)
+}
 
-// func TestPanicIfCantGetPassword(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	getRawPassword = func() ([]byte, error) { return nil, errors.New("getRawPassword failed") }
-// 	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john") })
-// }
+func TestPanicIfCantGetPassword(t *testing.T) {
+	consoleInput = strings.NewReader("rizzo")
+	getRawPassword = func() ([]byte, error) { return nil, errors.New("getRawPassword failed") }
+	tsMock := setupTokenServiceMock()
+	msg := catchPanic(func() { testMockCommand(t, &tsMock.Mock, "login") })
+	assert.Equal(t, "getRawPassword failed", msg)
+	tsMock.AssertExpectations(t)
+}
+
+// test authcode login with and without user hint
+func TestCanHandleBadAuthCodeGrantReply(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("AuthCodeGrant", mock.Anything, "").Return(TokenInfo{}, errors.New("crap"))
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-a")
+	ctx.assertOnlyErrContains("Error getting tokens via browser: crap")
+}
+
+func TestAuthCodeGrant(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("AuthCodeGrant", mock.Anything, "").
+		Return(TokenInfo{AccessTokenType: "Bearer", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-a")
+	assertLoginSucceeded(t, "Bearer", ctx)
+}
+
+func TestAuthCodeGrantWithHint(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("AuthCodeGrant", mock.Anything, "elsa").
+		Return(TokenInfo{AccessTokenType: "Bearer", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-a", "elsa")
+	assertLoginSucceeded(t, "Bearer", ctx)
+}
 
 // -- test logout
 
 func TestLogout(t *testing.T) {
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth("http://grease.com")), "logout")
-	assert.NotContains(t, ctx.cfg, "authheader")
+	ctx := testCliCommand(t, "logout")
+	assert.NotContains(t, ctx.cfg, "accesstoken")
 	assert.NotContains(t, ctx.cfg, goodAccessToken)
 	ctx.assertOnlyInfoContains("Access token removed")
 }
@@ -422,54 +452,47 @@ func setupUsersServiceMock() *mocks.DirectoryService {
 func TestCanAddUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("AddEntity", mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(nil)
-	ctx := testCliCommand(t, "user", "add", "elsa", "frozen")
+	ctx := testMockCommand(t, &usersServiceMock.Mock, "user", "add", "elsa", "frozen")
 	ctx.assertOnlyInfoContains("User 'elsa' successfully added")
-	usersServiceMock.AssertExpectations(t)
 }
 
 func TestDisplayErrorWhenAddUserFails(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("AddEntity",
 		mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(errors.New("test"))
-	ctx := testCliCommand(t, "user", "add", "elsa", "frozen")
+	ctx := testMockCommand(t, &usersServiceMock.Mock, "user", "add", "elsa", "frozen")
 	assert.Contains(t, ctx.err, "Error creating user 'elsa': test")
-	usersServiceMock.AssertExpectations(t)
 }
 
 func TestCanGetUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("DisplayEntity", mock.Anything, "elsa").Return()
-	testCliCommand(t, "user", "get", "elsa")
-	usersServiceMock.AssertExpectations(t)
+	testMockCommand(t, &usersServiceMock.Mock, "user", "get", "elsa")
 }
 
 func TestCanDeleteUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("DeleteEntity", mock.Anything, "elsa").Return()
-	testCliCommand(t, "user", "delete", "elsa")
-	usersServiceMock.AssertExpectations(t)
+	testMockCommand(t, &usersServiceMock.Mock, "user", "delete", "elsa")
 }
 
 func TestCanListUsersWithCount(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("ListEntities", mock.Anything, 10, "").Return()
-	testCliCommand(t, "user", "list", "--count", "10")
-	usersServiceMock.AssertExpectations(t)
+	testMockCommand(t, &usersServiceMock.Mock, "user", "list", "--count", "10")
 }
 
 func TestCanListUsersWithFilter(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("ListEntities", mock.Anything, 0, "filter").Return()
-	testCliCommand(t, "user", "list", "--filter", "filter")
-	usersServiceMock.AssertExpectations(t)
+	testMockCommand(t, &usersServiceMock.Mock, "user", "list", "--filter", "filter")
 }
 
 func TestCanUpdateUserPassword(t *testing.T) {
 	newpassword := "friendsforever"
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &BasicUser{Pwd: newpassword}).Return()
-	testCliCommand(t, "user", "password", "elsa", newpassword)
-	usersServiceMock.AssertExpectations(t)
+	testMockCommand(t, &usersServiceMock.Mock, "user", "password", "elsa", newpassword)
 }
 
 func TestCanUpdateUserPasswordPromptedWithTypo(t *testing.T) {
@@ -482,26 +505,21 @@ func TestCanUpdateUserPasswordPromptedWithTypo(t *testing.T) {
 	}
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &BasicUser{Pwd: newpassword}).Return()
-	ctx := testCliCommand(t, "user", "password", "elsa")
+	ctx := testMockCommand(t, &usersServiceMock.Mock, "user", "password", "elsa")
 	ctx.assertOnlyInfoContains("Passwords didn't match. Try again.")
-	usersServiceMock.AssertExpectations(t)
 }
 
 func TestCanUpdateUserInfo(t *testing.T) {
-	newemail := "elsa@arendelle.com"
-	newgiven := "elsa"
-	newfamily := "frozen"
+	newemail, newgiven, newfamily := "elsa@arendelle.com", "elsa", "frozen"
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("UpdateEntity", mock.Anything, "elsa", &BasicUser{Name: "elsa", Family: newfamily, Email: newemail, Given: newgiven}).Return()
-	testCliCommand(t, "user", "update", "elsa", "--given", newgiven, "--family", newfamily, "--email", newemail)
-	usersServiceMock.AssertExpectations(t)
+	testMockCommand(t, &usersServiceMock.Mock, "user", "update", "elsa", "--given", newgiven, "--family", newfamily, "--email", newemail)
 }
 
 func TestLoadUsersFromYamlFile(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
 	usersServiceMock.On("LoadEntities", mock.Anything, yamlUsersFile).Return()
-	testCliCommand(t, "user", "load", yamlUsersFile)
-	usersServiceMock.AssertExpectations(t)
+	testMockCommand(t, &usersServiceMock.Mock, "user", "load", yamlUsersFile)
 }
 
 // - Groups
@@ -516,43 +534,37 @@ func setupGroupsServiceMock() *mocks.DirectoryService {
 func TestCanGetGroup(t *testing.T) {
 	groupsServiceMock := setupGroupsServiceMock()
 	groupsServiceMock.On("DisplayEntity", mock.Anything, "friendsforever").Return(nil)
-	testCliCommand(t, "group", "get", "friendsforever")
-	groupsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &groupsServiceMock.Mock, "group", "get", "friendsforever")
 }
 
 func TestCanListGroups(t *testing.T) {
 	groupsServiceMock := setupGroupsServiceMock()
 	groupsServiceMock.On("ListEntities", mock.Anything, 0, "").Return(nil)
-	testCliCommand(t, "group", "list")
-	groupsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &groupsServiceMock.Mock, "group", "list")
 }
 
 func TestCanListGroupsWithCount(t *testing.T) {
 	groupsServiceMock := setupGroupsServiceMock()
 	groupsServiceMock.On("ListEntities", mock.Anything, 13, "").Return(nil)
-	testCliCommand(t, "group", "list", "--count", "13")
-	groupsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &groupsServiceMock.Mock, "group", "list", "--count", "13")
 }
 
 func TestCanListGroupsWithFilter(t *testing.T) {
 	groupsServiceMock := setupGroupsServiceMock()
 	groupsServiceMock.On("ListEntities", mock.Anything, 0, "myfilter").Return(nil)
-	testCliCommand(t, "group", "list", "--filter", "myfilter")
-	groupsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &groupsServiceMock.Mock, "group", "list", "--filter", "myfilter")
 }
 
 func TestCanAddMemberToGroup(t *testing.T) {
 	groupServiceMock := setupGroupsServiceMock()
 	groupServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", false).Return()
-	testCliCommand(t, "group", "member", "friendsforever", "sven")
-	groupServiceMock.AssertExpectations(t)
+	testMockCommand(t, &groupServiceMock.Mock, "group", "member", "friendsforever", "sven")
 }
 
 func TestCanRemoveMemberFromGroup(t *testing.T) {
 	groupServiceMock := setupGroupsServiceMock()
 	groupServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", true).Return()
-	testCliCommand(t, "group", "member", "--delete", "friendsforever", "sven")
-	groupServiceMock.AssertExpectations(t)
+	testMockCommand(t, &groupServiceMock.Mock, "group", "member", "--delete", "friendsforever", "sven")
 }
 
 // - Policies
@@ -563,9 +575,8 @@ func TestCanListAccessPolicies(t *testing.T) {
 		assert.Equal(t, req.Authorization, goodAuthHeader)
 		return &TstReply{Output: `{"items": [ {"name": "default_access_policy_set"} ]}`, ContentType: "application/json"}
 	}
-	srv := StartTstServer(t, map[string]TstHandler{"GET/SAAS/jersey/manager/api/accessPolicies": h})
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "policies")
+	paths := map[string]TstHandler{"GET/SAAS/jersey/manager/api/accessPolicies": h}
+	ctx := runWithServer(t, paths, "policies")
 	ctx.assertOnlyInfoContains("---- Access Policies ----\nitems:\n- name: default_access_policy_set")
 }
 
@@ -583,9 +594,7 @@ func TestCannotGetSchemaforUnknownType(t *testing.T) {
 	unknownSchema := "olaf"
 	paths := map[string]TstHandler{
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + unknownSchema + "%22": ErrorHandler(404, "test schema")}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "schema", unknownSchema)
+	ctx := runWithServer(t, paths, "schema", unknownSchema)
 	ctx.assertOnlyErrContains("test schema")
 }
 
@@ -602,9 +611,7 @@ func canGetSchemaFor(t *testing.T, schemaType string) {
 	}
 	paths := map[string]TstHandler{
 		"GET/SAAS/jersey/manager/api/scim/Schemas?filter=name+eq+%22" + schemaType + "%22": h}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "schema", schemaType)
+	ctx := runWithServer(t, paths, "schema", schemaType)
 	ctx.assertOnlyInfoContains("---- Schema for " + schemaType + " ----\nattributes:")
 }
 
@@ -625,9 +632,7 @@ func TestCanGetLocalUserStoreConfiguration(t *testing.T) {
 
 	paths := map[string]TstHandler{
 		"GET/SAAS/jersey/manager/api/localuserstore": h}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "localuserstore")
+	ctx := runWithServer(t, paths, "localuserstore")
 	ctx.assertOnlyInfoContains("---- Local User Store configuration ----")
 	ctx.assertOnlyInfoContains("name: Test Local Users")
 	ctx.assertOnlyInfoContains("showLocalUserStore: true")
@@ -640,9 +645,7 @@ func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 	}
 	paths := map[string]TstHandler{
 		"PUT/SAAS/jersey/manager/api/localuserstore": h}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
+	ctx := runWithServer(t, paths, "localuserstore", "showLocalUserStore=false")
 	ctx.assertOnlyInfoContains("---- Local User Store configuration ----")
 	ctx.assertOnlyInfoContains(`{"showLocalUserStore": false}`)
 }
@@ -650,9 +653,7 @@ func TestCanSetLocalUserStoreConfiguration(t *testing.T) {
 func TestErrorWhenCannotSetLocalUserStoreConfiguration(t *testing.T) {
 	paths := map[string]TstHandler{
 		"PUT/SAAS/jersey/manager/api/localuserstore": ErrorHandler(500, "error test")}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "localuserstore", "showLocalUserStore=false")
+	ctx := runWithServer(t, paths, "localuserstore", "showLocalUserStore=false")
 	ctx.assertOnlyErrContains("error test")
 }
 
@@ -668,36 +669,31 @@ func setupRolesServiceMock() *mocks.DirectoryService {
 func TestCanGetRole(t *testing.T) {
 	rolesServiceMock := setupRolesServiceMock()
 	rolesServiceMock.On("DisplayEntity", mock.Anything, "friendsforever").Return()
-	testCliCommand(t, "role", "get", "friendsforever")
-	rolesServiceMock.AssertExpectations(t)
+	testMockCommand(t, &rolesServiceMock.Mock, "role", "get", "friendsforever")
 }
 
 func TestCanDisplayAllRoles(t *testing.T) {
 	rolesServiceMock := setupRolesServiceMock()
 	rolesServiceMock.On("ListEntities", mock.Anything, 0, "").Return()
-	testCliCommand(t, "role", "list")
-	rolesServiceMock.AssertExpectations(t)
+	testMockCommand(t, &rolesServiceMock.Mock, "role", "list")
 }
 
 func TestCanDisplayAllRolesWithCountAndFilter(t *testing.T) {
 	rolesServiceMock := setupRolesServiceMock()
 	rolesServiceMock.On("ListEntities", mock.Anything, 2, "filter").Return()
-	testCliCommand(t, "role", "list", "--count", "2", "--filter", "filter")
-	rolesServiceMock.AssertExpectations(t)
+	testMockCommand(t, &rolesServiceMock.Mock, "role", "list", "--count", "2", "--filter", "filter")
 }
 
 func TestCanAddMemberToRole(t *testing.T) {
 	rolesServiceMock := setupRolesServiceMock()
 	rolesServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", false).Return()
-	testCliCommand(t, "role", "member", "friendsforever", "sven")
-	rolesServiceMock.AssertExpectations(t)
+	testMockCommand(t, &rolesServiceMock.Mock, "role", "member", "friendsforever", "sven")
 }
 
 func TestCanRemoveMemberFromRole(t *testing.T) {
 	rolesServiceMock := setupRolesServiceMock()
 	rolesServiceMock.On("UpdateMember", mock.Anything, "friendsforever", "sven", true).Return()
-	testCliCommand(t, "role", "member", "--delete", "friendsforever", "sven")
-	rolesServiceMock.AssertExpectations(t)
+	testMockCommand(t, &rolesServiceMock.Mock, "role", "member", "--delete", "friendsforever", "sven")
 }
 
 // - Tenant
@@ -707,9 +703,7 @@ func TestGetTenantConfiguration(t *testing.T) {
 	}
 	paths := map[string]TstHandler{
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
+	ctx := runWithServer(t, paths, "tenant", "tenantName")
 	ctx.assertOnlyInfoContains("---- Tenant configuration ----")
 }
 
@@ -719,9 +713,7 @@ func TestSetTenantConfiguration(t *testing.T) {
 	}
 	paths := map[string]TstHandler{
 		"GET/SAAS/jersey/manager/api/tenants/tenant/tenantName/config": h}
-	srv := StartTstServer(t, paths)
-	defer srv.Close()
-	ctx := runner(newTstCtx(t, tstSrvTgtWithAuth(srv.URL)), "tenant", "tenantName")
+	ctx := runWithServer(t, paths, "tenant", "tenantName")
 	ctx.assertOnlyInfoContains("---- Tenant configuration ----")
 }
 
@@ -737,36 +729,31 @@ func setupAppsServiceMock() *mocks.ApplicationService {
 func TestCanGetApp(t *testing.T) {
 	appsServiceMock := setupAppsServiceMock()
 	appsServiceMock.On("Display", mock.Anything, "makesnow").Return()
-	testCliCommand(t, "app", "get", "makesnow")
-	appsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &appsServiceMock.Mock, "app", "get", "makesnow")
 }
 
 func TestCanDeleteApp(t *testing.T) {
 	appsServiceMock := setupAppsServiceMock()
 	appsServiceMock.On("Delete", mock.Anything, "makesnow").Return()
-	testCliCommand(t, "app", "delete", "makesnow")
-	appsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &appsServiceMock.Mock, "app", "delete", "makesnow")
 }
 
 func TestCanListApps(t *testing.T) {
 	appsServiceMock := setupAppsServiceMock()
 	appsServiceMock.On("List", mock.Anything, 0, "").Return()
-	testCliCommand(t, "app", "list")
-	appsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &appsServiceMock.Mock, "app", "list")
 }
 
 func TestCanListAppsWithCountAndFilter(t *testing.T) {
 	appsServiceMock := setupAppsServiceMock()
 	appsServiceMock.On("List", mock.Anything, 2, "filter").Return()
-	testCliCommand(t, "app", "list", "--count", "2", "--filter", "filter")
-	appsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &appsServiceMock.Mock, "app", "list", "--count", "2", "--filter", "filter")
 }
 
 func TestCanPublishAnAppWithASpecificManifest(t *testing.T) {
 	appsServiceMock := setupAppsServiceMock()
 	appsServiceMock.On("Publish", mock.Anything, "my-manifest.yaml").Return()
-	testCliCommand(t, "app", "add", "my-manifest.yaml")
-	appsServiceMock.AssertExpectations(t)
+	testMockCommand(t, &appsServiceMock.Mock, "app", "add", "my-manifest.yaml")
 }
 
 // - Entitlements
@@ -806,8 +793,7 @@ func setupTemplateServiceMock() *mocks.OauthResource {
 func TestCanGetTemplate(t *testing.T) {
 	templServiceMock := setupTemplateServiceMock()
 	templServiceMock.On("Get", mock.Anything, "makesnow").Return()
-	testCliCommand(t, "template", "get", "makesnow")
-	templServiceMock.AssertExpectations(t)
+	testMockCommand(t, &templServiceMock.Mock, "template", "get", "makesnow")
 }
 
 // Helper to create template map
@@ -822,22 +808,19 @@ func templateInfo(name, scope string, accessTokenTTL int) map[string]interface{}
 func TestCanAddTemplateWithDefaults(t *testing.T) {
 	templServiceMock := setupTemplateServiceMock()
 	templServiceMock.On("Add", mock.Anything, "olaf", templateInfo("olaf", "user profile email", 480)).Return()
-	testCliCommand(t, "template", "add", "olaf")
-	templServiceMock.AssertExpectations(t)
+	testMockCommand(t, &templServiceMock.Mock, "template", "add", "olaf")
 }
 
 func TestCanAddTemplateWithOptions(t *testing.T) {
 	templServiceMock := setupTemplateServiceMock()
 	templServiceMock.On("Add", mock.Anything, "olaf", templateInfo("olaf", "snow", 0)).Return()
-	testCliCommand(t, "template", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
-	templServiceMock.AssertExpectations(t)
+	testMockCommand(t, &templServiceMock.Mock, "template", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
 }
 
 func TestCanDeleteTemplate(t *testing.T) {
 	templServiceMock := setupTemplateServiceMock()
 	templServiceMock.On("Delete", mock.Anything, "sven").Return()
-	testCliCommand(t, "template", "delete", "sven")
-	templServiceMock.AssertExpectations(t)
+	testMockCommand(t, &templServiceMock.Mock, "template", "delete", "sven")
 }
 
 func TestCannotDeleteTemplateIfNoNameSpecified(t *testing.T) {
@@ -847,8 +830,7 @@ func TestCannotDeleteTemplateIfNoNameSpecified(t *testing.T) {
 func TestCanListTemplates(t *testing.T) {
 	templServiceMock := setupTemplateServiceMock()
 	templServiceMock.On("List", mock.Anything).Return()
-	testCliCommand(t, "template", "list")
-	templServiceMock.AssertExpectations(t)
+	testMockCommand(t, &templServiceMock.Mock, "template", "list")
 }
 
 // - Oauth2 Clients
@@ -863,8 +845,7 @@ func setupClientServiceMock() *mocks.OauthResource {
 func TestCanGetClient(t *testing.T) {
 	clntServiceMock := setupClientServiceMock()
 	clntServiceMock.On("Get", mock.Anything, "makesnow").Return()
-	testCliCommand(t, "client", "get", "makesnow")
-	clntServiceMock.AssertExpectations(t)
+	testMockCommand(t, &clntServiceMock.Mock, "client", "get", "makesnow")
 }
 
 // Helper to create client map
@@ -881,22 +862,19 @@ func clientInfo(name, scope string, accessTokenTTL int) map[string]interface{} {
 func TestCanAddClientWithDefaults(t *testing.T) {
 	clntServiceMock := setupClientServiceMock()
 	clntServiceMock.On("Add", mock.Anything, "olaf", clientInfo("olaf", "user profile email", 480)).Return()
-	testCliCommand(t, "client", "add", "olaf")
-	clntServiceMock.AssertExpectations(t)
+	testMockCommand(t, &clntServiceMock.Mock, "client", "add", "olaf")
 }
 
 func TestCanAddClientWithOptions(t *testing.T) {
 	clntServiceMock := setupClientServiceMock()
 	clntServiceMock.On("Add", mock.Anything, "olaf", clientInfo("olaf", "snow", 0)).Return()
-	testCliCommand(t, "client", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
-	clntServiceMock.AssertExpectations(t)
+	testMockCommand(t, &clntServiceMock.Mock, "client", "add", "--scope", "snow", "--accessTokenTTL", "0", "olaf")
 }
 
 func TestCanDeleteClient(t *testing.T) {
 	clntServiceMock := setupClientServiceMock()
 	clntServiceMock.On("Delete", mock.Anything, "sven").Return()
-	testCliCommand(t, "client", "delete", "sven")
-	clntServiceMock.AssertExpectations(t)
+	testMockCommand(t, &clntServiceMock.Mock, "client", "delete", "sven")
 }
 
 func TestCannotDeleteClientIfNoNameSpecified(t *testing.T) {
@@ -906,6 +884,5 @@ func TestCannotDeleteClientIfNoNameSpecified(t *testing.T) {
 func TestCanListClients(t *testing.T) {
 	clntServiceMock := setupClientServiceMock()
 	clntServiceMock.On("List", mock.Anything).Return()
-	testCliCommand(t, "client", "list")
-	clntServiceMock.AssertExpectations(t)
+	testMockCommand(t, &clntServiceMock.Mock, "client", "list")
 }

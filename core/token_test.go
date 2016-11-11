@@ -15,116 +15,112 @@ limitations under the License.
 
 package core
 
-// func TestCanNotLoginWithNoTarget(t *testing.T) {
-// 	ctx := runner(newTstCtx(t, " "), "login", "c", "s")
-// 	ctx.assertOnlyErrContains("no target set")
-// }
+import (
+	"github.com/stretchr/testify/assert"
+	. "github.com/vmware/priam/testaid"
+	. "github.com/vmware/priam/util"
+	"net/url"
+	"testing"
+)
 
-// func badLoginReply(t *testing.T, req *TstReq) *TstReply {
-// 	assert.NotEmpty(t, req.Input)
-// 	return &TstReply{Output: "crap"}
-// }
+const (
+	goodAccessToken = "travolta.was.here"
+)
 
-// func TestCanHandleBadUserLoginReply(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: badLoginReply})
-// 	defer srv.Close()
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-// 	ctx.assertOnlyErrContains("invalid")
-// }
+var testTS = TokenService{"/authorize", "/token", "/login", "salo", "tralfamadore"}
 
-// func TestCanHandleBadOAuthLoginReply(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: badLoginReply})
-// 	defer srv.Close()
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-// 	ctx.assertOnlyErrContains("invalid")
-// }
+/* in these tests the clientID is "john" and the client secret is "travolta". These are adapted
+   from tests written by Fanny, who apparently likes John Travolta.
+*/
 
-// // in these tests the clientID is "john" and the client secret is "travolta"
-// // Adapted from tests written by Fanny, who apparently likes John Travolta
-// func tstClientCredGrant(t *testing.T, req *TstReq) *TstReply {
-// 	assert.Equal(t, "Basic am9objp0cmF2b2x0YQ==", req.Authorization)
-// 	assert.Equal(t, "grant_type=client_credentials", req.Input)
-// 	return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
-// }
+func TestCanHandleBadCredsGrantReply(t *testing.T) {
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: GoodPathHandler("crap")})
+	defer srv.Close()
+	_, err := testTS.ClientCredentialsGrant(ctx, "john", "travolta")
+	assert.NotNil(t, err, "handle bad json reply")
+}
 
-// // Helper function for system login
-// func assertSystemLoginSucceeded(t *testing.T, ctx *tstCtx) {
-// 	assert.Contains(t, ctx.cfg, "authheader: HZN "+goodAccessToken)
-// 	ctx.assertOnlyInfoContains("Access token saved")
-// }
+func TestCanLoginWithClientCreds(t *testing.T) {
+	handler := func(t *testing.T, req *TstReq) *TstReply {
+		assert.Equal(t, "Basic am9objp0cmF2b2x0YQ==", req.Authorization)
+		assert.Equal(t, "grant_type=client_credentials", req.Input)
+		return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
+	}
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: handler})
+	defer srv.Close()
+	ti, err := testTS.ClientCredentialsGrant(ctx, "john", "travolta")
+	assert.Nil(t, err)
+	assert.Equal(t, ti.AccessTokenType, "Bearer")
+	assert.Equal(t, ti.AccessToken, goodAccessToken)
+}
 
-// // Helper function for OAuth2 login
-// func assertOAuth2LoginSucceeded(t *testing.T, ctx *tstCtx) {
-// 	assert.Contains(t, ctx.cfg, "authheader: Bearer "+goodAccessToken)
-// 	ctx.assertOnlyInfoContains("Access token saved")
-// }
+func TestCanHandleBadUserLoginReply(t *testing.T) {
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.LoginPath: ErrorHandler(0, "crap")})
+	defer srv.Close()
+	_, err := testTS.LoginSystemUser(ctx, "eliot", "poo-tee-weet")
+	assert.NotNil(t, err, "handle bad json reply")
+}
 
-// func TestCanLoginAsOAuthClient(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: tstClientCredGrant})
-// 	defer srv.Close()
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c", "john", "travolta")
-// 	assertOAuth2LoginSucceeded(t, ctx)
-// }
+func TestCanHandleUserLoginReplyNoToken(t *testing.T) {
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.LoginPath: ErrorHandler(0, `{"crap":"kazak"}`)})
+	defer srv.Close()
+	_, err := testTS.LoginSystemUser(ctx, "eliot", "poo-tee-weet")
+	assert.EqualError(t, err, "Invalid response: no token in reply from server")
+}
 
-// func TestPromptForOauthClient(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.TokenPath: tstClientCredGrant})
-// 	defer srv.Close()
-// 	consoleInput = strings.NewReader("john")
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "-c")
-// 	assertOAuth2LoginSucceeded(t, ctx)
-// 	ctx.assertOnlyInfoContains("Client ID: ")
-// 	ctx.assertOnlyInfoContains("Secret: ")
-// }
+func TestSystemUserLogin(t *testing.T) {
+	handler := func(t *testing.T, req *TstReq) *TstReply {
+		assert.Contains(t, req.Input, `"username": "john"`)
+		assert.Contains(t, req.Input, `"password": "travolta"`)
+		assert.Contains(t, req.Input, `"issueToken": true`)
+		return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
+	}
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.LoginPath: handler})
+	defer srv.Close()
+	ti, err := testTS.LoginSystemUser(ctx, "john", "travolta")
+	assert.Nil(t, err)
+	assert.Equal(t, ti.AccessTokenType, "HZN")
+	assert.Equal(t, ti.AccessToken, goodAccessToken)
+}
 
-// // Helper methods to check input login request
-// func userLoginHandler() func(t *testing.T, req *TstReq) *TstReply {
-// 	return func(t *testing.T, req *TstReq) *TstReply {
-// 		assert.Contains(t, req.Input, `"username": "john"`)
-// 		assert.Contains(t, req.Input, `"password": "travolta"`)
-// 		assert.Contains(t, req.Input, `"issueToken": true`)
-// 		return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
-// 	}
-// }
+func simulateBrowser(t *testing.T, authcode string) func(authzURL string) error {
+	return func(authzURL string) error {
+		purl, err := url.Parse(authzURL)
+		assert.Nil(t, err)
+		vals := purl.Query()
+		assert.Equal(t, catcherHost+catcherPath, vals.Get("redirect_uri"))
+		assert.Equal(t, testTS.CliClientID, vals.Get("client_id"))
+		assert.Equal(t, "code", vals.Get("response_type"))
+		assert.Equal(t, "kazak", vals.Get("login_hint"))
+		state := vals.Get("state")
+		assert.NotNil(t, state)
+		hc, outp := NewHttpContext(NewBufferedLogr(), catcherHost, "", ""), ""
+		vals = url.Values{"code": {authcode}, "state": {state}}
+		err = hc.Request("GET", catcherPath+"?"+vals.Encode(), nil, &outp)
+		assert.Nil(t, err)
+		return nil
+	}
+}
 
-// func TestCanLoginAsUser(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john", "travolta")
-// 	assertSystemLoginSucceeded(t, ctx)
-// }
+func tokenHandler(authcode string) func(t *testing.T, req *TstReq) *TstReply {
+	return func(t *testing.T, req *TstReq) *TstReply {
+		assert.Equal(t, "Basic c2Fsbzp0cmFsZmFtYWRvcmU=", req.Authorization)
+		assert.Contains(t, req.Input, "grant_type=authorization_code")
+		assert.Contains(t, req.Input, "code="+authcode)
+		assert.Contains(t, req.Input, url.Values{"redirect_uri": {catcherHost + catcherPath}}.Encode())
+		assert.Contains(t, req.Input, "client_id="+testTS.CliClientID)
+		return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
+	}
+}
 
-// func TestCanLoginAsUserPromptPassword(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john")
-// 	assertSystemLoginSucceeded(t, ctx)
-// 	ctx.assertOnlyInfoContains("Password: ")
-// }
-
-// func TestPromptForSystemUserCreds(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	consoleInput = strings.NewReader("john")
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login")
-// 	assertSystemLoginSucceeded(t, ctx)
-// 	ctx.assertOnlyInfoContains("Password: ")
-// 	ctx.assertOnlyInfoContains("Username: ")
-// }
-
-// func TestPanicIfCantGetUserName(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	consoleInput = strings.NewReader("")
-// 	getRawPassword = func() ([]byte, error) { return []byte("travolta"), nil }
-// 	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login") })
-// }
-
-// func TestPanicIfCantGetPassword(t *testing.T) {
-// 	srv := StartTstServer(t, map[string]TstHandler{"POST" + tokenService.LoginPath: userLoginHandler()})
-// 	defer srv.Close()
-// 	getRawPassword = func() ([]byte, error) { return nil, errors.New("getRawPassword failed") }
-// 	assert.Panics(t, func() { runner(newTstCtx(t, tstSrvTgt(srv.URL)), "login", "john") })
-// }
+func TestAuthCodeGrant(t *testing.T) {
+	authcode := "hi-ho"
+	browserLauncher = simulateBrowser(t, authcode)
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: tokenHandler(authcode)})
+	defer srv.Close()
+	ti, err := testTS.AuthCodeGrant(ctx, "kazak")
+	assert.Nil(t, err)
+	assert.Equal(t, ti.AccessTokenType, "Bearer")
+	assert.Equal(t, ti.AccessToken, goodAccessToken)
+	assert.Contains(t, ctx.Log.InfoString(), "caught authcode: "+authcode)
+}
