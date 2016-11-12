@@ -76,21 +76,23 @@ func (ts TokenService) LoginSystemUser(ctx *HttpContext, user, password string) 
 	return
 }
 
+var catcherAddress, catcherPort, catcherPath = "", "8888", "/authcodecatcher"
+var authCodeDelivery, authStateDelivery = make(chan string, 1), make(chan string, 1)
+var browserLauncher = webbrowser.Open
+var catcherHost = "http://localhost:" + catcherPort
+var openListener = net.Listen
+var readRandomBytes = rand.Read
+
 /* GenerateRandomString returns a URL-safe, base64 encoded securely generated random
    string. It will panic if the system's secure random number generator fails.
 */
 func GenerateRandomString(randomByteCount int) string {
 	b := make([]byte, randomByteCount)
-	if _, err := rand.Read(b); err != nil {
+	if _, err := readRandomBytes(b); err != nil {
 		panic(err)
 	}
 	return base64.URLEncoding.EncodeToString(b)
 }
-
-var catcherAddress, catcherPort, catcherPath = "", "8888", "/authcodecatcher"
-var authCodeDelivery, authStateDelivery = make(chan string, 1), make(chan string, 1)
-var browserLauncher = webbrowser.Open
-var catcherHost = "http://localhost:" + catcherPort
 
 // AuthCodeCatcher receives oauth2 authorization codes
 func AuthCodeCatcher(w http.ResponseWriter, req *http.Request) {
@@ -113,8 +115,9 @@ func AuthCodeCatcher(w http.ResponseWriter, req *http.Request) {
 */
 func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti TokenInfo, err error) {
 
+	state, redirUri := GenerateRandomString(32), catcherHost+catcherPath
 	if catcherAddress == "" {
-		if listener, err := net.Listen("tcp", ":"+catcherPort); err != nil {
+		if listener, err := openListener("tcp", ":"+catcherPort); err != nil {
 			return ti, err
 		} else {
 			http.HandleFunc(catcherPath, AuthCodeCatcher)
@@ -124,10 +127,9 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 			}()
 			catcherAddress = listener.Addr().String()
 		}
-		ctx.Log.Info("local server listening on: %s\n", catcherAddress)
+		ctx.Log.Trace("local server listening on: %s\n", catcherAddress)
 	}
 
-	state, redirUri := GenerateRandomString(32), catcherHost+catcherPath
 	authStateDelivery <- state
 	vals := url.Values{"response_type": {"code"}, "client_id": {ts.CliClientID},
 		"state": {state}, "redirect_uri": {redirUri}}
@@ -135,12 +137,12 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 		vals.Set("login_hint", userHint)
 	}
 	authUrl := fmt.Sprintf("%s%s?%s", ctx.HostURL, ts.AuthorizePath, vals.Encode())
-	ctx.Log.Info("launching browser with %s\n", authUrl)
-	browserLauncher(authUrl)
-	if authcode := <-authCodeDelivery; authcode == "" {
+	ctx.Log.Trace("launching browser with %s\n", authUrl)
+	if err = browserLauncher(authUrl); err != nil {
+	} else if authcode := <-authCodeDelivery; authcode == "" {
 		err = errors.New("failed to get authorization code from server. See browser for error message.")
 	} else {
-		ctx.Log.Info("caught authcode: %s\n", authcode)
+		ctx.Log.Trace("caught authcode: %s\n", authcode)
 		inp := url.Values{"grant_type": {"authorization_code"}, "code": {authcode},
 			"redirect_uri": {redirUri}, "client_id": {ts.CliClientID}}.Encode()
 		ctx.BasicAuth(ts.CliClientID, ts.CliClientSecret).ContentType("application/x-www-form-urlencoded")
