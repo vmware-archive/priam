@@ -149,8 +149,14 @@ func TestScimListFilteredByLabel(t *testing.T) {
 }
 
 func TestScimListWithNonExistingSummaryLabelsPrintsEmpty(t *testing.T) {
+	// we're adding both URLs as older versions of go would normalize it and remove the trailing "?"
+	// go 1.7.3 and + keep it
 	srv := StartTstServer(t, map[string]TstHandler{
-		"GET/scim/Users?": scimDefaultUserHandler()})
+		"GET/scim/Users?": scimDefaultUserHandler(),
+		"GET/scim/Users": scimDefaultUserHandler(),
+	})
+	defer srv.Close()
+
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
 	scimList(ctx, 0, "", "Users", "IDontExist")
 	AssertOnlyInfoContains(t, ctx, "")
