@@ -399,7 +399,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		{
 			Name: "login", Usage: "gets an access token as a user or service client",
 			ArgsUsage:   "[name] [password]",
-			Description: "if name or password are not given as arguments, user will be prompted",
+			Description: "User will be prompted to enter any arguments not specified on command line",
 			Flags: []cli.Flag{
 				cli.BoolFlag{Name: "authcode, a", Usage: "use browser to authenticate via oauth2 authorization code grant"},
 				cli.BoolFlag{Name: "client, c", Usage: "authenticate with oauth2 client ID and secret"},
