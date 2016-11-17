@@ -28,8 +28,8 @@ const NoTarget = ""
 
 // target is used to encapsulate everything needed to connect to a vidm instance.
 type Target struct {
-	Host       string
-	AuthHeader string `yaml:",omitempty"`
+	Host                                                string
+	AccessTokenType, AccessToken, RefreshToken, IDToken string `yaml:",omitempty"`
 }
 
 type Config struct {
@@ -113,10 +113,9 @@ func (cfg *Config) hasTarget(name string) bool {
 	return ok
 }
 
-func (cfg *Config) WithAuthHeader(hdr string) *Config {
-	tgt := cfg.Targets[cfg.CurrentTarget]
-	tgt.AuthHeader = hdr
-	cfg.Targets[cfg.CurrentTarget] = tgt
+func (cfg *Config) WithTokens(accessTokenType, accessToken, refreshToken, idToken string) *Config {
+	cfg.Targets[cfg.CurrentTarget] = Target{cfg.Targets[cfg.CurrentTarget].Host,
+		accessTokenType, accessToken, refreshToken, idToken}
 	return cfg
 }
 
