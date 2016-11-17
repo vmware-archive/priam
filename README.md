@@ -1,5 +1,5 @@
 # Priam - a Go CLI for VMware Identity Manager
-[![Build Status](https://travis-ci.org/vmware/priam.svg?branch=master)](https://travis-ci.org/priam/jwt-go)
+[![Build Status](https://travis-ci.org/vmware/priam.svg?branch=master)](https://travis-ci.org/vmware/priam/)
 
 This is a Go program to interact with [VMware Identity Manager](http://www.vmware.com/products/identity-manager.html) product.
 For now it mostly implements the administrative functions of IDM.
