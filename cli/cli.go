@@ -40,9 +40,13 @@ var rolesService DirectoryService = &SCIMRolesService{}
 var appsService ApplicationService = &IDMApplicationService{}
 var templateService OauthResource = AppTemplateService
 var clientService OauthResource = OauthClientService
+
 var tokenService TokenGrants = TokenService{
-	"/SAAS/auth/oauth2/authorize", "/SAAS/auth/oauthtoken", "/SAAS/API/1.0/REST/auth/system/login",
-	"priam", "not-a-secret"}
+	AuthorizePath: "/SAAS/auth/oauth2/authorize",
+	TokenPath: "/SAAS/auth/oauthtoken",
+	LoginPath: "/SAAS/API/1.0/REST/auth/system/login",
+	CliClientID: "priam",
+	CliClientSecret: "not-a-secret"}
 
 var getRawPassword = gopass.GetPasswd // called via variable so that tests can provide stub
 var consoleInput io.Reader = os.Stdin // will be set to other readers for tests

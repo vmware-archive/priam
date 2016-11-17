@@ -150,7 +150,7 @@ func TestScimListFilteredByLabel(t *testing.T) {
 
 func TestScimListWithNonExistingSummaryLabelsPrintsEmpty(t *testing.T) {
 	srv := StartTstServer(t, map[string]TstHandler{
-		"GET/scim/Users": scimDefaultUserHandler()})
+		"GET/scim/Users?": scimDefaultUserHandler()})
 	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
 	scimList(ctx, 0, "", "Users", "IDontExist")
 	AssertOnlyInfoContains(t, ctx, "")
