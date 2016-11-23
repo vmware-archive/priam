@@ -90,14 +90,13 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 		cfg.Log.Err("Error: no target set\n")
 		return nil
 	}
-	tgt := cfg.Targets[cfg.CurrentTarget]
-	ctx := NewHttpContext(cfg.Log, tgt.Host, vidmBasePath, vidmBaseMediaType)
+	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), vidmBasePath, vidmBaseMediaType)
 	if authn {
-		if token := cfg.Targets[cfg.CurrentTarget].AccessToken; token == "" {
+		if token := cfg.Option("accesstoken"); token == "" {
 			cfg.Log.Err("No access token saved for current target. Please log in.\n")
 			return nil
 		} else {
-			ctx.Authorization(cfg.Targets[cfg.CurrentTarget].AccessTokenType + " " + token)
+			ctx.Authorization(cfg.Option("accesstokentype") + " " + token)
 		}
 	}
 	return ctx
@@ -428,8 +427,9 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 							return nil
 						}
 					}
-					if cfg.WithTokens(tokenInfo.AccessTokenType, tokenInfo.AccessToken,
-						tokenInfo.RefreshToken, tokenInfo.IDToken).Save() {
+					opts := map[string]string{"accesstokentype": tokenInfo.AccessTokenType, "accesstoken": tokenInfo.AccessToken,
+						"refreshtoken": tokenInfo.RefreshToken, "idtoken": tokenInfo.IDToken}
+					if cfg.WithOptions(opts).Save() {
 						cfg.Log.Info("Access token saved\n")
 					}
 				}
@@ -439,7 +439,8 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		{
 			Name: "logout", Usage: "deletes access token from configuration store for current target",
 			Action: func(c *cli.Context) error {
-				if args := initArgs(cfg, c, 0, 0, nil); args != nil && cfg.WithTokens("", "", "", "").Save() {
+				if args := initArgs(cfg, c, 0, 0, nil); args != nil &&
+					cfg.WithoutOptions("accesstokentype", "accesstoken", "refreshtoken", "idtoken").Save() {
 					cfg.Log.Info("Access token removed\n")
 				}
 				return nil

@@ -25,16 +25,15 @@ import (
 )
 
 const NoTarget = ""
+const HostOption = "host"
 
-// target is used to encapsulate everything needed to connect to a vidm instance.
-type Target struct {
-	Host                                                string
-	AccessTokenType, AccessToken, RefreshToken, IDToken string `yaml:",omitempty"`
-}
-
+/* Config represents a set of named targets, with an indication of which target is currently
+   active. Each target contains a map of options. The only option known to this code is HostOption,
+   all other options are up to the users of the config struct.
+*/
 type Config struct {
 	CurrentTarget string
-	Targets       map[string]Target
+	Targets       map[string]map[string]string
 	fileName      string
 	Log           *Logr `yaml:"-"`
 }
@@ -65,9 +64,9 @@ func (cfg *Config) Init(log *Logr, fileName string) bool {
 	cfg.Log, cfg.fileName = log, fileName
 
 	if cfg.Targets == nil {
-		cfg.Targets = make(map[string]Target)
+		cfg.Targets = make(map[string]map[string]string)
 		cfg.CurrentTarget = NoTarget
-	} else if cfg.CurrentTarget == NoTarget || cfg.Targets[cfg.CurrentTarget] == (Target{}) {
+	} else if cfg.CurrentTarget == NoTarget || cfg.Targets[cfg.CurrentTarget] == nil {
 		cfg.CurrentTarget = NoTarget
 	}
 	return true
@@ -94,7 +93,7 @@ func (cfg *Config) PrintTarget(prefix string) {
 		cfg.Log.Info("no target set\n")
 	} else {
 		cfg.Log.Info("%s target is: %s, %s\n", prefix, cfg.CurrentTarget,
-			cfg.Targets[cfg.CurrentTarget].Host)
+			cfg.Targets[cfg.CurrentTarget][HostOption])
 	}
 }
 
@@ -113,9 +112,21 @@ func (cfg *Config) hasTarget(name string) bool {
 	return ok
 }
 
-func (cfg *Config) WithTokens(accessTokenType, accessToken, refreshToken, idToken string) *Config {
-	cfg.Targets[cfg.CurrentTarget] = Target{cfg.Targets[cfg.CurrentTarget].Host,
-		accessTokenType, accessToken, refreshToken, idToken}
+func (cfg *Config) Option(name string) string {
+	return cfg.Targets[cfg.CurrentTarget][name]
+}
+
+func (cfg *Config) WithOptions(options map[string]string) *Config {
+	for k, v := range options {
+		cfg.Targets[cfg.CurrentTarget][k] = v
+	}
+	return cfg
+}
+
+func (cfg *Config) WithoutOptions(optionKeys ...string) *Config {
+	for _, k := range optionKeys {
+		delete(cfg.Targets[cfg.CurrentTarget], k)
+	}
 	return cfg
 }
 
@@ -145,13 +156,13 @@ func (cfg *Config) findTarget(url, name string) string {
 
 		// no name given, look up first target that matches url
 		for k, v := range cfg.Targets {
-			if v.Host == fullURL {
+			if v[HostOption] == fullURL {
 				return k
 			}
 		}
 	} else {
 		tgt, ok := cfg.Targets[name]
-		if ok && tgt.Host == fullURL {
+		if ok && tgt[HostOption] == fullURL {
 			return name
 		}
 
@@ -199,7 +210,7 @@ func (cfg *Config) SetTarget(url, name string, checkURL func(*Config) bool) {
 	}
 
 	cfg.CurrentTarget = name
-	cfg.Targets[cfg.CurrentTarget] = Target{Host: ensureFullURL(url)}
+	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: ensureFullURL(url)}
 	if (checkURL == nil || checkURL(cfg)) && cfg.Save() {
 		cfg.PrintTarget("new")
 	}
@@ -212,7 +223,7 @@ func (cfg *Config) ListTargets() {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		cfg.Log.Info("name: %s\nhost: %s\n\n", k, cfg.Targets[k].Host)
+		cfg.Log.Info("name: %s\nhost: %s\n\n", k, cfg.Targets[k][HostOption])
 	}
 	cfg.PrintTarget("current")
 }
