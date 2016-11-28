@@ -80,10 +80,16 @@ func (ts TokenService) LoginSystemUser(ctx *HttpContext, user, password string) 
 	return
 }
 
-var catcherAddress, catcherPort, catcherPath = "", "8888", "/authcodecatcher"
+const (
+	TokenCatcherPort = "8089"
+	TokenCatcherPath = "/authcodecatcher"
+	TokenCatcherHost = "http://localhost:" + TokenCatcherPort
+	TokenCatcherURI  = TokenCatcherHost + TokenCatcherPath
+)
+
+var catcherAddress = ""
 var authCodeDelivery, authStateDelivery = make(chan string, 1), make(chan string, 1)
 var browserLauncher = webbrowser.Open
-var catcherHost = "http://localhost:" + catcherPort
 var openListener = net.Listen
 var readRandomBytes = rand.Read
 
@@ -119,12 +125,12 @@ func AuthCodeCatcher(w http.ResponseWriter, req *http.Request) {
 */
 func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti TokenInfo, err error) {
 
-	state, redirUri := GenerateRandomString(32), catcherHost+catcherPath
+	state := GenerateRandomString(32)
 	if catcherAddress == "" {
-		if listener, err := openListener("tcp", ":"+catcherPort); err != nil {
+		if listener, err := openListener("tcp", ":"+TokenCatcherPort); err != nil {
 			return ti, err
 		} else {
-			http.HandleFunc(catcherPath, AuthCodeCatcher)
+			http.HandleFunc(TokenCatcherPath, AuthCodeCatcher)
 			go func() {
 				err := http.Serve(listener, nil)
 				ctx.Log.Err("Local http authcode catcher exited: %v\n", err)
@@ -136,7 +142,7 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 
 	authStateDelivery <- state
 	vals := url.Values{"response_type": {"code"}, "client_id": {ts.CliClientID},
-		"state": {state}, "redirect_uri": {redirUri}}
+		"state": {state}, "redirect_uri": {TokenCatcherURI}}
 	if userHint != "" {
 		vals.Set("login_hint", userHint)
 	}
@@ -148,7 +154,7 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 	} else {
 		ctx.Log.Trace("caught authcode: %s\n", authcode)
 		inp := url.Values{"grant_type": {"authorization_code"}, "code": {authcode},
-			"redirect_uri": {redirUri}, "client_id": {ts.CliClientID}}.Encode()
+			"redirect_uri": {TokenCatcherURI}, "client_id": {ts.CliClientID}}.Encode()
 		ctx.BasicAuth(ts.CliClientID, ts.CliClientSecret).ContentType("application/x-www-form-urlencoded")
 		err = ctx.Request("POST", ts.TokenPath, inp, &ti)
 	}

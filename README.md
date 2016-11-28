@@ -58,7 +58,7 @@ or
 
 You need an IDM organization (like https://xxx.vmwareidentity.com)
 
-Almost all commands require the user to be logged in as an IDM admininistrator to run API calls.
+Almost all commands require the user to be logged in as an IDM administrator to run API calls.
 All examples below assume you have run the following commands before:
 
     $ priam target https://xxx.vmwareidentity.com
@@ -71,6 +71,24 @@ Note that you can also login with an OAuth 2.0 client_id and secret. In that cas
     $ priam login -c <oauth2 client id>
     Secret: <the oauth2 secret>
     Access token saved
+
+You can also login using an OAuth2 authorization code flow. This allows you to log in as any user, 
+not just a user in the system domain as shown above. It launches an external browser and opens
+a local http listener to recieve the OAuth2 tokens. However, to use this login option this 
+application must be registered as an OAuth2 client in the target tenant. A helper command is 
+provided for this purpose. If you are logged in as an administrator using one of the previous
+login options, you can run this command to register the OAuth2 client:
+
+    $ priam client register
+
+To see what options are registered (client_id, client_secret, scopes, etc), run:
+
+    $ priam client register --help
+
+After registration is completed, you can log in as a user from any domain supported by the 
+tenant, and using authentication methods as specified by access policy:
+
+    $ priam login -a
 
 ### Users
 

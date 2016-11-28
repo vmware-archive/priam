@@ -895,6 +895,12 @@ func TestCanListClients(t *testing.T) {
 	testMockCommand(t, &clntServiceMock.Mock, "client", "list")
 }
 
+func TestCanRegisterCliClient(t *testing.T) {
+	clntServiceMock := setupClientServiceMock()
+	clntServiceMock.On("Add", mock.Anything, cliClientID, cliClientRegistration).Return()
+	testMockCommand(t, &clntServiceMock.Mock, "client", "register")
+}
+
 // Token
 
 func TestCanValidateIDToken(t *testing.T) {

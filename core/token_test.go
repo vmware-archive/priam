@@ -102,13 +102,13 @@ func simulateBrowser(t *testing.T, replyType codeReplyType, authcode string) fun
 		purl, err := url.Parse(authzURL)
 		assert.Nil(t, err)
 		vals := purl.Query()
-		assert.Equal(t, catcherHost+catcherPath, vals.Get("redirect_uri"))
+		assert.Equal(t, TokenCatcherURI, vals.Get("redirect_uri"))
 		assert.Equal(t, testTS.CliClientID, vals.Get("client_id"))
 		assert.Equal(t, "code", vals.Get("response_type"))
 		assert.Equal(t, "kazak", vals.Get("login_hint"))
 		state := vals.Get("state")
 		assert.NotNil(t, state)
-		hc, outp := NewHttpContext(NewBufferedLogr(), catcherHost, "", ""), ""
+		hc, outp := NewHttpContext(NewBufferedLogr(), TokenCatcherHost, "", ""), ""
 		switch replyType {
 		case goodReply:
 			vals = url.Values{"code": {authcode}, "state": {state}}
@@ -117,7 +117,7 @@ func simulateBrowser(t *testing.T, replyType codeReplyType, authcode string) fun
 		case errorReply:
 			vals = url.Values{"error": {"server_error"}, "error_description": {"so it goes..."}, "state": {state}}
 		}
-		err = hc.Request("GET", catcherPath+"?"+vals.Encode(), nil, &outp)
+		err = hc.Request("GET", TokenCatcherPath+"?"+vals.Encode(), nil, &outp)
 		assert.Nil(t, err)
 		return nil
 	}
@@ -130,7 +130,7 @@ func tokenHandler(authcode string) func(t *testing.T, req *TstReq) *TstReply {
 		vals, err := url.ParseQuery(req.Input)
 		assert.Nil(t, err)
 		assert.Equal(t, "authorization_code", vals.Get("grant_type"))
-		assert.Equal(t, catcherHost+catcherPath, vals.Get("redirect_uri"))
+		assert.Equal(t, TokenCatcherURI, vals.Get("redirect_uri"))
 		assert.Equal(t, testTS.CliClientID, vals.Get("client_id"))
 		if vals.Get("code") != authcode {
 			return &TstReply{Status: 400, Output: `{"error": "invalid_request", "error_description": "so it goes..."}`}
