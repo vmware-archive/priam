@@ -17,8 +17,8 @@ package core
 
 import (
 	"fmt"
-	"net/url"
 	. "github.com/vmware/priam/util"
+	"net/url"
 	"strings"
 )
 

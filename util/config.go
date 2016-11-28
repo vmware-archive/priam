@@ -119,6 +119,11 @@ func (cfg *Config) WithTokens(accessTokenType, accessToken, refreshToken, idToke
 	return cfg
 }
 
+/* Return the ID token, or "" if does not exist. */
+func (cfg *Config) IdToken() string {
+	return cfg.Targets[cfg.CurrentTarget].IDToken
+}
+
 func ensureFullURL(url string) string {
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
 		return url

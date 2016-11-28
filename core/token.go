@@ -17,9 +17,11 @@ package core
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/toqueteos/webbrowser"
 	. "github.com/vmware/priam/util"
 	"io"
@@ -41,11 +43,13 @@ type TokenInfo struct {
 	ExpiresIn       int    `json:"expires_in,omitempty"`
 }
 
-// Interface to get tokens via OAuth2 grants and system user login API.
+// Interface to get tokens via OAuth2 grants and system user login API
+// and validate them.
 type TokenGrants interface {
 	ClientCredentialsGrant(ctx *HttpContext, clientID, clientSecret string) (TokenInfo, error)
 	LoginSystemUser(ctx *HttpContext, user, password string) (TokenInfo, error)
 	AuthCodeGrant(ctx *HttpContext, userHint string) (TokenInfo, error)
+	ValidateIDToken(ctx *HttpContext, idToken string)
 }
 
 type TokenService struct{ AuthorizePath, TokenPath, LoginPath, CliClientID, CliClientSecret string }
@@ -149,4 +153,66 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 		err = ctx.Request("POST", ts.TokenPath, inp, &ti)
 	}
 	return
+}
+
+/* Fetch the public key to validate JWT. Return the key in PEM format or an error if not found. */
+func (ts TokenService) GetPublicKeyPEM(ctx *HttpContext) (pemPublicKey *rsa.PublicKey, err error) {
+	// @todo - we could cache the public key
+	outp := ""
+	if err := ctx.Request("GET", "/SAAS/API/1.0/REST/auth/token?attribute=publicKey&format=pem", nil, &outp); err != nil {
+		return nil, err
+	}
+	return jwt.ParseRSAPublicKeyFromPEM([]byte(outp))
+}
+
+/* Validate the ID token (locally). */
+func (ts TokenService) ValidateIDToken(ctx *HttpContext, idToken string) {
+	if idToken == "" {
+		ctx.Log.Err("No ID token provided.")
+		return
+	}
+
+	// Fetch the public key
+	publicKey, err := ts.GetPublicKeyPEM(ctx)
+	if err != nil {
+		ctx.Log.Err(fmt.Sprintf("Could not fetch public key: %v\n", err))
+		return
+	}
+
+	// Parse takes the token string and a function for looking up the public key
+	token, err := jwt.Parse(idToken, func(token *jwt.Token) (interface{}, error) {
+		ctx.Log.Debug("token claims: %v\n", token.Claims)
+
+		// validate the algorithm we expect
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("Unexpected signing method: %v, expect 'RSA256'", token.Header["alg"])
+		}
+		return publicKey, nil
+	})
+
+	if token == nil {
+		ctx.Log.Err(fmt.Sprintf("Could not parse the token: %v\n", err))
+		return
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		// token is valid (which means claims "exp, iat, nbf" have been validated during the parse),
+		// so now check issuer is valid
+		expectedIssuer := ctx.HostURL + "/SAAS/auth"
+		if !token.Claims.(jwt.MapClaims).VerifyIssuer(expectedIssuer, true) {
+			ctx.Log.Err(fmt.Sprintf("Invalid issuer: '%s', expected '%s", claims["iss"], expectedIssuer))
+		} else {
+			ctx.Log.Info("ID token is valid:\n")
+			ctx.Log.PP("claims", claims)
+		}
+	} else if ve, ok := err.(*jwt.ValidationError); ok {
+		// give more information on why this is not valid
+		if ve.Errors&jwt.ValidationErrorExpired != 0 {
+			ctx.Log.Err("Token is expired: %v\n", claims["exp"])
+		} else if ve.Errors&jwt.ValidationErrorNotValidYet != 0 {
+			ctx.Log.Err("Token is not active yet\n")
+		} else {
+			ctx.Log.Err("Could not validate the token: %v\n", err)
+		}
+	}
 }
