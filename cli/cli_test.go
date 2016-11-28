@@ -91,7 +91,8 @@ func tstSrvTgt(url string) string {
 }
 
 func tstSrvTgtWithAuth(url string) string {
-	return fmt.Sprintf("%s    accesstokentype: Bearer\n    accesstoken: %s\n    idtoken: %s\n", tstSrvTgt(url), goodAccessToken, goodIdToken)
+	return fmt.Sprintf("%s    %s: Bearer\n    %s: %s\n    %s: %s\n", tstSrvTgt(url),
+		accessTokenTypeOption, accessTokenOption, goodAccessToken, idTokenOption, goodIdToken)
 }
 
 func runner(ctx *tstCtx, args ...string) *tstCtx {
@@ -307,8 +308,8 @@ func TestCanHandleBadOAuthClientCredentialsGrantReply(t *testing.T) {
 
 // Helper function for OAuth2 login
 func assertLoginSucceeded(t *testing.T, tokenType string, ctx *tstCtx) {
-	assert.Contains(t, ctx.cfg, "accesstokentype: "+tokenType)
-	assert.Contains(t, ctx.cfg, "accesstoken: "+goodAccessToken)
+	assert.Contains(t, ctx.cfg, accessTokenTypeOption+": "+tokenType)
+	assert.Contains(t, ctx.cfg, accessTokenOption+": "+goodAccessToken)
 	ctx.assertOnlyInfoContains("Access token saved")
 }
 
@@ -425,7 +426,7 @@ func TestAuthCodeGrantWithHint(t *testing.T) {
 
 func TestLogout(t *testing.T) {
 	ctx := testCliCommand(t, "logout")
-	assert.NotContains(t, ctx.cfg, "accesstoken")
+	assert.NotContains(t, ctx.cfg, accessTokenOption)
 	assert.NotContains(t, ctx.cfg, goodAccessToken)
 	ctx.assertOnlyInfoContains("Access token removed")
 }

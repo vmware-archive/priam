@@ -29,8 +29,12 @@ import (
 )
 
 const (
-	vidmBasePath      = "/SAAS/jersey/manager/api/"
-	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
+	vidmBasePath          = "/SAAS/jersey/manager/api/"
+	vidmBaseMediaType     = "application/vnd.vmware.horizon.manager."
+	accessTokenOption     = "accesstoken"
+	accessTokenTypeOption = "accesstokentype"
+	refreshTokenOption    = "refreshtoken"
+	idTokenOption         = "idtoken"
 )
 
 // service instances for CLI
@@ -92,11 +96,11 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 	}
 	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), vidmBasePath, vidmBaseMediaType)
 	if authn {
-		if token := cfg.Option("accesstoken"); token == "" {
+		if token := cfg.Option(accessTokenOption); token == "" {
 			cfg.Log.Err("No access token saved for current target. Please log in.\n")
 			return nil
 		} else {
-			ctx.Authorization(cfg.Option("accesstokentype") + " " + token)
+			ctx.Authorization(cfg.Option(accessTokenTypeOption) + " " + token)
 		}
 	}
 	return ctx
@@ -427,8 +431,9 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 							return nil
 						}
 					}
-					opts := map[string]string{"accesstokentype": tokenInfo.AccessTokenType, "accesstoken": tokenInfo.AccessToken,
-						"refreshtoken": tokenInfo.RefreshToken, "idtoken": tokenInfo.IDToken}
+					opts := map[string]string{accessTokenTypeOption: tokenInfo.AccessTokenType,
+						accessTokenOption: tokenInfo.AccessToken, refreshTokenOption: tokenInfo.RefreshToken,
+						idTokenOption: tokenInfo.IDToken}
 					if cfg.WithOptions(opts).Save() {
 						cfg.Log.Info("Access token saved\n")
 					}
@@ -440,7 +445,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Name: "logout", Usage: "deletes access token from configuration store for current target",
 			Action: func(c *cli.Context) error {
 				if args := initArgs(cfg, c, 0, 0, nil); args != nil &&
-					cfg.WithoutOptions("accesstokentype", "accesstoken", "refreshtoken", "idtoken").Save() {
+					cfg.WithoutOptions(accessTokenTypeOption, accessTokenOption, refreshTokenOption, idTokenOption).Save() {
 					cfg.Log.Info("Access token removed\n")
 				}
 				return nil
