@@ -74,7 +74,7 @@ Note that you can also login with an OAuth 2.0 client_id and secret. In that cas
 
 You can also login using an OAuth2 authorization code flow. This allows you to log in as any user, 
 not just a user in the system domain as shown above. It launches an external browser and opens
-a local http listener to recieve the OAuth2 tokens. However, to use this login option this 
+a local http listener to receive the OAuth2 tokens. However, to use this login option this 
 application must be registered as an OAuth2 client in the target tenant. A helper command is 
 provided for this purpose. If you are logged in as an administrator using one of the previous
 login options, you can run this command to register the OAuth2 client:
