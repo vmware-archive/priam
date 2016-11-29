@@ -571,7 +571,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					Name: "validate", Usage: "validate the current ID token (if logged in)", ArgsUsage: " ",
 					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
-							tokenService.ValidateIDToken(ctx, cfg.IdToken())
+							tokenService.ValidateIDToken(ctx, cfg.Option(idTokenOption))
 						}
 						return nil
 					},
