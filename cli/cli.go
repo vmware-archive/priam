@@ -35,7 +35,25 @@ const (
 	accessTokenTypeOption = "accesstokentype"
 	refreshTokenOption    = "refreshtoken"
 	idTokenOption         = "idtoken"
+	cliClientID           = "github.com-vmware-priam"
+	cliClientSecret       = "not-a-secret"
 )
+
+var cliClientRegistration = map[string]interface{}{"clientId": cliClientID, "secret": cliClientSecret,
+	"accessTokenTTL": 60 * 60, "authGrantTypes": "authorization_code refresh_token", "displayUserGrant": false,
+	"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "user profile email admin"}
+
+var registerDescription = `Registers this application as an OAuth2 client in the target tenant so that
+   the login option with authorization code flow can be used. You must be logged
+   in with a valid token with admin role. The following options are registered:
+      client ID: ` + cliClientID + `
+      client secret: ` + cliClientSecret + `
+      scope: ` + cliClientRegistration["scope"].(string) + `
+      grant types: ` + cliClientRegistration["authGrantTypes"].(string) + `
+      redirect URI: ` + cliClientRegistration["redirectUri"].(string) + `
+      access token lifetime in seconds: ` + fmt.Sprintf("%v", cliClientRegistration["accessTokenTTL"]) + `
+      refresh token lifetime in seconds: ` + fmt.Sprintf("%v", cliClientRegistration["refreshTokenTTL"]) + `
+`
 
 // service instances for CLI
 var usersService DirectoryService = &SCIMUsersService{}
@@ -49,8 +67,8 @@ var tokenService TokenGrants = TokenService{
 	AuthorizePath:   "/SAAS/auth/oauth2/authorize",
 	TokenPath:       "/SAAS/auth/oauthtoken",
 	LoginPath:       "/SAAS/API/1.0/REST/auth/system/login",
-	CliClientID:     "priam",
-	CliClientSecret: "not-a-secret"}
+	CliClientID:     cliClientID,
+	CliClientSecret: cliClientSecret}
 
 var getRawPassword = gopass.GetPasswd // called via variable so that tests can provide stub
 var consoleInput io.Reader = os.Stdin // will be set to other readers for tests
@@ -327,6 +345,13 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 				{
 					Name: "list", Usage: "list oauth2 client apps", ArgsUsage: " ",
 					Action: cmdWithAuth0Arg(cfg, clientService.List),
+				},
+				{
+					Name: "register", Usage: "register priam as an oauth2 client", ArgsUsage: " ",
+					Description: registerDescription,
+					Action: cmdWithAuth0Arg(cfg, func(ctx *HttpContext) {
+						clientService.Add(ctx, cliClientID, cliClientRegistration)
+					}),
 				},
 			},
 		},
