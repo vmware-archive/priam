@@ -29,8 +29,12 @@ import (
 )
 
 const (
-	vidmBasePath      = "/SAAS/jersey/manager/api/"
-	vidmBaseMediaType = "application/vnd.vmware.horizon.manager."
+	vidmBasePath          = "/SAAS/jersey/manager/api/"
+	vidmBaseMediaType     = "application/vnd.vmware.horizon.manager."
+	accessTokenOption     = "accesstoken"
+	accessTokenTypeOption = "accesstokentype"
+	refreshTokenOption    = "refreshtoken"
+	idTokenOption         = "idtoken"
 )
 
 // service instances for CLI
@@ -90,14 +94,13 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 		cfg.Log.Err("Error: no target set\n")
 		return nil
 	}
-	tgt := cfg.Targets[cfg.CurrentTarget]
-	ctx := NewHttpContext(cfg.Log, tgt.Host, vidmBasePath, vidmBaseMediaType)
+	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), vidmBasePath, vidmBaseMediaType)
 	if authn {
-		if token := cfg.Targets[cfg.CurrentTarget].AccessToken; token == "" {
+		if token := cfg.Option(accessTokenOption); token == "" {
 			cfg.Log.Err("No access token saved for current target. Please log in.\n")
 			return nil
 		} else {
-			ctx.Authorization(cfg.Targets[cfg.CurrentTarget].AccessTokenType + " " + token)
+			ctx.Authorization(cfg.Option(accessTokenTypeOption) + " " + token)
 		}
 	}
 	return ctx
@@ -428,8 +431,10 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 							return nil
 						}
 					}
-					if cfg.WithTokens(tokenInfo.AccessTokenType, tokenInfo.AccessToken,
-						tokenInfo.RefreshToken, tokenInfo.IDToken).Save() {
+					opts := map[string]string{accessTokenTypeOption: tokenInfo.AccessTokenType,
+						accessTokenOption: tokenInfo.AccessToken, refreshTokenOption: tokenInfo.RefreshToken,
+						idTokenOption: tokenInfo.IDToken}
+					if cfg.WithOptions(opts).Save() {
 						cfg.Log.Info("Access token saved\n")
 					}
 				}
@@ -439,7 +444,8 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 		{
 			Name: "logout", Usage: "deletes access token from configuration store for current target",
 			Action: func(c *cli.Context) error {
-				if args := initArgs(cfg, c, 0, 0, nil); args != nil && cfg.WithTokens("", "", "", "").Save() {
+				if args := initArgs(cfg, c, 0, 0, nil); args != nil &&
+					cfg.WithoutOptions(accessTokenTypeOption, accessTokenOption, refreshTokenOption, idTokenOption).Save() {
 					cfg.Log.Info("Access token removed\n")
 				}
 				return nil
@@ -565,7 +571,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					Name: "validate", Usage: "validate the current ID token (if logged in)", ArgsUsage: " ",
 					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
-							tokenService.ValidateIDToken(ctx, cfg.IdToken())
+							tokenService.ValidateIDToken(ctx, cfg.Option(idTokenOption))
 						}
 						return nil
 					},
