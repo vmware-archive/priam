@@ -187,22 +187,18 @@ func TestScimGetWhenNameDoesNotExist(t *testing.T) {
 }
 
 func TestScimAddUser(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{
-		"POST/scim/Users": scimDefaultUserHandler()})
-	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST/scim/Users": scimDefaultUserHandler()})
+	defer srv.Close()
 	new(SCIMUsersService).AddEntity(ctx, aBasicUser())
 	AssertOnlyInfoContains(t, ctx, "username: john")
 	AssertOnlyInfoContains(t, ctx, "---- add user:  ----")
 }
 
 func TestScimAddUserReturnsErrorOnScimError(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{
-		"POST/scim/Users": ErrorHandler(404, "error scim add")})
-	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
-	err := new(SCIMUsersService).AddEntity(ctx, aBasicUser())
-	if assert.Error(t, err, "Should have returned an error") {
-		assert.Contains(t, err.Error(), "404 Not Found\nerror scim add\n")
-	}
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST/scim/Users": ErrorHandler(404, "error scim add")})
+	defer srv.Close()
+	new(SCIMUsersService).AddEntity(ctx, aBasicUser())
+	AssertErrorContains(t, ctx, "404 Not Found\nerror scim add\n")
 }
 
 func TestScimUpdateUserFailedIfUserDoesNotExist(t *testing.T) {
@@ -313,19 +309,17 @@ func TestRemoveScimMemberReturnsErrorIfScimPatchFailed(t *testing.T) {
 }
 
 func TestLoadUsersFromYaml(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{
-		"POST/scim/Users": scimDefaultUserHandler()})
-	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST/scim/Users": scimDefaultUserHandler()})
+	defer srv.Close()
 	new(SCIMUsersService).LoadEntities(ctx, YAML_USERS_FILE)
-	AssertOnlyInfoContains(t, ctx, "added user joe1")
+	AssertOnlyInfoContains(t, ctx, "User 'joe1' successfully added")
 }
 
 func TestLoadUsersFromYamlFailedIfAddUserFailed(t *testing.T) {
-	srv := StartTstServer(t, map[string]TstHandler{
-		"POST/scim/Users": ErrorHandler(404, "error scim add user")})
-	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST/scim/Users": ErrorHandler(404, "error scim add user")})
+	defer srv.Close()
 	new(SCIMUsersService).LoadEntities(ctx, YAML_USERS_FILE)
-	AssertErrorContains(t, ctx, "Error adding user, line 2, name joe1: 404 Not Found")
+	AssertErrorContains(t, ctx, "Error creating user 'joe1': 404 Not Found")
 }
 
 func TestLoadUsersFromYamlFailedIfYamlFileDoesNotExist(t *testing.T) {

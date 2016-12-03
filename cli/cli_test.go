@@ -459,17 +459,8 @@ func setupUsersServiceMock() *mocks.DirectoryService {
 
 func TestCanAddUser(t *testing.T) {
 	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("AddEntity", mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(nil)
-	ctx := testMockCommand(t, &usersServiceMock.Mock, "user", "add", "elsa", "frozen")
-	ctx.assertOnlyInfoContains("User 'elsa' successfully added")
-}
-
-func TestDisplayErrorWhenAddUserFails(t *testing.T) {
-	usersServiceMock := setupUsersServiceMock()
-	usersServiceMock.On("AddEntity",
-		mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return(errors.New("test"))
-	ctx := testMockCommand(t, &usersServiceMock.Mock, "user", "add", "elsa", "frozen")
-	assert.Contains(t, ctx.err, "Error creating user 'elsa': test")
+	usersServiceMock.On("AddEntity", mock.Anything, &BasicUser{Name: "elsa", Given: "", Family: "", Email: "", Pwd: "frozen"}).Return()
+	testMockCommand(t, &usersServiceMock.Mock, "user", "add", "elsa", "frozen")
 }
 
 func TestCanGetUser(t *testing.T) {
