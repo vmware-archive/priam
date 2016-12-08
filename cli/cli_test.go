@@ -887,8 +887,12 @@ func TestCanListClients(t *testing.T) {
 }
 
 func TestCanRegisterCliClient(t *testing.T) {
+	expectedCliClientRegistration := map[string]interface{}{"clientId": cliClientID, "secret": cliClientSecret,
+		"accessTokenTTL": 60 * 60, "authGrantTypes": "authorization_code refresh_token", "displayUserGrant": false,
+		"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "openid user profile email admin"}
+
 	clntServiceMock := setupClientServiceMock()
-	clntServiceMock.On("Add", mock.Anything, cliClientID, cliClientRegistration).Return()
+	clntServiceMock.On("Add", mock.Anything, cliClientID, expectedCliClientRegistration).Return()
 	testMockCommand(t, &clntServiceMock.Mock, "client", "register")
 }
 

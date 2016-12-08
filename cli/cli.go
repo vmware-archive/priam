@@ -41,7 +41,7 @@ const (
 
 var cliClientRegistration = map[string]interface{}{"clientId": cliClientID, "secret": cliClientSecret,
 	"accessTokenTTL": 60 * 60, "authGrantTypes": "authorization_code refresh_token", "displayUserGrant": false,
-	"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "user profile email admin"}
+	"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "openid user profile email admin"}
 
 var registerDescription = `Registers this application as an OAuth2 client in the target tenant so that
    the login option with authorization code flow can be used. You must be logged
