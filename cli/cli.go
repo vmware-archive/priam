@@ -408,12 +408,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Name: "health", Usage: "check workspace service health", ArgsUsage: " ",
 			Action: func(c *cli.Context) error {
 				if _, ctx := initCmd(cfg, c, 0, 0, false, nil); ctx != nil {
-					var outp interface{}
-					if err := ctx.Request("GET", "health", nil, &outp); err != nil {
-						ctx.Log.Err("Error on Check Health: %v\n", err)
-					} else {
-						ctx.Log.PP("Health info", outp)
-					}
+					HealthCheck(ctx)
 				}
 				return nil
 			},
@@ -611,11 +606,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					Flags: userAttrFlags,
 					Action: func(c *cli.Context) error {
 						if user, ctx := initUserCmd(cfg, c, true); ctx != nil {
-							if err := usersService.AddEntity(ctx, user); err != nil {
-								ctx.Log.Err("Error creating user '%s': %v\n", user.Name, err)
-							} else {
-								ctx.Log.Info(fmt.Sprintf("User '%s' successfully added\n", user.Name))
-							}
+							usersService.AddEntity(ctx, user)
 						}
 						return nil
 					},

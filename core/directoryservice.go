@@ -23,7 +23,7 @@ import (
 // The directory contains different entities (User, Group, Role, ...)
 type DirectoryService interface {
 	// Add an entity
-	AddEntity(ctx *util.HttpContext, entity interface{}) error
+	AddEntity(ctx *util.HttpContext, entity interface{})
 
 	// Display an entity
 	DisplayEntity(ctx *util.HttpContext, name string)

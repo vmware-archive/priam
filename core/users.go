@@ -16,7 +16,6 @@ limitations under the License.
 package core
 
 import (
-	"errors"
 	"fmt"
 	. "github.com/vmware/priam/util"
 	"net/url"
@@ -80,18 +79,14 @@ func (userService SCIMUsersService) LoadEntities(ctx *HttpContext, fileName stri
 	if err := GetYamlFile(fileName, &newUsers); err != nil {
 		ctx.Log.Err("could not read file of bulk users: %v\n", err)
 	} else {
-		for k, v := range newUsers {
-			if err := userService.AddEntity(ctx, &v); err != nil {
-				ctx.Log.Err("Error adding user, line %d, name %s: %v\n", k+1, v.Name, err)
-			} else {
-				ctx.Log.Info("added user %s\n", v.Name)
-			}
+		for _, v := range newUsers {
+			userService.AddEntity(ctx, &v)
 		}
 	}
 }
 
-func (userService SCIMUsersService) AddEntity(ctx *HttpContext, entity interface{}) error {
-	return scimAddUser(ctx, entity.(*BasicUser))
+func (userService SCIMUsersService) AddEntity(ctx *HttpContext, entity interface{}) {
+	scimAddUser(ctx, entity.(*BasicUser))
 }
 
 func (userService SCIMUsersService) UpdateEntity(ctx *HttpContext, name string, entity interface{}) {
@@ -125,9 +120,9 @@ func (groupService SCIMGroupsService) LoadEntities(ctx *HttpContext, fileName st
 	ctx.Log.Err("Not implemented.")
 }
 
-func (groupService SCIMGroupsService) AddEntity(ctx *HttpContext, entity interface{}) error {
+func (groupService SCIMGroupsService) AddEntity(ctx *HttpContext, entity interface{}) {
 	// not implemented
-	return errors.New("Not implemented")
+	ctx.Log.Err("Not implemented.")
 }
 
 func (groupService SCIMGroupsService) ListEntities(ctx *HttpContext, count int, filter string) {
@@ -160,9 +155,9 @@ func (roleService SCIMRolesService) LoadEntities(ctx *HttpContext, fileName stri
 	ctx.Log.Err("Not implemented.")
 }
 
-func (roleService SCIMRolesService) AddEntity(ctx *HttpContext, entity interface{}) error {
+func (roleService SCIMRolesService) AddEntity(ctx *HttpContext, entity interface{}) {
 	// not implemented
-	return errors.New("Not implemented")
+	ctx.Log.Err("Not implemented.")
 }
 
 func (roleService SCIMRolesService) ListEntities(ctx *HttpContext, count int, filter string) {
@@ -185,13 +180,16 @@ func (roleService SCIMRolesService) UpdateMember(ctx *HttpContext, name, member 
 
 // -- SCIM common code
 
-func scimAddUser(ctx *HttpContext, u *BasicUser) error {
-	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}}
-	acct.Password = u.Pwd
+func scimAddUser(ctx *HttpContext, u *BasicUser) {
+	acct := &userAccount{UserName: u.Name, Schemas: []string{coreSchemaURN}, Password: u.Pwd}
 	acct.Name = &nameAttr{FamilyName: StringOrDefault(u.Family, u.Name), GivenName: StringOrDefault(u.Given, u.Name)}
 	acct.Emails = []dispValue{{Value: StringOrDefault(u.Email, u.Name+"@example.com")}}
 	ctx.Log.PP("add user: ", acct)
-	return ctx.Accept("json").Request("POST", "scim/Users", acct, acct)
+	if err := ctx.Accept("json").Request("POST", "scim/Users", acct, acct); err != nil {
+		ctx.Log.Err("Error creating user '%s': %v\n", u.Name, err)
+	} else {
+		ctx.Log.Info(fmt.Sprintf("User '%s' successfully added\n", u.Name))
+	}
 }
 
 func scimUpdateUser(ctx *HttpContext, name string, u *BasicUser) {

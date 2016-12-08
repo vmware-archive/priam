@@ -76,3 +76,12 @@ func CmdSchema(ctx *HttpContext, name string) {
 	path := fmt.Sprintf("scim/Schemas?%v", vals.Encode())
 	ctx.GetPrintJson("Schema for "+name, path, "")
 }
+
+func HealthCheck(ctx *HttpContext) {
+	var outp interface{}
+	if err := ctx.Request("GET", "health", nil, &outp); err != nil {
+		ctx.Log.Err("Error on Check Health: %v\n", err)
+	} else {
+		ctx.Log.PP("Health info", outp)
+	}
+}
