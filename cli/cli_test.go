@@ -887,7 +887,7 @@ func TestCanListClients(t *testing.T) {
 }
 
 func TestCanRegisterCliClient(t *testing.T) {
-	expectedCliClientRegistration := map[string]interface{}{"clientId": cliClientID, "secret": cliClientSecret,
+	expectedCliClientRegistration := map[string]interface{}{"clientId": "github.com-vmware-priam", "secret": "not-a-secret",
 		"accessTokenTTL": 60 * 60, "authGrantTypes": "authorization_code refresh_token", "displayUserGrant": false,
 		"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "openid user profile email admin"}
 
