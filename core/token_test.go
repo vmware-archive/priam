@@ -16,7 +16,9 @@ limitations under the License.
 package core
 
 import (
+	"encoding/xml"
 	"errors"
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/stretchr/testify/assert"
 	. "github.com/vmware/priam/testaid"
@@ -354,4 +356,54 @@ func TestInvalidTokenIfSigningMethodIsNotRSA256(t *testing.T) {
 	defer srv.Close()
 	new(TokenService).ValidateIDToken(ctx, aHmacSignedToken)
 	AssertErrorContains(t, ctx, "Unexpected signing method: HS256")
+}
+
+const sampleRequest = `https://sts.amazonaws.com/
+?Action=AssumeRoleWithWebIdentity
+&DurationSeconds=3600
+&ProviderId=www.amazon.com
+&RoleSessionName=app1
+&RoleArn=arn:aws:iam::123456789012:role/FederatedWebIdentityRole
+&WebIdentityToken=Atza%7CIQEBLjAsAhRFiXuWpUXuRvQ9PZL3GMFcYevydwIUFAHZwXZXX
+XXXXXXJnrulxKDHwy87oGKPznh0D6bEQZTSCzyoCtL_8S07pLpr0zMbn6w1lfVZKNTBdDansFB
+mtGnIsIapjI6xKR02Yc_2bQ8LZbUXSGm6Ry6_BG7PrtLZtj_dfCTj92xNGed-CrKqjG7nPBjNI
+L016GGvuS5gSvPRUxWES3VYfm1wl7WTI7jn-Pcb6M-buCgHhFOzTQxod27L9CqnOLio7N3gZAG
+psp6n1-AJBOCJckcyXe2c6uD0srOJeZlKUm2eTDVMf8IehDVI0r1QOnTV6KzzAI3OY87Vd_cVMQ
+&Version=2011-06-15`
+
+const sampleResponse = `
+<AssumeRoleWithWebIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
+  <AssumeRoleWithWebIdentityResult>
+    <SubjectFromWebIdentityToken>amzn1.account.AF6RHO7KZU5XRVQJGXK6HB56KR2A</SubjectFromWebIdentityToken>
+    <Audience>client.5498841531868486423.1548@apps.example.com</Audience>
+    <AssumedRoleUser>
+      <Arn>arn:aws:sts::123456789012:assumed-role/FederatedWebIdentityRole/app1</Arn>
+      <AssumedRoleId>AROACLKWSDQRAOEXAMPLE:app1</AssumedRoleId>
+    </AssumedRoleUser>
+    <Credentials>
+      <SessionToken>AQoDYXdzEE0a8ANXXXXXXXXNO1ewxE5TijQyp+IEXAMPLE</SessionToken>
+      <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY</SecretAccessKey>
+      <Expiration>2014-10-24T23:00:23Z</Expiration>
+      <AccessKeyId>AKIAIOSFODNN7EXAMPLE</AccessKeyId>
+    </Credentials>
+    <Provider>www.amazon.com</Provider>
+  </AssumeRoleWithWebIdentityResult>
+  <ResponseMetadata>
+    <RequestId>ad4156e9-bce1-11e2-82e6-6b6efEXAMPLE</RequestId>
+  </ResponseMetadata>
+</AssumeRoleWithWebIdentityResponse>`
+
+type AssumeRoleWithWebIdentityResult struct {
+	SubjectFromWebIdentityToken, Audience, Provider string
+}
+
+type AssumeRoleWithWebIdentityResponse struct {
+	result AssumeRoleWithWebIdentityResult
+}
+
+func TestParseXML(t *testing.T) {
+	var output AssumeRoleWithWebIdentityResponse
+	err := xml.Unmarshal([]byte(sampleResponse), &output)
+	assert.Nil(t, err)
+	fmt.Printf("output:\n%#v\n", output)
 }

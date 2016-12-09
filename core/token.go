@@ -226,7 +226,7 @@ func (ts TokenService) ValidateIDToken(ctx *HttpContext, idToken string) {
 
 var awsStsEndpoint = "https://sts.amazonaws.com"
 
-// exchange and ID token for AWS credentials and update tthem in the credFIle
+// exchange an ID token for AWS credentials and update them in the credFIle
 func (ts TokenService) UpdateAWSCredentials(ctx *HttpContext, idToken, credFile string) {
 	if idToken == "" {
 		ctx.Log.Err("No ID token provided.")
@@ -238,8 +238,9 @@ func (ts TokenService) UpdateAWSCredentials(ctx *HttpContext, idToken, credFile 
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
 	vals.Set("DurationSeconds", "3600")
 	vals.Set("RoleSessionName", ts.CliClientID)
-	vals.Set("RoleArn", "arn:aws:iam::123456789012:role/FederatedWebIdentityRole")
+	vals.Set("RoleArn", "arn:aws:iam::044114111530:role/vidmIdentity")
 	vals.Set("WebIdentityToken", idToken)
+	vals.Set("Version", "2011-06-15")
 	actx := NewHttpContext(ctx.Log, awsStsEndpoint, "", "")
 	path := fmt.Sprintf("?%v", vals.Encode())
 	outp := ""
@@ -248,4 +249,5 @@ func (ts TokenService) UpdateAWSCredentials(ctx *HttpContext, idToken, credFile 
 	} else {
 		ctx.Log.Info("AWS response:\n%s\n", outp)
 	}
+
 }
