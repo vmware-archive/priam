@@ -28,6 +28,8 @@ import (
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -922,4 +924,18 @@ func TestPassEmptyTokenForValidationIfNoIDTokenSaved(t *testing.T) {
 	serverTarget := fmt.Sprintf("%s    accesstokentype: Bearer\n    accesstoken: %s\n", tstSrvTgt("http://no.id.token.site"), goodAccessToken)
 	runner(newTstCtx(t, serverTarget), "token", "validate")
 	tokenServiceMock.AssertExpectations(t)
+}
+
+func TestCanUpdateAWSCredentialsInDefaultCredFile(t *testing.T) {
+	cfgFile := filepath.Join(os.Getenv("HOME"), ".aws/credentials")
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, cfgFile).Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws")
+}
+
+func TestCanUpdateAWSCredentialsInExplicitCredFile(t *testing.T) {
+	cfgFile := filepath.Join(os.Getenv("HOME"), "/var/tmp/my-cred-file")
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, cfgFile).Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", cfgFile)
 }

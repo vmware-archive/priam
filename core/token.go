@@ -50,6 +50,7 @@ type TokenGrants interface {
 	LoginSystemUser(ctx *HttpContext, user, password string) (TokenInfo, error)
 	AuthCodeGrant(ctx *HttpContext, userHint string) (TokenInfo, error)
 	ValidateIDToken(ctx *HttpContext, idToken string)
+	UpdateAWSCredentials(ctx *HttpContext, idToken, credFile string)
 }
 
 type TokenService struct{ AuthorizePath, TokenPath, LoginPath, CliClientID, CliClientSecret string }
@@ -220,5 +221,31 @@ func (ts TokenService) ValidateIDToken(ctx *HttpContext, idToken string) {
 		} else {
 			ctx.Log.Err("Could not validate the token: %v\n", err)
 		}
+	}
+}
+
+var awsStsEndpoint = "https://sts.amazonaws.com"
+
+// exchange and ID token for AWS credentials and update tthem in the credFIle
+func (ts TokenService) UpdateAWSCredentials(ctx *HttpContext, idToken, credFile string) {
+	if idToken == "" {
+		ctx.Log.Err("No ID token provided.")
+		return
+	}
+
+	// set up and make call to aws sts
+	vals := make(url.Values)
+	vals.Set("Action", "AssumeRoleWithWebIdentity")
+	vals.Set("DurationSeconds", "3600")
+	vals.Set("RoleSessionName", ts.CliClientID)
+	vals.Set("RoleArn", "arn:aws:iam::123456789012:role/FederatedWebIdentityRole")
+	vals.Set("WebIdentityToken", idToken)
+	actx := NewHttpContext(ctx.Log, awsStsEndpoint, "", "")
+	path := fmt.Sprintf("?%v", vals.Encode())
+	outp := ""
+	if err := actx.Request("GET", path, nil, &outp); err != nil {
+		ctx.Log.Err("Error getting AWS credentials: %v\n", err)
+	} else {
+		ctx.Log.Info("AWS response:\n%s\n", outp)
 	}
 }

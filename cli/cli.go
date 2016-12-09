@@ -596,6 +596,16 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 						return nil
 					},
 				},
+				{
+					Name: "aws", Usage: "Using an ID token update AWS credentials in the AWS CLI configuration file", ArgsUsage: "[aws-config-file] ",
+					Action: func(c *cli.Context) error {
+						if args, ctx := initCmd(cfg, c, 0, 1, true, nil); ctx != nil {
+							tokenService.UpdateAWSCredentials(ctx, cfg.Option(idTokenOption),
+								StringOrDefault(args[0], filepath.Join(os.Getenv("HOME"), ".aws/credentials")))
+						}
+						return nil
+					},
+				},
 			},
 		},
 		{
