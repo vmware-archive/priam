@@ -393,16 +393,15 @@ const sampleResponse = `
   </ResponseMetadata>
 </AssumeRoleWithWebIdentityResponse>`
 
-type AssumeRoleWithWebIdentityResult struct {
-	SubjectFromWebIdentityToken, Audience, Provider string
-}
-
 type AssumeRoleWithWebIdentityResponse struct {
-	result AssumeRoleWithWebIdentityResult
+	SessionToken    string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SessionToken"`
+	SecretAccessKey string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SecretAccessKey"`
+	AccessKeyId     string `xml:"AssumeRoleWithWebIdentityResult>Credentials>AccessKeyId"`
 }
 
 func TestParseXML(t *testing.T) {
 	var output AssumeRoleWithWebIdentityResponse
+
 	err := xml.Unmarshal([]byte(sampleResponse), &output)
 	assert.Nil(t, err)
 	fmt.Printf("output:\n%#v\n", output)
