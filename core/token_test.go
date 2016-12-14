@@ -16,17 +16,20 @@ limitations under the License.
 package core
 
 import (
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	. "github.com/vmware/priam/testaid"
 	"github.com/vmware/priam/util"
 	. "github.com/vmware/priam/util"
+	"gopkg.in/ini.v1"
+	"io/ioutil"
 	"net"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 )
@@ -358,20 +361,43 @@ func TestInvalidTokenIfSigningMethodIsNotRSA256(t *testing.T) {
 	AssertErrorContains(t, ctx, "Unexpected signing method: HS256")
 }
 
-const sampleRequest = `https://sts.amazonaws.com/
-?Action=AssumeRoleWithWebIdentity
-&DurationSeconds=3600
-&ProviderId=www.amazon.com
-&RoleSessionName=app1
-&RoleArn=arn:aws:iam::123456789012:role/FederatedWebIdentityRole
-&WebIdentityToken=Atza%7CIQEBLjAsAhRFiXuWpUXuRvQ9PZL3GMFcYevydwIUFAHZwXZXX
-XXXXXXJnrulxKDHwy87oGKPznh0D6bEQZTSCzyoCtL_8S07pLpr0zMbn6w1lfVZKNTBdDansFB
-mtGnIsIapjI6xKR02Yc_2bQ8LZbUXSGm6Ry6_BG7PrtLZtj_dfCTj92xNGed-CrKqjG7nPBjNI
-L016GGvuS5gSvPRUxWES3VYfm1wl7WTI7jn-Pcb6M-buCgHhFOzTQxod27L9CqnOLio7N3gZAG
-psp6n1-AJBOCJckcyXe2c6uD0srOJeZlKUm2eTDVMf8IehDVI0r1QOnTV6KzzAI3OY87Vd_cVMQ
-&Version=2011-06-15`
+func awsStsQueryString(role, idToken string) string {
+	vals := make(url.Values)
+	vals.Set("Action", "AssumeRoleWithWebIdentity")
+	vals.Set("DurationSeconds", "3600")
+	vals.Set("RoleSessionName", testTS.CliClientID)
+	vals.Set("RoleArn", "arn:aws:iam::044114111530:role/"+role)
+	vals.Set("WebIdentityToken", idToken)
+	vals.Set("Version", "2011-06-15")
+	return fmt.Sprintf("?%v", vals.Encode())
+}
 
-const sampleResponse = `
+func awsCredFileContents(accessKeyId, accessKey, sessionToken string) string {
+	const sampleAwsCliCfg = `[default]
+# default section comment here
+aws_access_key_id=AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+aws_session_token=0987654321
+
+# section comment here
+[kazak]
+; another comment here
+aws_access_key_id=%s
+aws_secret_access_key=%s
+aws_session_token=%s
+
+# ending section comment
+[salo]
+aws_access_key_id=AKIAI44QH8DHBEXAMPLE2
+aws_secret_access_key=je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY2
+aws_session_token=1234567890
+
+`
+	return fmt.Sprintf(sampleAwsCliCfg, accessKeyId, accessKey, sessionToken)
+}
+
+func awsStsResponse(accessKeyId, accessKey, sessionToken string) string {
+	const responseTemplate = `
 <AssumeRoleWithWebIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
   <AssumeRoleWithWebIdentityResult>
     <SubjectFromWebIdentityToken>amzn1.account.AF6RHO7KZU5XRVQJGXK6HB56KR2A</SubjectFromWebIdentityToken>
@@ -381,10 +407,10 @@ const sampleResponse = `
       <AssumedRoleId>AROACLKWSDQRAOEXAMPLE:app1</AssumedRoleId>
     </AssumedRoleUser>
     <Credentials>
-      <SessionToken>AQoDYXdzEE0a8ANXXXXXXXXNO1ewxE5TijQyp+IEXAMPLE</SessionToken>
-      <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYzEXAMPLEKEY</SecretAccessKey>
+      <SessionToken>%s</SessionToken>
+      <SecretAccessKey>%s</SecretAccessKey>
       <Expiration>2014-10-24T23:00:23Z</Expiration>
-      <AccessKeyId>AKIAIOSFODNN7EXAMPLE</AccessKeyId>
+      <AccessKeyId>%s</AccessKeyId>
     </Credentials>
     <Provider>www.amazon.com</Provider>
   </AssumeRoleWithWebIdentityResult>
@@ -392,17 +418,127 @@ const sampleResponse = `
     <RequestId>ad4156e9-bce1-11e2-82e6-6b6efEXAMPLE</RequestId>
   </ResponseMetadata>
 </AssumeRoleWithWebIdentityResponse>`
-
-type AssumeRoleWithWebIdentityResponse struct {
-	SessionToken    string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SessionToken"`
-	SecretAccessKey string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SecretAccessKey"`
-	AccessKeyId     string `xml:"AssumeRoleWithWebIdentityResult>Credentials>AccessKeyId"`
+	return fmt.Sprintf(responseTemplate, sessionToken, accessKey, accessKeyId)
 }
 
-func TestParseXML(t *testing.T) {
-	var output AssumeRoleWithWebIdentityResponse
+const (
+	goodAwsRole      = "space-hound"
+	badAwsRole       = "tralfamadorian"
+	goodIdToken      = "kazak.the.hound.of.space"
+	goodAwsProfile   = "kazak"
+	goodKeyId        = "thisIsAGoodKeyID"
+	goodKey          = "this.is.a.good.key"
+	goodSessionToken = "good-session-token"
+)
 
-	err := xml.Unmarshal([]byte(sampleResponse), &output)
-	assert.Nil(t, err)
-	fmt.Printf("output:\n%#v\n", output)
+func awsStsHandler(accessKeyId, accessKey, sessionToken string) func(t *testing.T, req *TstReq) *TstReply {
+	return func(t *testing.T, req *TstReq) *TstReply {
+		return &TstReply{Output: awsStsResponse(goodKeyId, goodKey, goodSessionToken), ContentType: `application/xml`}
+	}
+}
+
+func newStsTestContext(t *testing.T) (*httptest.Server, *HttpContext) {
+	return NewTestContext(t, map[string]TstHandler{
+		"GET/" + awsStsQueryString(goodAwsRole, goodIdToken): awsStsHandler(goodKeyId, goodKey, goodSessionToken)})
+}
+
+func TestCanUpdateAWSCredentials(t *testing.T) {
+	// handler takes good id token, returns XML creds
+	// setup stub aws sts and set stsURL
+	srv, ctx := newStsTestContext(t)
+	defer srv.Close()
+
+	// setup temp AWS config file
+	cfgFile := WriteTempFile(t, awsCredFileContents("1", "2", "3"))
+	defer CleanupTempFile(cfgFile)
+
+	// run command
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile)
+	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file")
+
+	// check aws credentials file contents
+	contents, err := ioutil.ReadFile(cfgFile.Name())
+	require.Nil(t, err)
+	assert.Equal(t, awsCredFileContents(goodKeyId, goodKey, goodSessionToken), string(contents))
+}
+
+func TestUpdateAWSCredentialsFailsWithoutIDToken(t *testing.T) {
+	log, expected := NewBufferedLogr(), "No ID token provided."
+	testTS.UpdateAWSCredentials(log, "", goodAwsRole, "https://nonexxistent.example.com", "/tmp/notused", goodAwsProfile)
+	assert.Empty(t, log.InfoString(), "Info message should be empty")
+	assert.Contains(t, log.ErrString(), expected, "ERROR log message should contain '"+expected+"'")
+}
+
+func TestUpdateAWSCredentialsFailsWithSTSError(t *testing.T) {
+	srv, ctx := NewTestContext(t, map[string]TstHandler{
+		"GET/" + awsStsQueryString(goodAwsRole, goodIdToken): ErrorHandler(500, "traditional error")})
+	defer srv.Close()
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile)
+	AssertOnlyErrorContains(t, ctx, "Error getting AWS credentials: 500 Internal Server Error")
+}
+
+func TestUpdateAWSCredentialsFailsWithSTSBadReply(t *testing.T) {
+	srv, ctx := NewTestContext(t, map[string]TstHandler{
+		"GET/" + awsStsQueryString(goodAwsRole, goodIdToken): GoodPathHandler("bad xml<<<<<")})
+	defer srv.Close()
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile)
+	AssertOnlyErrorContains(t, ctx, "Error extracting credentials from AWS STS response: XML syntax error")
+}
+
+func TestUpdateAWSCredentialsFailsWithBadFile(t *testing.T) {
+	srv, ctx := newStsTestContext(t)
+	defer srv.Close()
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, os.TempDir(), goodAwsProfile)
+	AssertOnlyErrorContains(t, ctx, `Error loading AWS CLI credentials file`)
+	AssertOnlyErrorContains(t, ctx, `is a directory`)
+}
+
+func TestUpdateAWSCredentialsHandlesWriteFailure(t *testing.T) {
+	srv, ctx := newStsTestContext(t)
+	defer srv.Close()
+	cfgFile := WriteTempFile(t, awsCredFileContents("1", "2", "3"))
+	defer CleanupTempFile(cfgFile)
+	funcSave := saveCredFile
+	saveCredFile = func(f *ini.File, name string) error { return errors.New("could not save cred file") }
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile)
+	saveCredFile = funcSave
+	AssertOnlyErrorContains(t, ctx, `Could not update AWS credentials file`)
+	AssertOnlyErrorContains(t, ctx, "could not save cred file")
+}
+
+func TestUpdateAWSCredentialsCantSaveCreds(t *testing.T) {
+	srv, ctx := newStsTestContext(t)
+	defer srv.Close()
+	cfgFile := WriteTempFile(t, awsCredFileContents("1", "2", "3"))
+	defer CleanupTempFile(cfgFile)
+	funcSave := updateKeyInCredFile
+	updateKeyInCredFile = func(f *ini.File, section, key, value string) error {
+		return errors.New("could not update value in section")
+	}
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile)
+	updateKeyInCredFile = funcSave
+	AssertOnlyErrorContains(t, ctx, `Error updating credential in section "kazak" of file `)
+	AssertOnlyErrorContains(t, ctx, "could not update value in section")
+}
+
+func TestUpdateAWSCredentialsCanCreateCredFile(t *testing.T) {
+	const rumsfoordIsExpected = `[roomsford]
+aws_access_key_id=thisIsAGoodKeyID
+aws_secret_access_key=this.is.a.good.key
+aws_session_token=good-session-token
+
+`
+	srv, ctx := newStsTestContext(t)
+	defer srv.Close()
+
+	// create tempfile then delete it, then use that file name for new cred file.
+	cfgFile := WriteTempFile(t, "")
+	CleanupTempFile(cfgFile)
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), "roomsford")
+	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file")
+
+	// check aws credentials file contents
+	contents, err := ioutil.ReadFile(cfgFile.Name())
+	require.Nil(t, err)
+	assert.Equal(t, rumsfoordIsExpected, string(contents))
 }

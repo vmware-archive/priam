@@ -37,6 +37,9 @@ const (
 	idTokenOption         = "idtoken"
 	cliClientID           = "github.com-vmware-priam"
 	cliClientSecret       = "not-a-secret"
+	defaultAwsCredFile    = ".aws/credentials"
+	defaultAwsProfile     = "default"
+	defaultAwsStsEndpoint = "https://sts.amazonaws.com"
 )
 
 var cliClientRegistration = map[string]interface{}{"clientId": cliClientID, "secret": cliClientSecret,
@@ -597,11 +600,18 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					},
 				},
 				{
-					Name: "aws", Usage: "Using an ID token update AWS credentials in the AWS CLI configuration file", ArgsUsage: "[aws-config-file] ",
+					Name: "aws", Usage: "Use ID token to update credentials in the AWS CLI configuration file", ArgsUsage: "<aws-role-name>",
+					Flags: []cli.Flag{
+						cli.StringFlag{Name: "credfile, c", Usage: "name of file to store AWS credentials. Default is ~/" + defaultAwsCredFile},
+						cli.StringFlag{Name: "profile, p", Usage: "profile in which to store AWS credentials"},
+					},
 					Action: func(c *cli.Context) error {
-						if args, ctx := initCmd(cfg, c, 0, 1, true, nil); ctx != nil {
-							tokenService.UpdateAWSCredentials(ctx, cfg.Option(idTokenOption),
-								StringOrDefault(args[0], filepath.Join(os.Getenv("HOME"), ".aws/credentials")))
+						if args, ctx := initCmd(cfg, c, 1, 1, false, nil); ctx != nil {
+							println("here", args[0])
+							tokenService.UpdateAWSCredentials(ctx.Log, cfg.Option(idTokenOption),
+								args[0], defaultAwsStsEndpoint,
+								StringOrDefault(c.String("credfile"), filepath.Join(os.Getenv("HOME"), defaultAwsCredFile)),
+								StringOrDefault(c.String("profile"), defaultAwsProfile))
 						}
 						return nil
 					},

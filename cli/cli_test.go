@@ -926,16 +926,25 @@ func TestPassEmptyTokenForValidationIfNoIDTokenSaved(t *testing.T) {
 	tokenServiceMock.AssertExpectations(t)
 }
 
+const expectedAwsStsEndpoint = "https://sts.amazonaws.com"
+
 func TestCanUpdateAWSCredentialsInDefaultCredFile(t *testing.T) {
 	cfgFile := filepath.Join(os.Getenv("HOME"), ".aws/credentials")
 	tokenServiceMock := setupTokenServiceMock()
-	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, cfgFile).Return(nil)
-	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws")
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "default").Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "space-hound")
 }
 
 func TestCanUpdateAWSCredentialsInExplicitCredFile(t *testing.T) {
-	cfgFile := filepath.Join(os.Getenv("HOME"), "/var/tmp/my-cred-file")
+	cfgFile := "/var/tmp/my-cred-file"
 	tokenServiceMock := setupTokenServiceMock()
-	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, cfgFile).Return(nil)
-	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", cfgFile)
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-messenger", expectedAwsStsEndpoint, cfgFile, "default").Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-c", cfgFile, "space-messenger")
+}
+
+func TestCanUpdateAWSCredentialsInExplicitCredFileAndProfile(t *testing.T) {
+	cfgFile := "/var/tmp/my-cred-file"
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "kazak").Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-c", cfgFile, "-p", "kazak", "space-hound")
 }
