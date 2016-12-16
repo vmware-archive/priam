@@ -535,7 +535,7 @@ aws_session_token=good-session-token
 	cfgFile := WriteTempFile(t, "")
 	CleanupTempFile(cfgFile)
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), "roomsford")
-	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file")
+	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file: "+cfgFile.Name())
 
 	// check aws credentials file contents
 	contents, err := ioutil.ReadFile(cfgFile.Name())
