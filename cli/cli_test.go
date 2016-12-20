@@ -931,14 +931,14 @@ const expectedAwsStsEndpoint = "https://sts.amazonaws.com"
 func TestCanUpdateAWSCredentialsInDefaultCredFile(t *testing.T) {
 	cfgFile := filepath.Join(os.Getenv("HOME"), ".aws/credentials")
 	tokenServiceMock := setupTokenServiceMock()
-	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "default").Return(nil)
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "priam").Return(nil)
 	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "space-hound")
 }
 
 func TestCanUpdateAWSCredentialsInExplicitCredFile(t *testing.T) {
 	cfgFile := "/var/tmp/my-cred-file"
 	tokenServiceMock := setupTokenServiceMock()
-	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-messenger", expectedAwsStsEndpoint, cfgFile, "default").Return(nil)
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-messenger", expectedAwsStsEndpoint, cfgFile, "priam").Return(nil)
 	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-c", cfgFile, "space-messenger")
 }
 

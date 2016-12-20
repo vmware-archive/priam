@@ -38,7 +38,7 @@ const (
 	cliClientID           = "github.com-vmware-priam"
 	cliClientSecret       = "not-a-secret"
 	defaultAwsCredFile    = ".aws/credentials"
-	defaultAwsProfile     = "default"
+	defaultAwsProfile     = "priam"
 	defaultAwsStsEndpoint = "https://sts.amazonaws.com"
 )
 
@@ -600,10 +600,10 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					},
 				},
 				{
-					Name: "aws", Usage: "Use ID token to update credentials in the AWS CLI configuration file", ArgsUsage: "<aws-role-name>",
+					Name: "aws", Usage: "Use ID token to update credentials in the AWS CLI configuration file", ArgsUsage: "<aws-role-arn>",
 					Flags: []cli.Flag{
 						cli.StringFlag{Name: "credfile, c", Usage: "name of file to store AWS credentials. Default is ~/" + defaultAwsCredFile},
-						cli.StringFlag{Name: "profile, p", Usage: "profile in which to store AWS credentials"},
+						cli.StringFlag{Name: "profile, p", Usage: "Profile in which to store AWS credentials, Default is \"priam'\"."},
 					},
 					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, false, nil); ctx != nil {

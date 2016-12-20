@@ -366,7 +366,7 @@ func awsStsQueryString(role, idToken string) string {
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
 	vals.Set("DurationSeconds", "3600")
 	vals.Set("RoleSessionName", testTS.CliClientID)
-	vals.Set("RoleArn", "arn:aws:iam::044114111530:role/"+role)
+	vals.Set("RoleArn", role)
 	vals.Set("WebIdentityToken", idToken)
 	vals.Set("Version", "2011-06-15")
 	return fmt.Sprintf("?%v", vals.Encode())
@@ -422,8 +422,7 @@ func awsStsResponse(accessKeyId, accessKey, sessionToken string) string {
 }
 
 const (
-	goodAwsRole      = "space-hound"
-	badAwsRole       = "tralfamadorian"
+	goodAwsRole      = "arn:aws:iam::044114111530:role/space-hound"
 	goodIdToken      = "kazak.the.hound.of.space"
 	goodAwsProfile   = "kazak"
 	goodKeyId        = "thisIsAGoodKeyID"

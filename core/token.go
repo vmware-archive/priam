@@ -244,7 +244,7 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
 	vals.Set("DurationSeconds", "3600")
 	vals.Set("RoleSessionName", ts.CliClientID)
-	vals.Set("RoleArn", "arn:aws:iam::044114111530:role/"+role)
+	vals.Set("RoleArn", role)
 	vals.Set("WebIdentityToken", idToken)
 	vals.Set("Version", "2011-06-15")
 	if err := actx.Request("GET", fmt.Sprintf("?%v", vals.Encode()), nil, &outp); err != nil {
