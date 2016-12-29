@@ -607,7 +607,6 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					},
 					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, false, nil); ctx != nil {
-							println("here", args[0])
 							tokenService.UpdateAWSCredentials(ctx.Log, cfg.Option(idTokenOption),
 								args[0], defaultAwsStsEndpoint,
 								StringOrDefault(c.String("credfile"), filepath.Join(os.Getenv("HOME"), defaultAwsCredFile)),

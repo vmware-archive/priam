@@ -278,7 +278,7 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 		if err := saveCredFile(awsCfg, credFile); err != nil {
 			log.Err("Could not update AWS credentials file \"%s\": %v\n", credFile, err)
 		} else {
-			log.Info("Successfully updated AWS credentials file: %s", credFile)
+			log.Info("Successfully updated AWS credentials file: %s\n", credFile)
 		}
 	}
 }
