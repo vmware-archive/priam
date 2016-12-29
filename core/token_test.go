@@ -521,12 +521,6 @@ func TestUpdateAWSCredentialsCantSaveCreds(t *testing.T) {
 }
 
 func TestUpdateAWSCredentialsCanCreateCredFile(t *testing.T) {
-	const rumsfoordIsExpected = `[roomsford]
-aws_access_key_id=thisIsAGoodKeyID
-aws_secret_access_key=this.is.a.good.key
-aws_session_token=good-session-token
-
-`
 	srv, ctx := newStsTestContext(t)
 	defer srv.Close()
 
@@ -539,5 +533,9 @@ aws_session_token=good-session-token
 	// check aws credentials file contents
 	contents, err := ioutil.ReadFile(cfgFile.Name())
 	require.Nil(t, err)
-	assert.Equal(t, rumsfoordIsExpected, string(contents))
+
+	assert.Regexp(t, `^\[roomsford\]\n`, string(contents))
+	assert.Contains(t, string(contents), "aws_access_key_id=thisIsAGoodKeyID")
+	assert.Contains(t, string(contents), "aws_secret_access_key=this.is.a.good.key")
+	assert.Contains(t, string(contents), "aws_session_token=good-session-token")
 }
