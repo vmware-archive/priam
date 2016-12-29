@@ -37,11 +37,14 @@ const (
 	idTokenOption         = "idtoken"
 	cliClientID           = "github.com-vmware-priam"
 	cliClientSecret       = "not-a-secret"
+	defaultAwsCredFile    = ".aws/credentials"
+	defaultAwsProfile     = "priam"
+	defaultAwsStsEndpoint = "https://sts.amazonaws.com"
 )
 
 var cliClientRegistration = map[string]interface{}{"clientId": cliClientID, "secret": cliClientSecret,
 	"accessTokenTTL": 60 * 60, "authGrantTypes": "authorization_code refresh_token", "displayUserGrant": false,
-	"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "user profile email admin"}
+	"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "openid user profile email admin"}
 
 var registerDescription = `Registers this application as an OAuth2 client in the target tenant so that
    the login option with authorization code flow can be used. You must be logged
@@ -592,6 +595,22 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
 							tokenService.ValidateIDToken(ctx, cfg.Option(idTokenOption))
+						}
+						return nil
+					},
+				},
+				{
+					Name: "aws", Usage: "Use ID token to update credentials in the AWS CLI configuration file", ArgsUsage: "<aws-role-arn>",
+					Flags: []cli.Flag{
+						cli.StringFlag{Name: "credfile, c", Usage: "name of file to store AWS credentials. Default is ~/" + defaultAwsCredFile},
+						cli.StringFlag{Name: "profile, p", Usage: "Profile in which to store AWS credentials, Default is \"priam'\"."},
+					},
+					Action: func(c *cli.Context) error {
+						if args, ctx := initCmd(cfg, c, 1, 1, false, nil); ctx != nil {
+							tokenService.UpdateAWSCredentials(ctx.Log, cfg.Option(idTokenOption),
+								args[0], defaultAwsStsEndpoint,
+								StringOrDefault(c.String("credfile"), filepath.Join(os.Getenv("HOME"), defaultAwsCredFile)),
+								StringOrDefault(c.String("profile"), defaultAwsProfile))
 						}
 						return nil
 					},

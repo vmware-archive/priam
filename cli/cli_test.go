@@ -28,6 +28,8 @@ import (
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -887,8 +889,12 @@ func TestCanListClients(t *testing.T) {
 }
 
 func TestCanRegisterCliClient(t *testing.T) {
+	expectedCliClientRegistration := map[string]interface{}{"clientId": "github.com-vmware-priam", "secret": "not-a-secret",
+		"accessTokenTTL": 60 * 60, "authGrantTypes": "authorization_code refresh_token", "displayUserGrant": false,
+		"redirectUri": TokenCatcherURI, "refreshTokenTTL": 60 * 60 * 24 * 30, "scope": "openid user profile email admin"}
+
 	clntServiceMock := setupClientServiceMock()
-	clntServiceMock.On("Add", mock.Anything, cliClientID, cliClientRegistration).Return()
+	clntServiceMock.On("Add", mock.Anything, cliClientID, expectedCliClientRegistration).Return()
 	testMockCommand(t, &clntServiceMock.Mock, "client", "register")
 }
 
@@ -918,4 +924,27 @@ func TestPassEmptyTokenForValidationIfNoIDTokenSaved(t *testing.T) {
 	serverTarget := fmt.Sprintf("%s    accesstokentype: Bearer\n    accesstoken: %s\n", tstSrvTgt("http://no.id.token.site"), goodAccessToken)
 	runner(newTstCtx(t, serverTarget), "token", "validate")
 	tokenServiceMock.AssertExpectations(t)
+}
+
+const expectedAwsStsEndpoint = "https://sts.amazonaws.com"
+
+func TestCanUpdateAWSCredentialsInDefaultCredFile(t *testing.T) {
+	cfgFile := filepath.Join(os.Getenv("HOME"), ".aws/credentials")
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "priam").Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "space-hound")
+}
+
+func TestCanUpdateAWSCredentialsInExplicitCredFile(t *testing.T) {
+	cfgFile := "/var/tmp/my-cred-file"
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-messenger", expectedAwsStsEndpoint, cfgFile, "priam").Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-c", cfgFile, "space-messenger")
+}
+
+func TestCanUpdateAWSCredentialsInExplicitCredFileAndProfile(t *testing.T) {
+	cfgFile := "/var/tmp/my-cred-file"
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "kazak").Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-c", cfgFile, "-p", "kazak", "space-hound")
 }

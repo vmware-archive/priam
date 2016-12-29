@@ -19,11 +19,13 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/toqueteos/webbrowser"
 	. "github.com/vmware/priam/util"
+	"gopkg.in/ini.v1"
 	"io"
 	"net"
 	"net/http"
@@ -43,13 +45,13 @@ type TokenInfo struct {
 	ExpiresIn       int    `json:"expires_in,omitempty"`
 }
 
-// Interface to get tokens via OAuth2 grants and system user login API
-// and validate them.
+// Interface to get tokens via OAuth2 grants, system user login API, and validate them.
 type TokenGrants interface {
 	ClientCredentialsGrant(ctx *HttpContext, clientID, clientSecret string) (TokenInfo, error)
 	LoginSystemUser(ctx *HttpContext, user, password string) (TokenInfo, error)
 	AuthCodeGrant(ctx *HttpContext, userHint string) (TokenInfo, error)
 	ValidateIDToken(ctx *HttpContext, idToken string)
+	UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string)
 }
 
 type TokenService struct{ AuthorizePath, TokenPath, LoginPath, CliClientID, CliClientSecret string }
@@ -219,6 +221,64 @@ func (ts TokenService) ValidateIDToken(ctx *HttpContext, idToken string) {
 			ctx.Log.Err("Token is not active yet\n")
 		} else {
 			ctx.Log.Err("Could not validate the token: %v\n", err)
+		}
+	}
+}
+
+// define cred file handlers so that they can be stubbed for testing
+var saveCredFile = func(f *ini.File, fileName string) error { return f.SaveTo(fileName) }
+var updateKeyInCredFile = func(f *ini.File, section, key, value string) error {
+	_, err := f.Section(section).NewKey(key, value)
+	return err
+}
+
+// exchange an ID token for AWS credentials and update them in the credFile
+func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string) {
+	if idToken == "" {
+		log.Err("No ID token provided.")
+		return
+	}
+
+	// set up and make call to aws sts
+	actx, vals, outp := NewHttpContext(log, stsURL, "/", ""), make(url.Values), ""
+	vals.Set("Action", "AssumeRoleWithWebIdentity")
+	vals.Set("DurationSeconds", "3600")
+	vals.Set("RoleSessionName", ts.CliClientID)
+	vals.Set("RoleArn", role)
+	vals.Set("WebIdentityToken", idToken)
+	vals.Set("Version", "2011-06-15")
+	if err := actx.Request("GET", fmt.Sprintf("?%v", vals.Encode()), nil, &outp); err != nil {
+		log.Err("Error getting AWS credentials: %v\n", err)
+		return
+	}
+
+	// extract credentials from XML response
+	creds := struct {
+		SessionToken    string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SessionToken"`
+		SecretAccessKey string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SecretAccessKey"`
+		AccessKeyId     string `xml:"AssumeRoleWithWebIdentityResult>Credentials>AccessKeyId"`
+	}{}
+	if err := xml.Unmarshal([]byte(outp), &creds); err != nil {
+		log.Err("Error extracting credentials from AWS STS response: %v\n", err)
+		return
+	}
+
+	// save credentials in the specified AWS CLI credentials file
+	ini.PrettyFormat = false // we're updating someone's aws config file, don't mess it up.
+	if awsCfg, err := ini.LooseLoad(credFile); err != nil {
+		log.Err("Error loading AWS CLI credentials file \"%s\": %v\n", credFile, err)
+	} else {
+		for k, v := range map[string]string{"aws_access_key_id": creds.AccessKeyId,
+			"aws_secret_access_key": creds.SecretAccessKey, "aws_session_token": creds.SessionToken} {
+			if err := updateKeyInCredFile(awsCfg, profile, k, v); err != nil {
+				log.Err("Error updating credential in section \"%s\" of file \"%s\": %v", profile, credFile, err)
+				return
+			}
+		}
+		if err := saveCredFile(awsCfg, credFile); err != nil {
+			log.Err("Could not update AWS credentials file \"%s\": %v\n", credFile, err)
+		} else {
+			log.Info("Successfully updated AWS credentials file: %s\n", credFile)
 		}
 	}
 }
