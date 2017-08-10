@@ -31,20 +31,20 @@ type IDMApplicationService struct {
 }
 
 type priamApp struct {
-	Name                  string                 `json:"name,omitempty" yaml:"name,omitempty"`
-	Uuid                  string                 `json:"uuid,omitempty" yaml:"uuid,omitempty"`
-	PackageVersion        string                 `json:"packageVersion,omitempty" yaml:"packageVersion,omitempty"`
-	Description           string                 `json:"description,omitempty" yaml:"description,omitempty"`
-	IconFile              string                 `json:"iconFile,omitempty" yaml:"iconFile,omitempty"`
-	EntitleGroup          string                 `json:"entitleGroup,omitempty" yaml:"entitleGroup,omitempty"`
-	EntitleUser           string                 `json:"entitleUser,omitempty" yaml:"entitleUser,omitempty"`
-	ResourceConfiguration map[string]interface{} `json:"resourceConfiguration" yaml:"resourceConfiguration,omitempty"`
-	AccessPolicy          string                 `json:"accessPolicy,omitempty" yaml:"accessPolicy,omitempty"`
-	AccessPolicySetUuid   string                 `json:"accessPolicySetUuid,omitempty" yaml:"accessPolicySetUuid,omitempty"`
-	CatalogItemType       string                 `json:"catalogItemType,omitempty" yaml:"catalogItemType,omitempty"`
-	JsonTester            jsonMarshalTester      `json:"jsonTester,omitempty" yaml:"jsonTester,omitempty"`
-	Labels                []string               `json:"labels,omitempty" yaml:"labels,omitempty"`
-	AuthInfo              map[string]interface{} `json:"authInfo,omitempty" yaml:"authInfo,omitempty"`
+	Name                  string                   `json:"name,omitempty" yaml:"name,omitempty"`
+	Uuid                  string                   `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	PackageVersion        string                   `json:"packageVersion,omitempty" yaml:"packageVersion,omitempty"`
+	Description           string                   `json:"description,omitempty" yaml:"description,omitempty"`
+	IconFile              string                   `json:"iconFile,omitempty" yaml:"iconFile,omitempty"`
+	EntitleGroup          string                   `json:"entitleGroup,omitempty" yaml:"entitleGroup,omitempty"`
+	EntitleUser           string                   `json:"entitleUser,omitempty" yaml:"entitleUser,omitempty"`
+	ResourceConfiguration map[string]interface{}   `json:"resourceConfiguration" yaml:"resourceConfiguration,omitempty"`
+	AccessPolicy          string                   `json:"accessPolicy,omitempty" yaml:"accessPolicy,omitempty"`
+	AccessPolicySetUuid   string                   `json:"accessPolicySetUuid,omitempty" yaml:"accessPolicySetUuid,omitempty"`
+	CatalogItemType       string                   `json:"catalogItemType,omitempty" yaml:"catalogItemType,omitempty"`
+	JsonTester            jsonMarshalTester        `json:"jsonTester,omitempty" yaml:"jsonTester,omitempty"`
+	Labels                []map[string]interface{} `json:"labels,omitempty" yaml:"labels,omitempty"`
+	AuthInfo              map[string]interface{}   `json:"authInfo,omitempty" yaml:"authInfo,omitempty"`
 }
 
 type manifestApp struct {

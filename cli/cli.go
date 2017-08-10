@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	vidmBasePath          = "/SAAS/jersey/manager/api/"
+	vidmBasePath          = "/jersey/manager/api/"
 	vidmBaseMediaType     = "application/vnd.vmware.horizon.manager."
 	accessTokenOption     = "accesstoken"
 	accessTokenTypeOption = "accesstokentype"
@@ -67,9 +67,9 @@ var templateService OauthResource = AppTemplateService
 var clientService OauthResource = OauthClientService
 
 var tokenService TokenGrants = TokenService{
-	AuthorizePath:   "/SAAS/auth/oauth2/authorize",
-	TokenPath:       "/SAAS/auth/oauthtoken",
-	LoginPath:       "/SAAS/API/1.0/REST/auth/system/login",
+	AuthorizePath:   "/auth/oauth2/authorize",
+	TokenPath:       "/auth/oauthtoken",
+	LoginPath:       "/API/1.0/REST/auth/system/login",
 	CliClientID:     cliClientID,
 	CliClientSecret: cliClientSecret}
 
@@ -115,7 +115,17 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 		cfg.Log.Err("Error: no target set\n")
 		return nil
 	}
-	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), vidmBasePath, vidmBaseMediaType)
+	basePath := vidmBasePath
+	if cfg.IsTenantInUrl() {
+		basePath = "/SAAS" + vidmBasePath
+		tokenService = TokenService{
+			AuthorizePath:   "/SAAS/auth/oauth2/authorize",
+			TokenPath:       "/SAAS/auth/oauthtoken",
+			LoginPath:       "/SAAS/API/1.0/REST/auth/system/login",
+			CliClientID:     cliClientID,
+			CliClientSecret: cliClientSecret}
+	}
+	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), basePath, vidmBaseMediaType)
 	if authn {
 		if token := cfg.Option(accessTokenOption); token == "" {
 			cfg.Log.Err("No access token saved for current target. Please log in.\n")
@@ -175,7 +185,7 @@ func checkTarget(cfg *Config) bool {
 		return false
 	}
 	if err := ctx.Request("GET", "health", nil, &output); err != nil {
-		ctx.Log.Err("Error checking health of %s: \n", ctx.HostURL)
+		ctx.Log.Err("Error checking health of %s: %v\n", ctx.HostURL, err)
 		return false
 	}
 	ctx.Log.Debug("health check output:\n%s\n", output)
