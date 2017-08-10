@@ -35,11 +35,13 @@ import (
 )
 
 const (
-	yamlUsersFile   = "../resources/newusers.yaml"
-	goodAccessToken = "travolta.was.here"
-	goodAuthHeader  = "Bearer " + goodAccessToken
-	badAccessToken  = "travolta.has.gone"
-	goodIdToken     = "this.is.me"
+	yamlUsersFile           = "../resources/newusers.yaml"
+	goodAccessToken         = "travolta.was.here"
+	goodAuthHeader          = "Bearer " + goodAccessToken
+	badAccessToken          = "travolta.has.gone"
+	goodIdToken             = "this.is.me"
+	vidmBasePathTenantInUrl = "/SAAS" + vidmBasePath
+	healthApi               = "GET" + vidmBasePathTenantInUrl + "health"
 )
 
 type tstCtx struct {
@@ -238,7 +240,7 @@ func TestAddNewTargetWithName(t *testing.T) {
 }
 
 func TestAddNewTargetFailsIfHealthCheckFails(t *testing.T) {
-	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(500, "favourite 500 error")}
+	paths := map[string]TstHandler{healthApi: ErrorHandler(500, "favourite 500 error")}
 	ctx := runWithServer(t, paths, "target", "radio2.example.com", "sassoon")
 	ctx.assertOnlyErrContains("Error checking health of https://radio2.example.com")
 }
@@ -255,7 +257,7 @@ func healthHandler(status bool) func(t *testing.T, req *TstReq) *TstReply {
 }
 
 func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOk(t *testing.T) {
-	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(false)}
+	paths := map[string]TstHandler{healthApi: healthHandler(false)}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon")
@@ -263,7 +265,7 @@ func TestAddNewTargetFailsIfHealthCheckDoesNotContainAllOk(t *testing.T) {
 }
 
 func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
-	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
+	paths := map[string]TstHandler{healthApi: healthHandler(true)}
 	srv := StartTstServer(t, paths)
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon")
@@ -271,12 +273,12 @@ func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": healthHandler(true)}
+	paths := map[string]TstHandler{healthApi: healthHandler(true)}
 	runWithServer(t, paths, "health").assertOnlyInfoContains("allOk")
 }
 
 func TestExitIfHealthFails(t *testing.T) {
-	paths := map[string]TstHandler{"GET" + vidmBasePath + "health": ErrorHandler(404, "test health")}
+	paths := map[string]TstHandler{healthApi: ErrorHandler(404, "test health")}
 	runWithServer(t, paths, "health").assertOnlyErrContains("test health")
 }
 
@@ -289,8 +291,10 @@ func TestCanNotLoginWithNoTarget(t *testing.T) {
 
 // Helper to setup mock for the token service
 func setupTokenServiceMock() *mocks.TokenGrants {
+	tokenServiceFactoryMock := new(mocks.TokenServiceFactory)
 	tokenServiceMock := new(mocks.TokenGrants)
-	tokenService = tokenServiceMock
+	tokenServiceFactoryMock.On("GetTokenService", mock.Anything, mock.Anything, mock.Anything).Return(tokenServiceMock)
+	tokenServiceFactory = tokenServiceFactoryMock
 	return tokenServiceMock
 }
 

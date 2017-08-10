@@ -38,14 +38,14 @@ const (
 	goodAccessToken = "travolta.was.here"
 )
 
-var testTS = TokenService{"/authorize", "/token", "/login", "salo", "tralfamadore"}
+var testTS = TokenService{"/base", "/authorize", "/token", "/login", "salo", "tralfamadore"}
 
 /* in these tests the clientID is "john" and the client secret is "travolta". These are adapted
    from tests written by Fanny, who apparently likes John Travolta.
 */
 
 func TestCanHandleBadCredsGrantReply(t *testing.T) {
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: GoodPathHandler("crap")})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.TokenPath: GoodPathHandler("crap")})
 	defer srv.Close()
 	_, err := testTS.ClientCredentialsGrant(ctx, "john", "travolta")
 	assert.NotNil(t, err, "handle bad json reply")
@@ -57,7 +57,7 @@ func TestCanLoginWithClientCreds(t *testing.T) {
 		assert.Equal(t, "grant_type=client_credentials", req.Input)
 		return &TstReply{Output: `{"token_type": "Bearer", "access_token": "` + goodAccessToken + `"}`}
 	}
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: handler})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.TokenPath: handler})
 	defer srv.Close()
 	ti, err := testTS.ClientCredentialsGrant(ctx, "john", "travolta")
 	assert.Nil(t, err)
@@ -66,14 +66,14 @@ func TestCanLoginWithClientCreds(t *testing.T) {
 }
 
 func TestCanHandleBadUserLoginReply(t *testing.T) {
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.LoginPath: ErrorHandler(0, "crap")})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.LoginPath: ErrorHandler(0, "crap")})
 	defer srv.Close()
 	_, err := testTS.LoginSystemUser(ctx, "eliot", "poo-tee-weet")
 	assert.NotNil(t, err, "handle bad json reply")
 }
 
 func TestCanHandleUserLoginReplyNoToken(t *testing.T) {
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.LoginPath: ErrorHandler(0, `{"crap":"kazak"}`)})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.LoginPath: ErrorHandler(0, `{"crap":"kazak"}`)})
 	defer srv.Close()
 	_, err := testTS.LoginSystemUser(ctx, "eliot", "poo-tee-weet")
 	assert.EqualError(t, err, "Invalid response: no token in reply from server")
@@ -86,7 +86,7 @@ func TestSystemUserLogin(t *testing.T) {
 		assert.Contains(t, req.Input, `"issueToken": true`)
 		return &TstReply{Output: `{"admin": false, "sessionToken": "` + goodAccessToken + `"}`}
 	}
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.LoginPath: handler})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.LoginPath: handler})
 	defer srv.Close()
 	ti, err := testTS.LoginSystemUser(ctx, "john", "travolta")
 	assert.Nil(t, err)
@@ -147,7 +147,7 @@ func tokenHandler(authcode string) func(t *testing.T, req *TstReq) *TstReply {
 func TestAuthCodeGrant(t *testing.T) {
 	authcode := "hi-ho"
 	browserLauncher = simulateBrowser(t, goodReply, authcode)
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: tokenHandler(authcode)})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.TokenPath: tokenHandler(authcode)})
 	defer srv.Close()
 	ctx.Log.TraceOn = true
 	ti, err := testTS.AuthCodeGrant(ctx, "kazak")
@@ -159,7 +159,7 @@ func TestAuthCodeGrant(t *testing.T) {
 
 func TestHandleBadAuthCode(t *testing.T) {
 	browserLauncher = simulateBrowser(t, goodReply, "hi-ho")
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: tokenHandler("bad-auth-code")})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.TokenPath: tokenHandler("bad-auth-code")})
 	defer srv.Close()
 	_, err := testTS.AuthCodeGrant(ctx, "kazak")
 	assert.NotNil(t, err)
@@ -171,7 +171,7 @@ func TestHandleBadAuthCode(t *testing.T) {
 func TestHandleBadState(t *testing.T) {
 	authcode := "hi-ho"
 	browserLauncher = simulateBrowser(t, badState, authcode)
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: tokenHandler(authcode)})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.TokenPath: tokenHandler(authcode)})
 	defer srv.Close()
 	_, err := testTS.AuthCodeGrant(ctx, "kazak")
 	assert.NotNil(t, err)
@@ -179,7 +179,7 @@ func TestHandleBadState(t *testing.T) {
 }
 
 func testAuthCodeFailure(t *testing.T, authcode, errmsg string) {
-	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.TokenPath: tokenHandler(authcode)})
+	srv, ctx := NewTestContext(t, map[string]TstHandler{"POST" + testTS.BasePath + testTS.TokenPath: tokenHandler(authcode)})
 	defer srv.Close()
 	_, err := testTS.AuthCodeGrant(ctx, "kazak")
 	assert.EqualError(t, err, errmsg)

@@ -17,6 +17,7 @@ package util
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -51,8 +52,11 @@ type HttpContext struct {
 }
 
 func NewHttpContext(log *Logr, hostURL, basePath, baseMediaType string) *HttpContext {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: false}, // @todo Add a flag to trust self-signed cert
+	}
 	return &HttpContext{Log: log, HostURL: hostURL, basePath: basePath,
-		baseMediaType: baseMediaType, headers: make(map[string]string)}
+		baseMediaType: baseMediaType, headers: make(map[string]string), client: http.Client{Transport: tr}}
 }
 
 func (ctx *HttpContext) fullMediaType(shortType string) string {

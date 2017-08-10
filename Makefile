@@ -39,6 +39,7 @@ generate-mocks: build-testaid
 	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService
 	$(GOPATH)/bin/mockery -dir=core -name=OauthResource
 	$(GOPATH)/bin/mockery -dir=core -name=TokenGrants
+	$(GOPATH)/bin/mockery -dir=core -name=TokenServiceFactory
 
 test: update-build-dependencies generate-mocks
 	@echo testing...

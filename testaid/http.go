@@ -50,7 +50,7 @@ func StartTstServer(t *testing.T, paths map[string]TstHandler) *httptest.Server 
 			http.Error(w, fmt.Sprintf("error reading request body: %v", err), 404)
 		} else if handler, ok := paths[r.Method+r.URL.String()]; !ok {
 			http.Error(w, fmt.Sprintf("unknown path: %v", r.Method+r.URL.String()), 404)
-			t.Errorf("unknown path: %v", r.Method+r.URL.String())
+			t.Errorf("unknown path: %v\nregistered paths are: %v", r.Method+r.URL.String(), paths)
 		} else {
 			reply := handler(t, &TstReq{r.Header.Get("Accept"),
 				r.Header.Get("Content-Type"), r.Header.Get("Authorization"),
