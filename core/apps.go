@@ -16,9 +16,12 @@ limitations under the License.
 package core
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/pborman/uuid"
 	. "github.com/vmware/priam/util"
+	"reflect"
 	"strings"
 )
 
@@ -44,8 +47,11 @@ type priamApp struct {
 	CatalogItemType       string                 `json:"catalogItemType,omitempty" yaml:"catalogItemType,omitempty"`
 	JsonTester            jsonMarshalTester      `json:"jsonTester,omitempty" yaml:"jsonTester,omitempty"`
 	Labels                []string               `json:"labels,omitempty" yaml:"labels,omitempty"`
-	AuthInfo              map[string]interface{} `json:"authInfo,omitempty" yaml:"authInfo,omitempty"`
+	AuthInfo              authInfo               `json:"authInfo,omitempty" yaml:"authInfo,omitempty"`
 }
+
+// Create a different auth info to be able to marshal special nested values in the map (other than string)
+type authInfo map[string]interface{}
 
 type manifestApp struct {
 	Name, Memory, Path, BuildPack string
@@ -188,7 +194,7 @@ func PublishApps(ctx *HttpContext, manifile string) {
 		w.IconFile, w.EntitleGroup, w.EntitleUser = "", "", ""
 		content, err := ToJson(w)
 		if err != nil {
-			ctx.Log.Err("Error converting app %s to JSON: %v\n", w.Name, err)
+			ctx.Log.Err("Error converting app %s to JSON: %v (%v)\n", w.Name, err, w)
 			continue
 		}
 		if iconFile == "" {
@@ -241,4 +247,65 @@ func appList(ctx *HttpContext, count int, filter string) {
 	} else {
 		ctx.Log.PP("Apps", body["items"], "name", "description", "catalogItemType", "uuid")
 	}
+}
+
+// Custom marshaller for the authInfo to handle the nested maps (like "attributes")
+// inside the generic map
+func (auth authInfo) MarshalJSON() ([]byte, error) {
+	buffer := bytes.NewBufferString("{")
+	authInfoCount := 0
+	authInfoLength := len(auth)
+	for key, value := range auth {
+		attr := reflect.ValueOf(value)
+		// handle the case of an array
+		if attr.Kind() == reflect.Slice {
+			buffer.WriteString(fmt.Sprintf("\"%s\": [", key))
+			for i := 0; i < attr.Len(); i++ {
+				attrElemType := reflect.ValueOf(attr.Index(i).Interface())
+				if attrElemType.Kind() == reflect.Map {
+					// array of maps
+					attrMap := attr.Index(i).Interface().(map[interface{}]interface{})
+					count := 0
+					attrLength := len(attrMap)
+					buffer.WriteString("{")
+					for k, v := range attrMap {
+						jsonValue, err := json.Marshal(v)
+						if err != nil {
+							return nil, err
+						}
+						buffer.WriteString(fmt.Sprintf("\"%s\":%s", k, string(jsonValue)))
+						count++
+						if count < attrLength {
+							buffer.WriteString(",")
+						}
+					}
+					buffer.WriteString("}")
+				} else {
+					// regular array
+					jsonValue, err := ToJson(attr.Index(i).Interface())
+					if err != nil {
+						return nil, err
+					}
+					buffer.WriteString(fmt.Sprintf("\"%s\"", string(jsonValue)))
+				}
+				if i < attr.Len()-1 {
+					buffer.WriteString(",")
+				}
+			}
+			buffer.WriteString("]")
+		} else {
+			jsonValue, err := ToJson(value)
+			if err != nil {
+				return nil, err
+			}
+			buffer.WriteString(fmt.Sprintf("\"%s\":\"%s\"", key, string(jsonValue)))
+		}
+		authInfoCount++
+		if authInfoCount < authInfoLength {
+			buffer.WriteString(",")
+		}
+	}
+
+	buffer.WriteString("}")
+	return buffer.Bytes(), nil
 }
