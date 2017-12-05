@@ -60,7 +60,7 @@ install:
 	$(GO) install
 
 clean:
-	$(GO) clean
+	$(GO) clean -i . ./cli ./core ./mocks ./testaid ./util
 	rm -rf mocks/*
 
 help:
