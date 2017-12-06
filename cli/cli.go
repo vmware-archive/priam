@@ -224,7 +224,6 @@ func cmdWithAuth0Arg(cfg *Config, cmd func(*HttpContext)) func(c *cli.Context) e
 func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 	var err error
 	cfg := &Config{}
-	cli.HelpFlag.Usage = "show help for given command or subcommand"
 
 	// work around error in cli v1.18 by setting package level ErrWriter since
 	// app level ErrWriter is ignored for some deprecation warnings.
