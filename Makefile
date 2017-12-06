@@ -59,6 +59,8 @@ cover: coverage
 install:
 	$(GO) install
 
+# since priam packages are installed as libraries in the golang pkg directory we must 
+# specifially clean each package with the -i (installed) option. 
 clean:
 	$(GO) clean -i . ./cli ./core ./mocks ./testaid ./util
 	rm -rf mocks/*
