@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	vidmBasePath          = "/SAAS/jersey/manager/api/"
+	vidmBasePath          = "/jersey/manager/api/"
 	vidmBaseMediaType     = "application/vnd.vmware.horizon.manager."
 	accessTokenOption     = "accesstoken"
 	accessTokenTypeOption = "accesstokentype"
@@ -65,13 +65,7 @@ var rolesService DirectoryService = &SCIMRolesService{}
 var appsService ApplicationService = &IDMApplicationService{}
 var templateService OauthResource = AppTemplateService
 var clientService OauthResource = OauthClientService
-
-var tokenService TokenGrants = TokenService{
-	AuthorizePath:   "/SAAS/auth/oauth2/authorize",
-	TokenPath:       "/SAAS/auth/oauthtoken",
-	LoginPath:       "/SAAS/API/1.0/REST/auth/system/login",
-	CliClientID:     cliClientID,
-	CliClientSecret: cliClientSecret}
+var tokenServiceFactory TokenServiceFactory = &TokenServiceFactoryImpl{}
 
 var getRawPassword = gopass.GetPasswd // called via variable so that tests can provide stub
 var consoleInput io.Reader = os.Stdin // will be set to other readers for tests
@@ -115,7 +109,11 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 		cfg.Log.Err("Error: no target set\n")
 		return nil
 	}
-	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), vidmBasePath, vidmBaseMediaType)
+	basePath := vidmBasePath
+	if cfg.IsTenantInHost() {
+		basePath = "/SAAS" + vidmBasePath
+	}
+	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), basePath, vidmBaseMediaType)
 	if authn {
 		if token := cfg.Option(accessTokenOption); token == "" {
 			cfg.Log.Err("No access token saved for current target. Please log in.\n")
@@ -175,7 +173,7 @@ func checkTarget(cfg *Config) bool {
 		return false
 	}
 	if err := ctx.Request("GET", "health", nil, &output); err != nil {
-		ctx.Log.Err("Error checking health of %s: \n", ctx.HostURL)
+		ctx.Log.Err("Error checking health of %s: %v\n", ctx.HostURL, err)
 		return false
 	}
 	ctx.Log.Debug("health check output:\n%s\n", output)
@@ -436,6 +434,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Action: func(c *cli.Context) (err error) {
 				if a, ctx := initCmd(cfg, c, 0, 2, false, nil); ctx != nil {
 					tokenInfo := TokenInfo{}
+					tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
 					if c.Bool("authcode") {
 						if tokenInfo, err = tokenService.AuthCodeGrant(ctx, a[0]); err != nil {
 							cfg.Log.Err("Error getting tokens via browser: %v\n", err)
@@ -593,6 +592,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					Name: "validate", Usage: "validate the current ID token (if logged in)", ArgsUsage: " ",
 					Action: func(c *cli.Context) error {
 						if _, ctx := initCmd(cfg, c, 0, 0, true, nil); ctx != nil {
+							tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
 							tokenService.ValidateIDToken(ctx, cfg.Option(idTokenOption))
 						}
 						return nil
@@ -606,6 +606,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					},
 					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, false, nil); ctx != nil {
+							tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
 							tokenService.UpdateAWSCredentials(ctx.Log, cfg.Option(idTokenOption),
 								args[0], defaultAwsStsEndpoint,
 								StringOrDefault(c.String("credfile"), filepath.Join(os.Getenv("HOME"), defaultAwsCredFile)),

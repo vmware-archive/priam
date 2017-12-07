@@ -54,14 +54,14 @@ type TokenGrants interface {
 	UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string)
 }
 
-type TokenService struct{ AuthorizePath, TokenPath, LoginPath, CliClientID, CliClientSecret string }
+type TokenService struct{ BasePath, AuthorizePath, TokenPath, LoginPath, CliClientID, CliClientSecret string }
 
 /* ClientCredsGrant takes a clientID and clientSecret and makes a request for an access token.
    Returns common TokenInfo.
 */
 func (ts TokenService) ClientCredentialsGrant(ctx *HttpContext, clientID, clientSecret string) (ti TokenInfo, err error) {
 	ctx.BasicAuth(clientID, clientSecret).ContentType("application/x-www-form-urlencoded")
-	err = ctx.Request("POST", ts.TokenPath, url.Values{"grant_type": {"client_credentials"}}.Encode(), &ti)
+	err = ctx.Request("POST", ts.BasePath+ts.TokenPath, url.Values{"grant_type": {"client_credentials"}}.Encode(), &ti)
 	return
 }
 
@@ -72,7 +72,7 @@ func (ts TokenService) ClientCredentialsGrant(ctx *HttpContext, clientID, client
 func (ts TokenService) LoginSystemUser(ctx *HttpContext, user, password string) (ti TokenInfo, err error) {
 	outp := struct{ SessionToken string }{}
 	inp := fmt.Sprintf(`{"username": "%s", "password": "%s", "issueToken": true}`, user, password)
-	if err = ctx.ContentType("json").Accept("json").Request("POST", ts.LoginPath, inp, &outp); err == nil {
+	if err = ctx.ContentType("json").Accept("json").Request("POST", ts.BasePath+ts.LoginPath, inp, &outp); err == nil {
 		if token := outp.SessionToken; token == "" {
 			err = errors.New("Invalid response: no token in reply from server")
 		} else {
@@ -148,7 +148,7 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 	if userHint != "" {
 		vals.Set("login_hint", userHint)
 	}
-	authUrl := fmt.Sprintf("%s%s?%s", ctx.HostURL, ts.AuthorizePath, vals.Encode())
+	authUrl := fmt.Sprintf("%s%s?%s", ctx.HostURL, ts.BasePath+ts.AuthorizePath, vals.Encode())
 	ctx.Log.Trace("launching browser with %s\n", authUrl)
 	if err = browserLauncher(authUrl); err != nil {
 	} else if authcode := <-authCodeDelivery; authcode == "" {
@@ -158,7 +158,7 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 		inp := url.Values{"grant_type": {"authorization_code"}, "code": {authcode},
 			"redirect_uri": {TokenCatcherURI}, "client_id": {ts.CliClientID}}.Encode()
 		ctx.BasicAuth(ts.CliClientID, ts.CliClientSecret).ContentType("application/x-www-form-urlencoded")
-		err = ctx.Request("POST", ts.TokenPath, inp, &ti)
+		err = ctx.Request("POST", ts.BasePath+ts.TokenPath, inp, &ti)
 	}
 	return
 }

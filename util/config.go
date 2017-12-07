@@ -27,8 +27,15 @@ import (
 const NoTarget = ""
 const HostOption = "host"
 
+/* Host modes definitions. */
+const HostMode = "mode"
+const (
+	TenantInHost = "tenant-in-host"
+	TenantInPath = "tenant-in-path"
+)
+
 /* Config represents a set of named targets, with an indication of which target is currently
-   active. Each target contains a map of options. The only option known to this code is HostOption,
+   active. Each target contains a map of options. The only options known to this code are HostOption, HostMode
    all other options are up to the users of the config struct.
 */
 type Config struct {
@@ -137,6 +144,12 @@ func ensureFullURL(url string) string {
 	return "https://" + url
 }
 
+// Returns true if the current vIDM targeted is set to use the host part of the URL to determine the tenant name
+// If no host mode has been set (previous behaviour), then consider we are in "tenant in host" mode.
+func (cfg *Config) IsTenantInHost() bool {
+	return cfg.Option(HostMode) != TenantInPath || cfg.Option(HostMode) == ""
+}
+
 // findTarget attempts to find an existing target based on user input. User
 // may specify a target as a url followed by an optional name, or with no input
 // to specify the current target. findTarget returns the name of any existing
@@ -204,9 +217,16 @@ func (cfg *Config) SetTarget(url, name string, checkURL func(*Config) bool) {
 		}
 	}
 
+	// check tenant in path mode or not
+	hostMode := TenantInHost
+	if strings.Contains(url, "/SAAS/t/") {
+		hostMode = TenantInPath
+	}
+
 	cfg.CurrentTarget = name
-	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: ensureFullURL(url)}
+	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: ensureFullURL(url), HostMode: hostMode}
 	if (checkURL == nil || checkURL(cfg)) && cfg.Save() {
+		cfg.Log.Info("Mode detected: %s\n", hostMode)
 		cfg.PrintTarget("new")
 	}
 }

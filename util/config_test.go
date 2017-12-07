@@ -33,8 +33,13 @@ targets:
     host: https://space.odyssey.example.com
   1:
     host: https://venus.example.com
+    mode: tenant-in-host
   staging:
     host: https://earth.example.com
+    mode: tenant-in-path
+  beautyOnTheBeach:
+    host: https://disney.princess.com
+    mode: not-right
 `
 	cfgFile, cfg := WriteTempFile(t, testAppCfg), &Config{}
 	defer cfgFile.Close()
@@ -166,4 +171,42 @@ func TestErrorWritingConfigFile(t *testing.T) {
 	require.Nil(t, cfgFile.Chmod(0))
 	assert.False(cfg.Save())
 	assert.Contains(log.ErrString(), "could not write config file "+cfgFile.Name())
+}
+
+func TestDefaultHostModeIsTenantInHost(t *testing.T) {
+	cfg := cfgTestSetup(t)
+	defer os.Remove(cfg.fileName)
+	cfg.SetTarget("https://space.odyssey.example.com", "familyCountDown", nil)
+	assert.True(t, cfg.IsTenantInHost(), "default host mode should be tenant in host")
+}
+
+func TestGetHostModeForTenantInPathFromConfig(t *testing.T) {
+	cfg := cfgTestSetup(t)
+	defer os.Remove(cfg.fileName)
+	cfg.SetTarget("https://earth.example.com", "staging", nil)
+	assert.Contains(t, cfg.Log.InfoString(), "new target is: staging")
+	assert.False(t, cfg.IsTenantInHost(), "host mode should be tenant in path")
+}
+
+func TestGetHostModeForTenantInHost(t *testing.T) {
+	cfg := cfgTestSetup(t)
+	defer os.Remove(cfg.fileName)
+	cfg.SetTarget("https://venus.example.com", "1", nil)
+	assert.Equal(t, cfg.Targets[cfg.CurrentTarget][HostMode], "tenant-in-host")
+	assert.True(t, cfg.IsTenantInHost(), "host mode should be tenant in host")
+}
+
+func TestUnknownModeLeadsToTenantInHost(t *testing.T) {
+	cfg := cfgTestSetup(t)
+	defer os.Remove(cfg.fileName)
+	cfg.SetTarget("https://disney.princess.com", "beautyOnTheBeach", nil)
+	assert.True(t, cfg.IsTenantInHost(), "host mode should be tenant in host")
+}
+
+func TestCanDetectTenantInPathMode(t *testing.T) {
+	cfg := cfgTestSetup(t)
+	defer os.Remove(cfg.fileName)
+	cfg.SetTarget("https://hello.me.com/SAAS/t/foo", "", nil)
+	assert.Contains(t, cfg.Log.InfoString(), "Mode detected: tenant-in-path")
+	assert.False(t, cfg.IsTenantInHost(), "host mode should be tenant in path")
 }
