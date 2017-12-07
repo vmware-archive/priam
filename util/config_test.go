@@ -33,7 +33,7 @@ targets:
     host: https://space.odyssey.example.com
   1:
     host: https://venus.example.com
-    mode: tenant-in-url
+    mode: tenant-in-host
   staging:
     host: https://earth.example.com
     mode: tenant-in-path
@@ -173,11 +173,11 @@ func TestErrorWritingConfigFile(t *testing.T) {
 	assert.Contains(log.ErrString(), "could not write config file "+cfgFile.Name())
 }
 
-func TestDefaultHostModeIsTenantInUrl(t *testing.T) {
+func TestDefaultHostModeIsTenantInHost(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
 	cfg.SetTarget("https://space.odyssey.example.com", "familyCountDown", nil)
-	assert.True(t, cfg.IsTenantInUrl(), "default host mode should be tenant in URL")
+	assert.True(t, cfg.IsTenantInHost(), "default host mode should be tenant in host")
 }
 
 func TestGetHostModeForTenantInPathFromConfig(t *testing.T) {
@@ -185,21 +185,22 @@ func TestGetHostModeForTenantInPathFromConfig(t *testing.T) {
 	defer os.Remove(cfg.fileName)
 	cfg.SetTarget("https://earth.example.com", "staging", nil)
 	assert.Contains(t, cfg.Log.InfoString(), "new target is: staging")
-	assert.False(t, cfg.IsTenantInUrl(), "host mode should be tenant in path")
+	assert.False(t, cfg.IsTenantInHost(), "host mode should be tenant in path")
 }
 
-func TestGetHostModeForTenantInUrl(t *testing.T) {
+func TestGetHostModeForTenantInHost(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("", "1", nil)
-	assert.True(t, cfg.IsTenantInUrl(), "host mode should be tenant in URL")
+	cfg.SetTarget("https://venus.example.com", "1", nil)
+	assert.Equal(t, cfg.Targets[cfg.CurrentTarget][HostMode], "tenant-in-host")
+	assert.True(t, cfg.IsTenantInHost(), "host mode should be tenant in host")
 }
 
-func TestUnknownModeLeadsToTenantInUrl(t *testing.T) {
+func TestUnknownModeLeadsToTenantInHost(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("", "beautyOnTheBeach", nil)
-	assert.True(t, cfg.IsTenantInUrl(), "host mode should be tenant in URL")
+	cfg.SetTarget("https://disney.princess.com", "beautyOnTheBeach", nil)
+	assert.True(t, cfg.IsTenantInHost(), "host mode should be tenant in host")
 }
 
 func TestCanDetectTenantInPathMode(t *testing.T) {
@@ -207,5 +208,5 @@ func TestCanDetectTenantInPathMode(t *testing.T) {
 	defer os.Remove(cfg.fileName)
 	cfg.SetTarget("https://hello.me.com/SAAS/t/foo", "", nil)
 	assert.Contains(t, cfg.Log.InfoString(), "Mode detected: tenant-in-path")
-	assert.False(t, cfg.IsTenantInUrl(), "host mode should be tenant in path")
+	assert.False(t, cfg.IsTenantInHost(), "host mode should be tenant in path")
 }

@@ -28,7 +28,7 @@ type TokenServiceFactory interface {
 }
 
 func (factory TokenServiceFactoryImpl) GetTokenService(cfg *Config, cliClientID string, cliClientSecret string) TokenGrants {
-	if cfg.IsTenantInUrl() {
+	if cfg.IsTenantInHost() {
 		return TokenService{
 			BasePath:        "/SAAS",
 			AuthorizePath:   "/auth/oauth2/authorize",

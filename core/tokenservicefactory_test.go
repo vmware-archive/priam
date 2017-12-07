@@ -23,10 +23,10 @@ import (
 
 func TestTenantInUrlTokenService(t *testing.T) {
 	factory := &TokenServiceFactoryImpl{}
-	cfg := configFor(TenantInUrl)
+	cfg := configFor(TenantInHost)
 	cfg.CurrentTarget = "current"
 	cfg.Targets = make(map[string]map[string]string)
-	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: "full-url", HostMode: "tenant-in-url"}
+	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: "full-url", HostMode: "tenant-in-host"}
 
 	svc, ok := factory.GetTokenService(cfg, "id", "secret").(TokenService)
 

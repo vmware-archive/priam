@@ -30,7 +30,7 @@ const HostOption = "host"
 /* Host modes definitions. */
 const HostMode = "mode"
 const (
-	TenantInUrl  = "tenant-in-url"
+	TenantInHost = "tenant-in-host"
 	TenantInPath = "tenant-in-path"
 )
 
@@ -144,11 +144,10 @@ func ensureFullURL(url string) string {
 	return "https://" + url
 }
 
-// Returns true if the current vIDM targeted is in url in path mode
-// If no host mode has been set (previous behaviour), then consider
-// "tenant in URL" mode.
-func (cfg *Config) IsTenantInUrl() bool {
-	return cfg.Option(HostMode) == TenantInUrl || cfg.Option(HostMode) == ""
+// Returns true if the current vIDM targeted is set to use the host part of the URL to determine the tenant name
+// If no host mode has been set (previous behaviour), then consider we are in "tenant in host" mode.
+func (cfg *Config) IsTenantInHost() bool {
+	return cfg.Option(HostMode) != TenantInPath || cfg.Option(HostMode) == ""
 }
 
 // findTarget attempts to find an existing target based on user input. User
@@ -219,7 +218,7 @@ func (cfg *Config) SetTarget(url, name string, checkURL func(*Config) bool) {
 	}
 
 	// check tenant in path mode or not
-	hostMode := TenantInUrl
+	hostMode := TenantInHost
 	if strings.Contains(url, "/SAAS/t/") {
 		hostMode = TenantInPath
 	}

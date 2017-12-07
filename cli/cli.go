@@ -110,7 +110,7 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 		return nil
 	}
 	basePath := vidmBasePath
-	if cfg.IsTenantInUrl() {
+	if cfg.IsTenantInHost() {
 		basePath = "/SAAS" + vidmBasePath
 	}
 	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), basePath, vidmBaseMediaType)
