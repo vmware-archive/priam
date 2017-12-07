@@ -176,6 +176,19 @@ applications:
       audience: "https://test.fanny.audience"
       assertionConsumerServiceUrl: "https://test.fanny/a/{domainName}/acs?RelayState=http://mail.google.com/a/{domainName}"
       recipientName: "https://test.fanny/a/{domainName}/acs"
+      array:
+      - a
+      - b
+      - c
+      attributes:
+      - name: https://aws.amazon.com/SAML/Attributes/Role
+        nameFormat: urn:oasis:names:tc:SAML:2.0:attrname-format:uri
+        nameSpace: ''
+        value: arn:aws:iam::646585102600:role/SuperAdminRole,arn:aws:iam::646585102600:saml-provider/ops-staging
+      - name: https://aws.amazon.com/SAML/Attributes/RoleSessionName
+        nameFormat: urn:oasis:names:tc:SAML:2.0:attrname-format:uri
+        nameSpace: ''
+        value: "${user.userName}"
 `
 
 // Handler for adding an application, can contain or not an icon
@@ -243,6 +256,10 @@ type appPubEnv struct {
 const noIconFile = "<none>"
 
 func PublishAppTester(t *testing.T, env appPubEnv) *HttpContext {
+	return PublishAppTesterForManifest(t, env, testManifest)
+}
+
+func PublishAppTesterForManifest(t *testing.T, env appPubEnv, manifestContent string) *HttpContext {
 	const groupPath = "GET/scim/Groups?count=10000&filter=displayName+eq+%22ALL+USERS%22"
 	if env.iconFile == "" {
 		env.iconFile = "../resources/vin.jpg"
@@ -258,7 +275,7 @@ func PublishAppTester(t *testing.T, env appPubEnv) *HttpContext {
 	if env.appPutH == nil {
 		env.appPutH = GoodPathHandler("")
 	}
-	tmpFile := WriteTempFile(t, fmt.Sprintf(testManifest, env.iconFile, env.jsonError, env.accessPolicy))
+	tmpFile := WriteTempFile(t, fmt.Sprintf(manifestContent, env.iconFile, env.jsonError, env.accessPolicy))
 	defer CleanupTempFile(tmpFile)
 	paths := map[string]TstHandler{
 		"POST/catalogitems": multipartH,
@@ -365,4 +382,95 @@ func TestPublishAppBadManifest(t *testing.T) {
 	defer srv.Close()
 	PublishApps(ctx, "")
 	AssertErrorContains(t, ctx, `Error getting manifest: open manifest.yaml: no such file or directory`)
+}
+
+func TestPublishAppInvalidAuthInfo(t *testing.T) {
+	testManifestInvalidAuthInfo := `---
+applications:
+- name: olaf
+  memory: 512M
+  instances: 1
+  path: build/libs/web-application-1.0.0.BUILD-SNAPSHOT.war
+  buildpack: https://github.com/cloudfoundry/java-buildpack/archive/master.zip
+  workspace:
+    packageVersion: '1.0'
+    description: Fanny's Demo App for RADIO
+    iconFile: %s
+    entitleGroup: ALL USERS
+    catalogItemType: Saml20
+    jsonTester: %s
+    attributeMaps:
+      userName: "${user.userName}"
+      firstName: "${user.firstName}"
+      lastName: "${user.lastName}"
+    accessPolicy: %s
+    authInfo:
+      type: Saml20
+      attributes:
+      - name:
+        - not_supported:
+          - test
+`
+	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestInvalidAuthInfo)
+	AssertErrorContains(t, ctx, `Error converting app olaf to JSON`)
+}
+
+func TestPublishAppInvalidAuthInfoMapOfMap(t *testing.T) {
+	testManifestInvalidAuthInfo := `---
+applications:
+- name: olaf
+  memory: 512M
+  instances: 1
+  path: build/libs/web-application-1.0.0.BUILD-SNAPSHOT.war
+  buildpack: https://github.com/cloudfoundry/java-buildpack/archive/master.zip
+  workspace:
+    packageVersion: '1.0'
+    description: Fanny's Demo App for RADIO
+    iconFile: %s
+    entitleGroup: ALL USERS
+    catalogItemType: Saml20
+    jsonTester: %s
+    attributeMaps:
+      userName: "${user.userName}"
+      firstName: "${user.firstName}"
+      lastName: "${user.lastName}"
+    accessPolicy: %s
+    authInfo:
+      type: Saml20
+      attributes:
+        key: value
+`
+	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestInvalidAuthInfo)
+	AssertErrorContains(t, ctx, `Error converting app olaf to JSON`)
+}
+
+func TestPublishAppInvalidAuthInfoArrayOfArray(t *testing.T) {
+	testManifestInvalidAuthInfo := `---
+applications:
+- name: olaf
+  memory: 512M
+  instances: 1
+  path: build/libs/web-application-1.0.0.BUILD-SNAPSHOT.war
+  buildpack: https://github.com/cloudfoundry/java-buildpack/archive/master.zip
+  workspace:
+    packageVersion: '1.0'
+    description: Fanny's Demo App for RADIO
+    iconFile: %s
+    entitleGroup: ALL USERS
+    catalogItemType: Saml20
+    jsonTester: %s
+    attributeMaps:
+      userName: "${user.userName}"
+      firstName: "${user.firstName}"
+      lastName: "${user.lastName}"
+    accessPolicy: %s
+    authInfo:
+      type: Saml20
+      attributes:
+        -
+          -
+            - key: value
+`
+	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestInvalidAuthInfo)
+	AssertErrorContains(t, ctx, `Error converting app olaf to JSON`)
 }

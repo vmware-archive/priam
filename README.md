@@ -177,6 +177,15 @@ applications:
       audience: "https://test.fanny.audience"
       assertionConsumerServiceUrl: "https://test.fanny/a/{domainName}/acs?RelayState=http://mail.google.com/a/{domainName}"
       recipientName: "https://test.fanny/a/{domainName}/acs"
+      attributes:
+      - name: https://aws.amazon.com/SAML/Attributes/Role
+        nameFormat: urn:oasis:names:tc:SAML:2.0:attrname-format:uri
+        nameSpace: ''
+        value: arn:aws:iam::646585102600:role/MyRole,arn:aws:iam::12345678:saml-provider/my-org
+      - name: https://aws.amazon.com/SAML/Attributes/RoleSessionName
+        nameFormat: urn:oasis:names:tc:SAML:2.0:attrname-format:uri
+        nameSpace: ''
+        value: "${user.userName}"
 ```
 
 ## Contributing
