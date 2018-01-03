@@ -127,6 +127,9 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 
 func initArgs(cfg *Config, c *cli.Context, minArgs, maxArgs int, validateArgs func([]string) bool) []string {
 	args := c.Args()
+	if args == nil {
+		args = []string{}
+	}
 	if len(args) < minArgs {
 		cfg.Log.Err("\nInput Error: at least %d arguments must be given\n\n", minArgs)
 	} else if maxArgs >= 0 && len(args) > maxArgs {
