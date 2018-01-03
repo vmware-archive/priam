@@ -146,7 +146,7 @@ func TestAppDeleteError(t *testing.T) {
 	AssertErrorContains(t, ctx, `Error deleting app olaf from catalog: 403 Forbidden`)
 }
 
-const testManifest = `---
+const testManifestPrefix = `---
 applications:
 - name: olaf
   memory: 512M
@@ -166,7 +166,9 @@ applications:
       userName: "${user.userName}"
       firstName: "${user.firstName}"
       lastName: "${user.lastName}"
-    accessPolicy: %s
+    accessPolicy: %s`
+
+const testManifest = testManifestPrefix + `
     authInfo:
       type: Saml20
       validityTimeSeconds: 200
@@ -384,86 +386,34 @@ func TestPublishAppBadManifest(t *testing.T) {
 	AssertErrorContains(t, ctx, `Error getting manifest: open manifest.yaml: no such file or directory`)
 }
 
-func TestPublishAppInvalidAuthInfo(t *testing.T) {
-	testManifestInvalidAuthInfo := `---
-applications:
-- name: olaf
-  memory: 512M
-  instances: 1
-  path: build/libs/web-application-1.0.0.BUILD-SNAPSHOT.war
-  buildpack: https://github.com/cloudfoundry/java-buildpack/archive/master.zip
-  workspace:
-    packageVersion: '1.0'
-    description: Fanny's Demo App for RADIO
-    iconFile: %s
-    entitleGroup: ALL USERS
-    catalogItemType: Saml20
-    jsonTester: %s
-    attributeMaps:
-      userName: "${user.userName}"
-      firstName: "${user.firstName}"
-      lastName: "${user.lastName}"
-    accessPolicy: %s
+func TestPublishAppValidYAMLAuthInfo(t *testing.T) {
+	testManifestValidYAMLAuthInfo := testManifestPrefix + `
     authInfo:
       type: Saml20
       attributes:
       - name:
-        - not_supported:
+        - any_valid_yaml_is_supported:
           - test
 `
-	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestInvalidAuthInfo)
-	AssertErrorContains(t, ctx, `Error converting app olaf to JSON`)
+	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestValidYAMLAuthInfo)
+	AssertOnlyInfoContains(t, ctx, `App "olaf" added to the catalog`)
+	AssertOnlyInfoContains(t, ctx, `Entitled group "ALL USERS" to app "olaf"`)
 }
 
-func TestPublishAppInvalidAuthInfoMapOfMap(t *testing.T) {
-	testManifestInvalidAuthInfo := `---
-applications:
-- name: olaf
-  memory: 512M
-  instances: 1
-  path: build/libs/web-application-1.0.0.BUILD-SNAPSHOT.war
-  buildpack: https://github.com/cloudfoundry/java-buildpack/archive/master.zip
-  workspace:
-    packageVersion: '1.0'
-    description: Fanny's Demo App for RADIO
-    iconFile: %s
-    entitleGroup: ALL USERS
-    catalogItemType: Saml20
-    jsonTester: %s
-    attributeMaps:
-      userName: "${user.userName}"
-      firstName: "${user.firstName}"
-      lastName: "${user.lastName}"
-    accessPolicy: %s
+func TestPublishAppValidYAMLAuthInfoMapOfMap(t *testing.T) {
+	testManifestValidYAMLAuthInfo := testManifestPrefix + `
     authInfo:
       type: Saml20
       attributes:
         key: value
 `
-	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestInvalidAuthInfo)
-	AssertErrorContains(t, ctx, `Error converting app olaf to JSON`)
+	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestValidYAMLAuthInfo)
+	AssertOnlyInfoContains(t, ctx, `App "olaf" added to the catalog`)
+	AssertOnlyInfoContains(t, ctx, `Entitled group "ALL USERS" to app "olaf"`)
 }
 
-func TestPublishAppInvalidAuthInfoArrayOfArray(t *testing.T) {
-	testManifestInvalidAuthInfo := `---
-applications:
-- name: olaf
-  memory: 512M
-  instances: 1
-  path: build/libs/web-application-1.0.0.BUILD-SNAPSHOT.war
-  buildpack: https://github.com/cloudfoundry/java-buildpack/archive/master.zip
-  workspace:
-    packageVersion: '1.0'
-    description: Fanny's Demo App for RADIO
-    iconFile: %s
-    entitleGroup: ALL USERS
-    catalogItemType: Saml20
-    jsonTester: %s
-    attributeMaps:
-      userName: "${user.userName}"
-      firstName: "${user.firstName}"
-      lastName: "${user.lastName}"
-    accessPolicy: %s
+func TestPublishAppValidYAMLAuthInfoArrayOfArray(t *testing.T) {
+	testManifestValidYAMLAuthInfo := testManifestPrefix + `
     authInfo:
       type: Saml20
       attributes:
@@ -471,6 +421,7 @@ applications:
           -
             - key: value
 `
-	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestInvalidAuthInfo)
-	AssertErrorContains(t, ctx, `Error converting app olaf to JSON`)
+	ctx := PublishAppTesterForManifest(t, appPubEnv{}, testManifestValidYAMLAuthInfo)
+	AssertOnlyInfoContains(t, ctx, `App "olaf" added to the catalog`)
+	AssertOnlyInfoContains(t, ctx, `Entitled group "ALL USERS" to app "olaf"`)
 }
