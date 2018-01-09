@@ -53,6 +53,35 @@ func GetYamlFile(filename string, output interface{}) error {
 	}
 }
 
+/* YAML allows keys in maps to be datatypes other than string, whereas JSON only supports
+   keys that are strings. The YAML parser defaults to keys of type interface{}. This
+   function will take an object produced by the YAML parser and converts any map keys to
+   strings so that the object can be rendered as JSON.
+*/
+func ChangeKeysToString(input interface{}) interface{} {
+	switch inp := input.(type) {
+	case []interface{}:
+		output := make([]interface{}, len(inp))
+		for i, v := range inp {
+			output[i] = ChangeKeysToString(v)
+		}
+		return output
+	case map[interface{}]interface{}:
+		output := make(map[string]interface{})
+		for k, v := range inp {
+			output[fmt.Sprintf("%v", k)] = ChangeKeysToString(v)
+		}
+		return output
+	case map[string]interface{}:
+		output := make(map[string]interface{})
+		for k, v := range inp {
+			output[k] = ChangeKeysToString(v)
+		}
+		return output
+	}
+	return input
+}
+
 func PutYamlFile(filename string, input interface{}) error {
 	if f, err := yaml.Marshal(input); err != nil {
 		return err
