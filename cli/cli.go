@@ -443,12 +443,12 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Flags: []cli.Flag{
 				cli.BoolFlag{Name: "authcode, a", Usage: "use browser to authenticate via oauth2 authorization code grant"},
 				cli.BoolFlag{Name: "client, c", Usage: "authenticate with oauth2 client ID and secret"},
-				cli.StringFlag{Name: "identifier, i", Usage: "Override client identifier, default is " + cliClientID},
+				cli.StringFlag{Name: "id, i", Usage: "Override client id, default is " + cliClientID},
 			},
 			Action: func(c *cli.Context) (err error) {
 				if a, ctx := initCmd(cfg, c, 0, 2, false, nil); ctx != nil {
-					if c.String("identifier") != "" {
-						updateClientID(c.String("identifier"))
+					if c.String("id") != "" {
+						updateClientID(c.String("id"))
 					}
 					tokenInfo := TokenInfo{}
 					tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
@@ -620,12 +620,12 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					Flags: []cli.Flag{
 						cli.StringFlag{Name: "credfile, c", Usage: "name of file to store AWS credentials. Default is ~/" + defaultAwsCredFile},
 						cli.StringFlag{Name: "profile, p", Usage: "Profile in which to store AWS credentials, Default is \"priam'\"."},
-						cli.StringFlag{Name: "identifier, i", Usage: "Override client identifier, default is " + cliClientID},
+						cli.StringFlag{Name: "id, i", Usage: "Override client id, default is " + cliClientID},
 					},
 					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, false, nil); ctx != nil {
-							if c.String("identifier") != "" {
-								updateClientID(c.String("identifier"))
+							if c.String("id") != "" {
+								updateClientID(c.String("id"))
 							}
 							tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
 							tokenService.UpdateAWSCredentials(ctx.Log, cfg.Option(idTokenOption),
