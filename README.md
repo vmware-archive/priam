@@ -89,6 +89,23 @@ After registration is completed, you can log in as a user from any domain suppor
 tenant, and using authentication methods as specified by access policy:
 
     $ priam login -a
+    
+This sequence shows the steps involved in accessing an AWS environment for command line
+access. Assumptions are that an OIDC identity provider has been created in the AWS IAM
+service, an application has been created in the target VIDM tenant, and the same client
+ID/audience value has been specified in the corresponding IAM role's trusted relationship,
+the IAM OIDC identity provider, and the VIDM application.  In VIDM terms, the clientID is
+the same as the audience value in IAM identity provider terms.  For this example, the
+clientID/audience value will be "foo".
+
+    $ priam target https://<vidm_tenant_url>
+    $ priam login -a -i foo
+    $ priam token aws <IAM Role ARN> -i foo -p aws-us
+    
+The IAM Role ARN value can be retrieved by navigating to an AWS IAM Role and looking at
+the Summary page.  An AWS IAM Role would look something like: 
+
+    arn:aws:iam::123456789012:role/MyRole 
 
 ### Users
 
