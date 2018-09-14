@@ -428,6 +428,23 @@ func TestAuthCodeGrantWithHint(t *testing.T) {
 	assertLoginSucceeded(t, "Bearer", ctx)
 }
 
+// test authcode login with non-default client identifier
+func TestHandleNonDefaultClientID(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("AuthCodeGrant", mock.Anything, "").
+		Return(TokenInfo{AccessTokenType: "Bearer", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-a", "-i", "github.com-vmware-priam")
+	assertLoginSucceeded(t, "Bearer", ctx)
+}
+
+func TestHandleNonDefaultClientIDWithEmptyValue(t *testing.T) {
+	tsMock := setupTokenServiceMock()
+	tsMock.On("AuthCodeGrant", mock.Anything, "").
+		Return(TokenInfo{AccessTokenType: "Bearer", AccessToken: goodAccessToken}, nil)
+	ctx := testMockCommand(t, &tsMock.Mock, "login", "-a", "-i", "")
+	assertLoginSucceeded(t, "Bearer", ctx)
+}
+
 // -- test logout
 
 func TestLogout(t *testing.T) {
@@ -951,4 +968,20 @@ func TestCanUpdateAWSCredentialsInExplicitCredFileAndProfile(t *testing.T) {
 	tokenServiceMock := setupTokenServiceMock()
 	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "kazak").Return(nil)
 	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-c", cfgFile, "-p", "kazak", "space-hound")
+}
+
+func TestCanUpdateAWSCredentialsWithClientID(t *testing.T) {
+	cfgFile := "/var/tmp/my-cred-file"
+	tokenServiceMock := setupTokenServiceMock()
+	tokenServiceMock.On("UpdateAWSCredentials", mock.Anything, goodIdToken, "space-hound", expectedAwsStsEndpoint, cfgFile, "kazak").Return(nil)
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-i", "github.com-vmware-priam", "-c", cfgFile, "-p", "kazak", "space-hound")
+	testMockCommand(t, &tokenServiceMock.Mock, "token", "aws", "-i", "", "-c", cfgFile, "-p", "kazak", "space-hound")
+}
+
+
+func TestUpdateClientID(t *testing.T) {
+	var expected = "foo"
+	updateClientID(expected)
+	assert.Equal(t, cliClientID, expected, "cliClientID should equal '"+expected+"'")
+	assert.Equal(t, cliClientRegistration["clientId"], expected, "cliClientRegistration[\"clientID\"] should equal '"+expected+"'")
 }
