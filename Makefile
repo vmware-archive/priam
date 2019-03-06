@@ -17,9 +17,9 @@ all: check build test
 
 check: govet
 
-govet:
+govet: update-build-dependencies
 	@echo checking go vet...
-	$(GO) tool vet -structtags=false -methods=false .
+	$(GO) vet .
 
 update-build-dependencies:
 	$(GO) get
