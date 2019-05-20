@@ -263,12 +263,13 @@ OD59e38OK/yROJncnwIDAQAB
 const aHmacSignedToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3ZpZG0uZXhhbXBsZS5jb20vU0FBUy9hdXRoIiwic3ViIjoiZmFubnlAdmlkbSIsIm5iZiI6MTQ3ODg5MDcyMiwiZXhwIjoxNTEwNDI2NzIyLCJpYXQiOjE0Nzg4OTA3MjIsImp0aSI6ImlkMTIzNDU2IiwidHlwIjoiSldUIn0.X_F4MFLrrgbj1zh60Hcq5q36N6HyH842yraKEM36bIc`
 
 // helper function to generate a signed token
-func generateToken(t *testing.T, notBefore time.Time, expiredAt time.Time, issuer string) string {
+func generateToken(t *testing.T, notBefore time.Time, expiredAt time.Time, issuer string, username string) string {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iss": issuer,
 		"nbf": notBefore.Unix(),
 		"exp": expiredAt.Unix(),
 		"iat": time.Now().Unix(),
+		"sub": username,
 	})
 
 	// Sign and get the complete encoded token as a string using the secret
@@ -290,10 +291,29 @@ func NewTestTokenValidationContext(t *testing.T) (*httptest.Server, *util.HttpCo
 func TestCanValidateToken(t *testing.T) {
 	srv, ctx := NewTestTokenValidationContext(t)
 	defer srv.Close()
-	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), srv.URL+"/SAAS/auth")
+	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), srv.URL+"/SAAS/auth",
+		"")
 	new(TokenService).ValidateIDToken(ctx, token)
 	AssertOnlyInfoContains(t, ctx, "ID token is valid")
 	AssertOnlyInfoContains(t, ctx, "iss: "+srv.URL+"/SAAS/auth")
+}
+
+func TestCanRetrieveUsername(t *testing.T) {
+	srv, ctx := NewTestTokenValidationContext(t)
+	defer srv.Close()
+	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), srv.URL+"/SAAS/auth",
+		"foobar@MY")
+	var username (string) = new(TokenService).ExtractUserIDFromIDToken(ctx, token)
+	assert.Equal(t, username, "foobar@MY")
+}
+
+func TestBadTokenGetUsername(t *testing.T) {
+	srv, ctx := NewTestTokenValidationContext(t)
+	defer srv.Close()
+	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), srv.URL+"/SAAS/auth",
+		"")
+	var username (string) = new(TokenService).ExtractUserIDFromIDToken(ctx, token)
+	assert.Equal(t, username, "")
 }
 
 func TestCannotValidateTokenIfPublicKeyCannotBeRetrieved(t *testing.T) {
@@ -322,7 +342,8 @@ func TestCannotValidateTokenIfTokenIsJunk(t *testing.T) {
 func TestInvalidTokenIfTokenIsExpired(t *testing.T) {
 	srv, ctx := NewTestTokenValidationContext(t)
 	defer srv.Close()
-	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, -1), srv.URL+"/SAAS/auth")
+	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, -1), srv.URL+"/SAAS/auth",
+		"")
 	new(TokenService).ValidateIDToken(ctx, token)
 	AssertErrorContains(t, ctx, "Token is expired")
 }
@@ -330,7 +351,8 @@ func TestInvalidTokenIfTokenIsExpired(t *testing.T) {
 func TestInvalidTokenIfTokenNotBeforeIsWrong(t *testing.T) {
 	srv, ctx := NewTestTokenValidationContext(t)
 	defer srv.Close()
-	token := generateToken(t, time.Now().AddDate(0, 0, 1), time.Now(), srv.URL+"/SAAS/auth")
+	token := generateToken(t, time.Now().AddDate(0, 0, 1), time.Now(), srv.URL+"/SAAS/auth",
+		"")
 	new(TokenService).ValidateIDToken(ctx, token)
 	AssertErrorContains(t, ctx, "Token is not active yet")
 }
@@ -341,7 +363,8 @@ func TestInvalidTokenIfTokenSignatureIsWrong(t *testing.T) {
 			return &TstReply{Status: 200, Output: anotherPubKey}
 		}})
 	defer srv.Close()
-	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), srv.URL+"/SAAS/auth")
+	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), srv.URL+"/SAAS/auth",
+		"")
 	new(TokenService).ValidateIDToken(ctx, token)
 	AssertErrorContains(t, ctx, "crypto/rsa: verification error")
 }
@@ -349,7 +372,8 @@ func TestInvalidTokenIfTokenSignatureIsWrong(t *testing.T) {
 func TestInvalidTokenIfTokenIssuerIsWrong(t *testing.T) {
 	srv, ctx := NewTestTokenValidationContext(t)
 	defer srv.Close()
-	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), "invalid-issuer")
+	token := generateToken(t, time.Now(), time.Now().AddDate(0, 0, 1), "invalid-issuer",
+		"")
 	new(TokenService).ValidateIDToken(ctx, token)
 	AssertErrorContains(t, ctx, "Invalid issuer: 'invalid-issuer'")
 }
@@ -452,7 +476,8 @@ func TestCanUpdateAWSCredentials(t *testing.T) {
 	defer CleanupTempFile(cfgFile)
 
 	// run command
-	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile)
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile,
+		"salo")
 	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file")
 
 	// check aws credentials file contents
@@ -463,7 +488,8 @@ func TestCanUpdateAWSCredentials(t *testing.T) {
 
 func TestUpdateAWSCredentialsFailsWithoutIDToken(t *testing.T) {
 	log, expected := NewBufferedLogr(), "No ID token provided."
-	testTS.UpdateAWSCredentials(log, "", goodAwsRole, "https://nonexxistent.example.com", "/tmp/notused", goodAwsProfile)
+	testTS.UpdateAWSCredentials(log, "", goodAwsRole, "https://nonexxistent.example.com",
+		"/tmp/notused", goodAwsProfile, "salo")
 	assert.Empty(t, log.InfoString(), "Info message should be empty")
 	assert.Contains(t, log.ErrString(), expected, "ERROR log message should contain '"+expected+"'")
 }
@@ -472,7 +498,8 @@ func TestUpdateAWSCredentialsFailsWithSTSError(t *testing.T) {
 	srv, ctx := NewTestContext(t, map[string]TstHandler{
 		"GET/" + awsStsQueryString(goodAwsRole, goodIdToken): ErrorHandler(500, "traditional error")})
 	defer srv.Close()
-	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile)
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile,
+		"salo")
 	AssertOnlyErrorContains(t, ctx, "Error getting AWS credentials: 500 Internal Server Error")
 }
 
@@ -480,14 +507,16 @@ func TestUpdateAWSCredentialsFailsWithSTSBadReply(t *testing.T) {
 	srv, ctx := NewTestContext(t, map[string]TstHandler{
 		"GET/" + awsStsQueryString(goodAwsRole, goodIdToken): GoodPathHandler("bad xml<<<<<")})
 	defer srv.Close()
-	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile)
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile,
+		"salo")
 	AssertOnlyErrorContains(t, ctx, "Error extracting credentials from AWS STS response: XML syntax error")
 }
 
 func TestUpdateAWSCredentialsFailsWithBadFile(t *testing.T) {
 	srv, ctx := newStsTestContext(t)
 	defer srv.Close()
-	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, os.TempDir(), goodAwsProfile)
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, os.TempDir(), goodAwsProfile,
+		"salo")
 	AssertOnlyErrorContains(t, ctx, `Error loading AWS CLI credentials file`)
 	AssertOnlyErrorContains(t, ctx, `is a directory`)
 }
@@ -499,7 +528,8 @@ func TestUpdateAWSCredentialsHandlesWriteFailure(t *testing.T) {
 	defer CleanupTempFile(cfgFile)
 	funcSave := saveCredFile
 	saveCredFile = func(f *ini.File, name string) error { return errors.New("could not save cred file") }
-	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile)
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile,
+		"salo")
 	saveCredFile = funcSave
 	AssertOnlyErrorContains(t, ctx, `Could not update AWS credentials file`)
 	AssertOnlyErrorContains(t, ctx, "could not save cred file")
@@ -514,7 +544,8 @@ func TestUpdateAWSCredentialsCantSaveCreds(t *testing.T) {
 	updateKeyInCredFile = func(f *ini.File, section, key, value string) error {
 		return errors.New("could not update value in section")
 	}
-	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile)
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile,
+		"salo")
 	updateKeyInCredFile = funcSave
 	AssertOnlyErrorContains(t, ctx, `Error updating credential in section "kazak" of file `)
 	AssertOnlyErrorContains(t, ctx, "could not update value in section")
@@ -527,7 +558,8 @@ func TestUpdateAWSCredentialsCanCreateCredFile(t *testing.T) {
 	// create tempfile then delete it, then use that file name for new cred file.
 	cfgFile := WriteTempFile(t, "")
 	CleanupTempFile(cfgFile)
-	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), "roomsford")
+	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), "roomsford",
+		"salo")
 	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file: "+cfgFile.Name())
 
 	// check aws credentials file contents
