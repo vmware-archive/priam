@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2016 VMware, Inc. All Rights Reserved.
+Copyright (c) 2016, 2018 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,12 +35,14 @@ const (
 	accessTokenTypeOption = "accesstokentype"
 	refreshTokenOption    = "refreshtoken"
 	idTokenOption         = "idtoken"
-	cliClientID           = "github.com-vmware-priam"
 	cliClientSecret       = "not-a-secret"
 	defaultAwsCredFile    = ".aws/credentials"
 	defaultAwsProfile     = "priam"
 	defaultAwsStsEndpoint = "https://sts.amazonaws.com"
 )
+
+// Initially a const, but now allowed to be a user-changeable value
+var cliClientID = "github.com-vmware-priam"
 
 var cliClientRegistration = map[string]interface{}{"clientId": cliClientID, "secret": cliClientSecret,
 	"accessTokenTTL": 60 * 60, "authGrantTypes": "authorization_code refresh_token", "displayUserGrant": false,
@@ -220,6 +222,14 @@ func cmdWithAuth0Arg(cfg *Config, cmd func(*HttpContext)) func(c *cli.Context) e
 		}
 		return nil
 	}
+}
+
+// User has requested a custom identity provider client id (login or token commands).  So
+// need to update the data structures that was using the default value.
+func updateClientID(clientID string) {
+	cliClientRegistration["clientId"] = clientID
+	strings.Replace(registerDescription, cliClientID, clientID, 1)
+	cliClientID = clientID
 }
 
 func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
@@ -433,9 +443,13 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 			Flags: []cli.Flag{
 				cli.BoolFlag{Name: "authcode, a", Usage: "use browser to authenticate via oauth2 authorization code grant"},
 				cli.BoolFlag{Name: "client, c", Usage: "authenticate with oauth2 client ID and secret"},
+				cli.StringFlag{Name: "id, i", Usage: "Override client id, default is " + cliClientID},
 			},
 			Action: func(c *cli.Context) (err error) {
 				if a, ctx := initCmd(cfg, c, 0, 2, false, nil); ctx != nil {
+					if c.String("id") != "" {
+						updateClientID(c.String("id"))
+					}
 					tokenInfo := TokenInfo{}
 					tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
 					if c.Bool("authcode") {
@@ -606,14 +620,19 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					Flags: []cli.Flag{
 						cli.StringFlag{Name: "credfile, c", Usage: "name of file to store AWS credentials. Default is ~/" + defaultAwsCredFile},
 						cli.StringFlag{Name: "profile, p", Usage: "Profile in which to store AWS credentials, Default is \"priam'\"."},
+						cli.StringFlag{Name: "id, i", Usage: "Override client id, default is " + cliClientID},
 					},
 					Action: func(c *cli.Context) error {
 						if args, ctx := initCmd(cfg, c, 1, 1, false, nil); ctx != nil {
+							if c.String("id") != "" {
+								updateClientID(c.String("id"))
+							}
 							tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
+							var userID = tokenService.ExtractUserIDFromIDToken(ctx, cfg.Option(idTokenOption))
 							tokenService.UpdateAWSCredentials(ctx.Log, cfg.Option(idTokenOption),
 								args[0], defaultAwsStsEndpoint,
 								StringOrDefault(c.String("credfile"), filepath.Join(os.Getenv("HOME"), defaultAwsCredFile)),
-								StringOrDefault(c.String("profile"), defaultAwsProfile))
+								StringOrDefault(c.String("profile"), defaultAwsProfile), userID)
 						}
 						return nil
 					},
