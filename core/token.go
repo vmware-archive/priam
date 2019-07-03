@@ -30,6 +30,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 /* TokenInfo encapsulates various tokens and information returned by OAuth2 token grants.
@@ -51,7 +52,8 @@ type TokenGrants interface {
 	LoginSystemUser(ctx *HttpContext, user, password string) (TokenInfo, error)
 	AuthCodeGrant(ctx *HttpContext, userHint string) (TokenInfo, error)
 	ValidateIDToken(ctx *HttpContext, idToken string)
-	UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string)
+	UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string, userID string, timeoutSeconds int)
+	ExtractUserIDFromIDToken(ctx *HttpContext, idToken string) (string)
 }
 
 type TokenService struct{ BasePath, AuthorizePath, TokenPath, LoginPath, CliClientID, CliClientSecret string }
@@ -225,6 +227,44 @@ func (ts TokenService) ValidateIDToken(ctx *HttpContext, idToken string) {
 	}
 }
 
+/*
+   Extract the RoleSessionName as the username which is in the 'sub' claim of the token.
+   Function should return the user ID (string containing the <username>@<tenant>) or an
+   empty string if an error of any kind.
+*/
+func (ts TokenService) ExtractUserIDFromIDToken(ctx *HttpContext, idToken string) (string) {
+	if idToken == "" {
+		ctx.Log.Err("No ID token provided.")
+		return ""
+	}
+
+	//Fetch the public key
+	publicKey,err := ts.GetPublicKeyPEM(ctx)
+	if err != nil {
+		ctx.Log.Err(fmt.Sprintf("Could not fetch public key: %v\n", err))
+		return ""
+	}
+
+	//Parse takes the token string and a function for looking up the public key
+	token,err:=jwt.Parse(idToken,func(token*jwt.Token)(interface{}, error) {
+		return publicKey, nil
+	})
+
+	if token == nil {
+		ctx.Log.Err(fmt.Sprintf("Could not parse the token: %v\n", err))
+		return ""
+	}
+
+	claims := token.Claims.(jwt.MapClaims)
+	if _, ok := claims["sub"]; ok {
+		var username string = fmt.Sprintf("%s",claims["sub"])
+		return username
+	}
+
+	return ""
+}
+
+
 // define cred file handlers so that they can be stubbed for testing
 var saveCredFile = func(f *ini.File, fileName string) error { return f.SaveTo(fileName) }
 var updateKeyInCredFile = func(f *ini.File, section, key, value string) error {
@@ -233,7 +273,9 @@ var updateKeyInCredFile = func(f *ini.File, section, key, value string) error {
 }
 
 // exchange an ID token for AWS credentials and update them in the credFile
-func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string) {
+// timeoutSeconds can have a minimum of 15 minutes and a max of 4 hours
+func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string,
+	userID string, timeoutSeconds int) {
 	if idToken == "" {
 		log.Err("No ID token provided.")
 		return
@@ -242,8 +284,24 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 	// set up and make call to aws sts
 	actx, vals, outp := NewHttpContext(log, stsURL, "/", ""), make(url.Values), ""
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
-	vals.Set("DurationSeconds", "3600")
-	vals.Set("RoleSessionName", ts.CliClientID)
+
+	if timeoutSeconds < 900 {
+		timeoutSeconds = 900
+	}
+	if timeoutSeconds > 14400 {
+		timeoutSeconds = 14400
+	}
+	vals.Set("DurationSeconds", strconv.Itoa(timeoutSeconds))
+	//vals.Set("DurationSeconds", "3600")
+
+	if userID == "" {
+		log.Err("No user ID found in token")
+		return
+	} else {
+		vals.Set("RoleSessionName", userID)
+		//vals.Set("RoleSessionName", ts.CliClientID)
+	}
+
 	vals.Set("RoleArn", role)
 	vals.Set("WebIdentityToken", idToken)
 	vals.Set("Version", "2011-06-15")

@@ -628,10 +628,11 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 								updateClientID(c.String("id"))
 							}
 							tokenService := tokenServiceFactory.GetTokenService(cfg, cliClientID, cliClientSecret)
+							var userID = tokenService.ExtractUserIDFromIDToken(ctx, cfg.Option(idTokenOption))
 							tokenService.UpdateAWSCredentials(ctx.Log, cfg.Option(idTokenOption),
 								args[0], defaultAwsStsEndpoint,
 								StringOrDefault(c.String("credfile"), filepath.Join(os.Getenv("HOME"), defaultAwsCredFile)),
-								StringOrDefault(c.String("profile"), defaultAwsProfile))
+								StringOrDefault(c.String("profile"), defaultAwsProfile), userID)
 						}
 						return nil
 					},
