@@ -477,7 +477,7 @@ func TestCanUpdateAWSCredentials(t *testing.T) {
 
 	// run command
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile,
-		"salo")
+		"salo", 3600)
 	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file")
 
 	// check aws credentials file contents
@@ -489,7 +489,7 @@ func TestCanUpdateAWSCredentials(t *testing.T) {
 func TestUpdateAWSCredentialsFailsWithoutIDToken(t *testing.T) {
 	log, expected := NewBufferedLogr(), "No ID token provided."
 	testTS.UpdateAWSCredentials(log, "", goodAwsRole, "https://nonexxistent.example.com",
-		"/tmp/notused", goodAwsProfile, "salo")
+		"/tmp/notused", goodAwsProfile, "salo", 3600)
 	assert.Empty(t, log.InfoString(), "Info message should be empty")
 	assert.Contains(t, log.ErrString(), expected, "ERROR log message should contain '"+expected+"'")
 }
@@ -499,7 +499,7 @@ func TestUpdateAWSCredentialsFailsWithSTSError(t *testing.T) {
 		"GET/" + awsStsQueryString(goodAwsRole, goodIdToken): ErrorHandler(500, "traditional error")})
 	defer srv.Close()
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile,
-		"salo")
+		"salo", 3600)
 	AssertOnlyErrorContains(t, ctx, "Error getting AWS credentials: 500 Internal Server Error")
 }
 
@@ -508,7 +508,7 @@ func TestUpdateAWSCredentialsFailsWithSTSBadReply(t *testing.T) {
 		"GET/" + awsStsQueryString(goodAwsRole, goodIdToken): GoodPathHandler("bad xml<<<<<")})
 	defer srv.Close()
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, "", goodAwsProfile,
-		"salo")
+		"salo", 3600)
 	AssertOnlyErrorContains(t, ctx, "Error extracting credentials from AWS STS response: XML syntax error")
 }
 
@@ -516,7 +516,7 @@ func TestUpdateAWSCredentialsFailsWithBadFile(t *testing.T) {
 	srv, ctx := newStsTestContext(t)
 	defer srv.Close()
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, os.TempDir(), goodAwsProfile,
-		"salo")
+		"salo", 3600)
 	AssertOnlyErrorContains(t, ctx, `Error loading AWS CLI credentials file`)
 	AssertOnlyErrorContains(t, ctx, `is a directory`)
 }
@@ -529,7 +529,7 @@ func TestUpdateAWSCredentialsHandlesWriteFailure(t *testing.T) {
 	funcSave := saveCredFile
 	saveCredFile = func(f *ini.File, name string) error { return errors.New("could not save cred file") }
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile,
-		"salo")
+		"salo", 3600)
 	saveCredFile = funcSave
 	AssertOnlyErrorContains(t, ctx, `Could not update AWS credentials file`)
 	AssertOnlyErrorContains(t, ctx, "could not save cred file")
@@ -545,7 +545,7 @@ func TestUpdateAWSCredentialsCantSaveCreds(t *testing.T) {
 		return errors.New("could not update value in section")
 	}
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), goodAwsProfile,
-		"salo")
+		"salo", 3600)
 	updateKeyInCredFile = funcSave
 	AssertOnlyErrorContains(t, ctx, `Error updating credential in section "kazak" of file `)
 	AssertOnlyErrorContains(t, ctx, "could not update value in section")
@@ -559,7 +559,7 @@ func TestUpdateAWSCredentialsCanCreateCredFile(t *testing.T) {
 	cfgFile := WriteTempFile(t, "")
 	CleanupTempFile(cfgFile)
 	testTS.UpdateAWSCredentials(ctx.Log, goodIdToken, goodAwsRole, srv.URL, cfgFile.Name(), "roomsford",
-		"salo")
+		"salo", 3600)
 	AssertOnlyInfoContains(t, ctx, "Successfully updated AWS credentials file: "+cfgFile.Name())
 
 	// check aws credentials file contents
