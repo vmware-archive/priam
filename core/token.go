@@ -30,6 +30,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 /* TokenInfo encapsulates various tokens and information returned by OAuth2 token grants.
@@ -51,7 +52,7 @@ type TokenGrants interface {
 	LoginSystemUser(ctx *HttpContext, user, password string) (TokenInfo, error)
 	AuthCodeGrant(ctx *HttpContext, userHint string) (TokenInfo, error)
 	ValidateIDToken(ctx *HttpContext, idToken string)
-	UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string, userID string)
+	UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string, userID string, timeoutSeconds int)
 	ExtractUserIDFromIDToken(ctx *HttpContext, idToken string) (string)
 }
 
@@ -272,8 +273,9 @@ var updateKeyInCredFile = func(f *ini.File, section, key, value string) error {
 }
 
 // exchange an ID token for AWS credentials and update them in the credFile
+// timeoutSeconds can have a minimum of 15 minutes and a max of 4 hours
 func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, credFile, profile string,
-	userID string) {
+	userID string, timeoutSeconds int) {
 	if idToken == "" {
 		log.Err("No ID token provided.")
 		return
@@ -282,8 +284,15 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 	// set up and make call to aws sts
 	actx, vals, outp := NewHttpContext(log, stsURL, "/", ""), make(url.Values), ""
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
-	vals.Set("DurationSeconds", "3600")
 
+	if timeoutSeconds < 900 {
+		timeoutSeconds = 900
+	}
+	if timeoutSeconds > 14400 {
+		timeoutSeconds = 14400
+	}
+	vals.Set("DurationSeconds", strconv.Itoa(timeoutSeconds))
+	//vals.Set("DurationSeconds", "3600")
 
 	if userID == "" {
 		log.Err("No user ID found in token")
