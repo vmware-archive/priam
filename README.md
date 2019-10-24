@@ -20,7 +20,6 @@ To build it and run it:
 You can also install the `priam` executable in the `bin` directory of your Go workspace:
 
     $ make install
-    $ $GOPATH/bin/priam
 
 ### Test it
 Run the testsuite:
