@@ -17,14 +17,11 @@ all: check build test
 
 check: govet
 
-govet: update-build-dependencies
+govet:
 	@echo checking go vet...
 	$(GO) vet .
 
-update-build-dependencies:
-	$(GO) get
-
-build: update-build-dependencies
+build:
 	@echo building...
 	$(GO) build
 
@@ -41,7 +38,7 @@ generate-mocks: build-testaid
 	$(GOPATH)/bin/mockery -dir=core -name=TokenGrants
 	$(GOPATH)/bin/mockery -dir=core -name=TokenServiceFactory
 
-test: update-build-dependencies generate-mocks
+test: generate-mocks
 	@echo testing...
 	$(GO) test -cover ./util ./core ./cli
 
