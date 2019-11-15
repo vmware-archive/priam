@@ -151,7 +151,9 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 	authUrl := fmt.Sprintf("%s%s?%s", ctx.HostURL, ts.BasePath+ts.AuthorizePath, vals.Encode())
 	ctx.Log.Trace("launching browser with %s\n", authUrl)
 	if err = browserLauncher(authUrl); err != nil {
-	} else if authcode := <-authCodeDelivery; authcode == "" {
+        ctx.Log.Info("Please open %s in your browser\n", authUrl)
+    }
+    if authcode := <-authCodeDelivery; authcode == "" {
 		err = errors.New("failed to get authorization code from server. See browser for error message.")
 	} else {
 		ctx.Log.Trace("caught authcode: %s\n", authcode)
