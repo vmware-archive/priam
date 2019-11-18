@@ -33,7 +33,7 @@ build-testaid:
 	$(GO) install ./testaid
 
 generate-mocks: build-testaid
-	$(GO) get github.com/vektra/mockery/.../
+	$(GO) get github.com/vektra/mockery/cmd/mockery
 	rm -f mocks/*.go
 	$(GOPATH)/bin/mockery -dir=core -name=DirectoryService
 	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService

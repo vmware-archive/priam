@@ -22,14 +22,15 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/toqueteos/webbrowser"
-	. "github.com/vmware/priam/util"
-	"gopkg.in/ini.v1"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+
+	"github.com/dgrijalva/jwt-go"
+	"github.com/toqueteos/webbrowser"
+	. "github.com/vmware/priam/util"
+	"gopkg.in/ini.v1"
 )
 
 /* TokenInfo encapsulates various tokens and information returned by OAuth2 token grants.
@@ -151,9 +152,16 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 	authUrl := fmt.Sprintf("%s%s?%s", ctx.HostURL, ts.BasePath+ts.AuthorizePath, vals.Encode())
 	ctx.Log.Trace("launching browser with %s\n", authUrl)
 	if err = browserLauncher(authUrl); err != nil {
-        ctx.Log.Info("Please open %s in your browser\n", authUrl)
-    }
-    if authcode := <-authCodeDelivery; authcode == "" {
+		switch {
+		case err == webbrowser.ErrNoCandidates,
+			err.Error() == fmt.Errorf("webbrowser: tried to open %q, no screen found", authUrl).Error(),
+			err.Error() == fmt.Errorf("webbrowser: tried to open %q, but you are running a shell session", authUrl).Error():
+			ctx.Log.Info("Please open \n\t%s \n\t\tin your browser\n", authUrl)
+		default:
+			return TokenInfo{}, err
+		}
+	}
+	if authcode := <-authCodeDelivery; authcode == "" {
 		err = errors.New("failed to get authorization code from server. See browser for error message.")
 	} else {
 		ctx.Log.Trace("caught authcode: %s\n", authcode)

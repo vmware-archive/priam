@@ -18,13 +18,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	. "github.com/vmware/priam/testaid"
-	"github.com/vmware/priam/util"
-	. "github.com/vmware/priam/util"
-	"gopkg.in/ini.v1"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
@@ -32,6 +25,14 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/dgrijalva/jwt-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	. "github.com/vmware/priam/testaid"
+	"github.com/vmware/priam/util"
+	. "github.com/vmware/priam/util"
+	"gopkg.in/ini.v1"
 )
 
 const (
