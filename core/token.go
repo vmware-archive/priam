@@ -267,12 +267,14 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 		SessionToken    string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SessionToken"`
 		SecretAccessKey string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SecretAccessKey"`
 		AccessKeyId     string `xml:"AssumeRoleWithWebIdentityResult>Credentials>AccessKeyId"`
+		Expiration      string `xml:"AssumeRoleWithWebIdentityResult>Credentials>Expiration"`
 	}{}
 	if err := xml.Unmarshal([]byte(outp), &creds); err != nil {
 		log.Err("Error extracting credentials from AWS STS response: %v\n", err)
 		return
 	}
 
+    log.Debug("Acquired token with expiration: %s\n", creds.Expiration)
 	// save credentials in the specified AWS CLI credentials file
 	ini.PrettyFormat = false // we're updating someone's aws config file, don't mess it up.
 	if awsCfg, err := ini.LooseLoad(credFile); err != nil {
