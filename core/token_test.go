@@ -18,13 +18,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	. "github.com/vmware/priam/testaid"
-	"github.com/vmware/priam/util"
-	. "github.com/vmware/priam/util"
-	"gopkg.in/ini.v1"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
@@ -32,6 +25,14 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/dgrijalva/jwt-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	. "github.com/vmware/priam/testaid"
+	"github.com/vmware/priam/util"
+	. "github.com/vmware/priam/util"
+	"gopkg.in/ini.v1"
 )
 
 const (
@@ -364,7 +365,7 @@ func TestInvalidTokenIfSigningMethodIsNotRSA256(t *testing.T) {
 func awsStsQueryString(role, idToken string) string {
 	vals := make(url.Values)
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
-	vals.Set("DurationSeconds", "3600")
+	vals.Set("DurationSeconds", "7200")
 	vals.Set("RoleSessionName", testTS.CliClientID)
 	vals.Set("RoleArn", role)
 	vals.Set("WebIdentityToken", idToken)

@@ -17,14 +17,11 @@ all: check build test
 
 check: govet
 
-govet: update-build-dependencies
+govet:
 	@echo checking go vet...
 	$(GO) vet .
 
-update-build-dependencies:
-	$(GO) get
-
-build: update-build-dependencies
+build:
 	@echo building...
 	$(GO) build
 
@@ -33,7 +30,7 @@ build-testaid:
 	$(GO) install ./testaid
 
 generate-mocks: build-testaid
-	$(GO) get github.com/vektra/mockery/.../
+	$(GO) get github.com/vektra/mockery/cmd/mockery
 	rm -f mocks/*.go
 	$(GOPATH)/bin/mockery -dir=core -name=DirectoryService
 	$(GOPATH)/bin/mockery -dir=core -name=ApplicationService
@@ -41,7 +38,7 @@ generate-mocks: build-testaid
 	$(GOPATH)/bin/mockery -dir=core -name=TokenGrants
 	$(GOPATH)/bin/mockery -dir=core -name=TokenServiceFactory
 
-test: update-build-dependencies generate-mocks
+test: generate-mocks
 	@echo testing...
 	$(GO) test -cover ./util ./core ./cli
 

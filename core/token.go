@@ -22,14 +22,15 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/toqueteos/webbrowser"
-	. "github.com/vmware/priam/util"
-	"gopkg.in/ini.v1"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+
+	"github.com/dgrijalva/jwt-go"
+	"github.com/toqueteos/webbrowser"
+	. "github.com/vmware/priam/util"
+	"gopkg.in/ini.v1"
 )
 
 /* TokenInfo encapsulates various tokens and information returned by OAuth2 token grants.
@@ -151,7 +152,16 @@ func (ts TokenService) AuthCodeGrant(ctx *HttpContext, userHint string) (ti Toke
 	authUrl := fmt.Sprintf("%s%s?%s", ctx.HostURL, ts.BasePath+ts.AuthorizePath, vals.Encode())
 	ctx.Log.Trace("launching browser with %s\n", authUrl)
 	if err = browserLauncher(authUrl); err != nil {
-	} else if authcode := <-authCodeDelivery; authcode == "" {
+		switch {
+		case err == webbrowser.ErrNoCandidates,
+			err.Error() == fmt.Errorf("webbrowser: tried to open %q, no screen found", authUrl).Error(),
+			err.Error() == fmt.Errorf("webbrowser: tried to open %q, but you are running a shell session", authUrl).Error():
+			ctx.Log.Info("Please open \n\t%s \n\t\tin your browser\n", authUrl)
+		default:
+			return TokenInfo{}, err
+		}
+	}
+	if authcode := <-authCodeDelivery; authcode == "" {
 		err = errors.New("failed to get authorization code from server. See browser for error message.")
 	} else {
 		ctx.Log.Trace("caught authcode: %s\n", authcode)
@@ -242,7 +252,7 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 	// set up and make call to aws sts
 	actx, vals, outp := NewHttpContext(log, stsURL, "/", ""), make(url.Values), ""
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
-	vals.Set("DurationSeconds", "3600")
+	vals.Set("DurationSeconds", "7200")
 	vals.Set("RoleSessionName", ts.CliClientID)
 	vals.Set("RoleArn", role)
 	vals.Set("WebIdentityToken", idToken)
@@ -257,12 +267,14 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 		SessionToken    string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SessionToken"`
 		SecretAccessKey string `xml:"AssumeRoleWithWebIdentityResult>Credentials>SecretAccessKey"`
 		AccessKeyId     string `xml:"AssumeRoleWithWebIdentityResult>Credentials>AccessKeyId"`
+		Expiration      string `xml:"AssumeRoleWithWebIdentityResult>Credentials>Expiration"`
 	}{}
 	if err := xml.Unmarshal([]byte(outp), &creds); err != nil {
 		log.Err("Error extracting credentials from AWS STS response: %v\n", err)
 		return
 	}
 
+    log.Debug("Acquired token with expiration: %s\n", creds.Expiration)
 	// save credentials in the specified AWS CLI credentials file
 	ini.PrettyFormat = false // we're updating someone's aws config file, don't mess it up.
 	if awsCfg, err := ini.LooseLoad(credFile); err != nil {
