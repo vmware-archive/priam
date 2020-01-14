@@ -252,7 +252,7 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 	// set up and make call to aws sts
 	actx, vals, outp := NewHttpContext(log, stsURL, "/", ""), make(url.Values), ""
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
-	vals.Set("DurationSeconds", "3600")
+	vals.Set("DurationSeconds", "7200")
 	vals.Set("RoleSessionName", ts.CliClientID)
 	vals.Set("RoleArn", role)
 	vals.Set("WebIdentityToken", idToken)

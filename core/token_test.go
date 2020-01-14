@@ -365,7 +365,7 @@ func TestInvalidTokenIfSigningMethodIsNotRSA256(t *testing.T) {
 func awsStsQueryString(role, idToken string) string {
 	vals := make(url.Values)
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
-	vals.Set("DurationSeconds", "3600")
+	vals.Set("DurationSeconds", "7200")
 	vals.Set("RoleSessionName", testTS.CliClientID)
 	vals.Set("RoleArn", role)
 	vals.Set("WebIdentityToken", idToken)
