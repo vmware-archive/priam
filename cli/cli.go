@@ -106,7 +106,7 @@ func getOptionalArg(log *Logr, prompt, arg string) string {
 	return scanner.Text()
 }
 
-func InitCtx(cfg *Config, authn bool) *HttpContext {
+func InitCtx(cfg *Config, authn bool, insecureSkipVerify *bool) *HttpContext {
 	if cfg.CurrentTarget == NoTarget {
 		cfg.Log.Err("Error: no target set\n")
 		return nil
@@ -115,7 +115,12 @@ func InitCtx(cfg *Config, authn bool) *HttpContext {
 	if cfg.IsTenantInHost() {
 		basePath = "/SAAS" + vidmBasePath
 	}
-	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), basePath, vidmBaseMediaType)
+	// insecureSkipVerify not nil when passed as a flag on the command-line which takes precedence over the options
+	skipVerify := cfg.Option(InsecureSkipVerifyOption) == "yes" || cfg.Option(InsecureSkipVerifyOption) == "true" // TODO support boolean values in the target options ?
+	if insecureSkipVerify != nil {
+		skipVerify = *insecureSkipVerify
+	}
+	ctx := NewHttpContext(cfg.Log, cfg.Option(HostOption), basePath, vidmBaseMediaType, skipVerify)
 	if authn {
 		if token := cfg.Option(accessTokenOption); token == "" {
 			cfg.Log.Err("No access token saved for current target. Please log in.\n")
@@ -150,7 +155,7 @@ func initArgs(cfg *Config, c *cli.Context, minArgs, maxArgs int, validateArgs fu
 
 func initCmd(cfg *Config, c *cli.Context, minArgs, maxArgs int, authn bool, validateArgs func([]string) bool) (args []string, ctx *HttpContext) {
 	if args = initArgs(cfg, c, minArgs, maxArgs, validateArgs); args != nil {
-		ctx = InitCtx(cfg, authn)
+		ctx = InitCtx(cfg, authn, nil)
 	}
 	return
 }
@@ -169,11 +174,11 @@ func initUserCmd(cfg *Config, c *cli.Context, getPwd bool) (*BasicUser, *HttpCon
 	if getPwd {
 		user.Pwd = getArgOrPassword(cfg.Log, "Password", args[1], true)
 	}
-	return user, InitCtx(cfg, true)
+	return user, InitCtx(cfg, true, nil)
 }
 
-func checkTarget(cfg *Config) bool {
-	ctx, output := InitCtx(cfg, false), ""
+func checkTarget(cfg *Config, insecureSkipVerify *bool) bool {
+	ctx, output := InitCtx(cfg, false, insecureSkipVerify), ""
 	if ctx == nil {
 		return false
 	}
@@ -538,6 +543,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 				cli.BoolFlag{Name: "force, f", Usage: "force target -- don't validate URL with health check"},
 				cli.BoolFlag{Name: "delete, d", Usage: "delete specified or current target"},
 				cli.BoolFlag{Name: "delete-all", Usage: "delete all targets"},
+				cli.BoolFlag{Name: "insecure-skip-verify", Usage: "insecure-skip-verify target -- accept self-signed certificate without verifying their identity"},
 			},
 			Action: func(c *cli.Context) error {
 				if args := initArgs(cfg, c, 0, 2, nil); args != nil {
@@ -548,9 +554,9 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 					} else if args[0] == "" {
 						cfg.PrintTarget("current")
 					} else if c.Bool("force") {
-						cfg.SetTarget(args[0], args[1], nil)
+						cfg.SetTarget(args[0], args[1], c.Bool("insecure-skip-verify"), nil)
 					} else {
-						cfg.SetTarget(args[0], args[1], checkTarget)
+						cfg.SetTarget(args[0], args[1], c.Bool("insecure-skip-verify"), checkTarget)
 					}
 				}
 				return nil

@@ -26,6 +26,7 @@ import (
 
 const NoTarget = ""
 const HostOption = "host"
+const InsecureSkipVerifyOption = "insecure_skip_verify"
 
 /* Host modes definitions. */
 const HostMode = "mode"
@@ -35,7 +36,7 @@ const (
 )
 
 /* Config represents a set of named targets, with an indication of which target is currently
-   active. Each target contains a map of options. The only options known to this code are HostOption, HostMode
+   active. Each target contains a map of options. The only options known to this code are HostOption, HostMode, InsecureSkipVerify
    all other options are up to the users of the config struct.
 */
 type Config struct {
@@ -221,7 +222,7 @@ func (cfg *Config) DeleteTarget(url, name string) {
 	}
 }
 
-func (cfg *Config) SetTarget(url, name string, checkURL func(*Config) bool) {
+func (cfg *Config) SetTarget(url, name string, insecureSkipVerify bool, checkURL func(*Config, *bool) bool) {
 	if url == "" {
 		return
 	}
@@ -254,7 +255,11 @@ func (cfg *Config) SetTarget(url, name string, checkURL func(*Config) bool) {
 
 	cfg.CurrentTarget = name
 	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: ensureFullURL(url), HostMode: hostMode}
-	if (checkURL == nil || checkURL(cfg)) && cfg.Save() {
+	if insecureSkipVerify {
+		cfg.Targets[cfg.CurrentTarget][InsecureSkipVerifyOption] = "yes"
+	}
+
+	if (checkURL == nil || checkURL(cfg, &insecureSkipVerify)) && cfg.Save() {
 		cfg.Log.Info("Mode detected: %s\n", hostMode)
 		cfg.PrintTarget("new")
 	}

@@ -114,7 +114,7 @@ func simulateBrowser(t *testing.T, replyType codeReplyType, authcode string) fun
 		assert.Equal(t, "kazak", vals.Get("login_hint"))
 		state := vals.Get("state")
 		assert.NotNil(t, state)
-		hc, outp := NewHttpContext(NewBufferedLogr(), TokenCatcherHost, "", ""), ""
+		hc, outp := NewHttpContext(NewBufferedLogr(), TokenCatcherHost, "", "", false), ""
 		switch replyType {
 		case goodReply:
 			vals = url.Values{"code": {authcode}, "state": {state}}

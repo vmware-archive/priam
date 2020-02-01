@@ -28,7 +28,7 @@ func TestHttpGet(t *testing.T) {
 	}
 	testpath, output, expected := "/testpath", "", "ok"
 	srv := StartTstServer(t, map[string]TstHandler{"GET" + testpath: h})
-	ctx := NewHttpContext(NewLogr(), srv.URL, "", "")
+	ctx := NewHttpContext(NewLogr(), srv.URL, "", "", false)
 	err := ctx.Request("GET", testpath, nil, &output)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, output)

@@ -51,9 +51,9 @@ type HttpContext struct {
 	client        http.Client
 }
 
-func NewHttpContext(log *Logr, hostURL, basePath, baseMediaType string) *HttpContext {
+func NewHttpContext(log *Logr, hostURL, basePath, baseMediaType string, insecureSkipVerify bool) *HttpContext {
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: false}, // @todo Add a flag to trust self-signed cert
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
 	}
 	return &HttpContext{Log: log, HostURL: hostURL, basePath: basePath,
 		baseMediaType: baseMediaType, headers: make(map[string]string), client: http.Client{Transport: tr}}

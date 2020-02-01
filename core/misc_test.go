@@ -30,7 +30,7 @@ func TestGetSchemaWithNoMediaType(t *testing.T) {
 		return &TstReply{Output: output}
 	}
 	srv := StartTstServer(t, map[string]TstHandler{"GET/scim/Schemas?filter=name+eq+%22User%22": h})
-	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
+	ctx := NewHttpContext(NewBufferedLogr(), srv.URL, "/", "", false)
 	CmdSchema(ctx, "User")
 	assert.Empty(t, ctx.Log.ErrString())
 	assert.Contains(t, ctx.Log.InfoString(), "Schema for User")
@@ -40,7 +40,7 @@ func TestGetSchemaWithNoMediaType(t *testing.T) {
 
 func NewTestContext(t *testing.T, paths map[string]TstHandler) (*httptest.Server, *HttpContext) {
 	srv := StartTstServer(t, paths)
-	return srv, NewHttpContext(NewBufferedLogr(), srv.URL, "/", "")
+	return srv, NewHttpContext(NewBufferedLogr(), srv.URL, "/", "", false)
 }
 
 // Assert context info contains the given string

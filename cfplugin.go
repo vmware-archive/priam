@@ -90,7 +90,7 @@ func (c *CfPriam) Publish(cliConn plugin.CliConnection, args []string) {
 	// stdout for OutW and ErrW
 	log := &util.Logr{TraceOn: *trace, ErrW: os.Stdout, OutW: os.Stdout}
 	if cfg := &(util.Config{}); cfg.Init(log, c.defaultConfigFile) {
-		if ctx := cli.InitCtx(cfg, true); ctx != nil {
+		if ctx := cli.InitCtx(cfg, true, nil); ctx != nil {
 			core.PublishApps(ctx, *manifile)
 		}
 	}

@@ -250,7 +250,7 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 	}
 
 	// set up and make call to aws sts
-	actx, vals, outp := NewHttpContext(log, stsURL, "/", ""), make(url.Values), ""
+	actx, vals, outp := NewHttpContext(log, stsURL, "/", "", false), make(url.Values), ""
 	vals.Set("Action", "AssumeRoleWithWebIdentity")
 	vals.Set("DurationSeconds", "7200")
 	vals.Set("RoleSessionName", ts.CliClientID)
@@ -274,7 +274,7 @@ func (ts TokenService) UpdateAWSCredentials(log *Logr, idToken, role, stsURL, cr
 		return
 	}
 
-    log.Debug("Acquired token with expiration: %s\n", creds.Expiration)
+	log.Debug("Acquired token with expiration: %s\n", creds.Expiration)
 	// save credentials in the specified AWS CLI credentials file
 	ini.PrettyFormat = false // we're updating someone's aws config file, don't mess it up.
 	if awsCfg, err := ini.LooseLoad(credFile); err != nil {
