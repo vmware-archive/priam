@@ -17,11 +17,12 @@ package util
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v2"
 )
 
 const NoTarget = ""
@@ -41,7 +42,7 @@ const (
 */
 type Config struct {
 	CurrentTarget string
-	Targets       map[string]map[string]string
+	Targets       map[string]map[string]interface{}
 	fileName      string
 	Log           *Logr `yaml:"-"`
 }
@@ -101,7 +102,7 @@ func (cfg *Config) Init(log *Logr, fileName string) bool {
 	cfg.Log, cfg.fileName = log, fileName
 
 	if cfg.Targets == nil {
-		cfg.Targets = make(map[string]map[string]string)
+		cfg.Targets = make(map[string]map[string]interface{})
 		cfg.CurrentTarget = NoTarget
 	} else if cfg.CurrentTarget == NoTarget || cfg.Targets[cfg.CurrentTarget] == nil {
 		cfg.CurrentTarget = NoTarget
@@ -150,10 +151,20 @@ func (cfg *Config) hasTarget(name string) bool {
 }
 
 func (cfg *Config) Option(name string) string {
-	return cfg.Targets[cfg.CurrentTarget][name]
+	if value, ok := cfg.Targets[cfg.CurrentTarget][name].(string); ok {
+		return value
+	}
+	return ""
 }
 
-func (cfg *Config) WithOptions(options map[string]string) *Config {
+func (cfg *Config) OptionAsBool(name string) bool {
+	if value, ok := cfg.Targets[cfg.CurrentTarget][name].(bool); ok {
+		return value
+	}
+	return false
+}
+
+func (cfg *Config) WithOptions(options map[string]interface{}) *Config {
 	for k, v := range options {
 		cfg.Targets[cfg.CurrentTarget][k] = v
 	}
@@ -254,9 +265,9 @@ func (cfg *Config) SetTarget(url, name string, insecureSkipVerify bool, checkURL
 	}
 
 	cfg.CurrentTarget = name
-	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: ensureFullURL(url), HostMode: hostMode}
+	cfg.Targets[cfg.CurrentTarget] = map[string]interface{}{HostOption: ensureFullURL(url), HostMode: hostMode}
 	if insecureSkipVerify {
-		cfg.Targets[cfg.CurrentTarget][InsecureSkipVerifyOption] = "yes"
+		cfg.Targets[cfg.CurrentTarget][InsecureSkipVerifyOption] = true
 	}
 
 	if (checkURL == nil || checkURL(cfg, &insecureSkipVerify)) && cfg.Save() {

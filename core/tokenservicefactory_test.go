@@ -16,17 +16,18 @@ limitations under the License.
 package core
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	. "github.com/vmware/priam/util"
-	"testing"
 )
 
 func TestTenantInUrlTokenService(t *testing.T) {
 	factory := &TokenServiceFactoryImpl{}
 	cfg := configFor(TenantInHost)
 	cfg.CurrentTarget = "current"
-	cfg.Targets = make(map[string]map[string]string)
-	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: "full-url", HostMode: "tenant-in-host"}
+	cfg.Targets = make(map[string]map[string]interface{})
+	cfg.Targets[cfg.CurrentTarget] = map[string]interface{}{HostOption: "full-url", HostMode: "tenant-in-host"}
 
 	svc, ok := factory.GetTokenService(cfg, "id", "secret").(TokenService)
 
@@ -47,7 +48,7 @@ func TestTenantInPathTokenService(t *testing.T) {
 func configFor(mode string) *Config {
 	cfg := &Config{}
 	cfg.CurrentTarget = "current"
-	cfg.Targets = make(map[string]map[string]string)
-	cfg.Targets[cfg.CurrentTarget] = map[string]string{HostOption: "full-url", HostMode: mode}
+	cfg.Targets = make(map[string]map[string]interface{})
+	cfg.Targets[cfg.CurrentTarget] = map[string]interface{}{HostOption: "full-url", HostMode: mode}
 	return cfg
 }

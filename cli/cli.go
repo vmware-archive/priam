@@ -115,8 +115,8 @@ func InitCtx(cfg *Config, authn bool, insecureSkipVerify *bool) *HttpContext {
 	if cfg.IsTenantInHost() {
 		basePath = "/SAAS" + vidmBasePath
 	}
-	// insecureSkipVerify not nil when passed as a flag on the command-line which takes precedence over the options
-	skipVerify := cfg.Option(InsecureSkipVerifyOption) == "yes" || cfg.Option(InsecureSkipVerifyOption) == "true" // TODO support boolean values in the target options ?
+	skipVerify := cfg.OptionAsBool(InsecureSkipVerifyOption)
+	// insecureSkipVerify is not nil when passed as a flag on the command-line and takes precedence over the options
 	if insecureSkipVerify != nil {
 		skipVerify = *insecureSkipVerify
 	}
@@ -474,7 +474,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 							return nil
 						}
 					}
-					opts := map[string]string{accessTokenTypeOption: tokenInfo.AccessTokenType,
+					opts := map[string]interface{}{accessTokenTypeOption: tokenInfo.AccessTokenType,
 						accessTokenOption: tokenInfo.AccessToken, refreshTokenOption: tokenInfo.RefreshToken,
 						idTokenOption: tokenInfo.IDToken}
 					if cfg.WithOptions(opts).Save() {
