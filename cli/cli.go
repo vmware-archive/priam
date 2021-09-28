@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2016, 2018 VMware, Inc. All Rights Reserved.
+Copyright (c) 2016, 2018, 2021 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,6 +11,9 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+Version Change Summary:
+1.1.0 - 09/28/2021 - Replaced jwt-go with golang-jwt/jwt module.
 */
 
 package cli
@@ -243,7 +246,7 @@ func Priam(args []string, defaultCfgFile string, infoW, errorW io.Writer) {
 	app := cli.NewApp()
 	app.Name, app.Usage = filepath.Base(args[0]), "a utility to interact with VMware Identity Manager"
 	app.Email, app.Author, app.Writer, app.ErrWriter = "", "", infoW, errorW
-	app.Action, app.Version = cli.ShowAppHelp, "1.0.0"
+	app.Action, app.Version = cli.ShowAppHelp, "1.1.0"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{Name: "config", Usage: "specify config file. Def: " + defaultCfgFile},
 		cli.BoolFlag{Name: "debug, d", Usage: "print debug output"},
