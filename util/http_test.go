@@ -16,9 +16,10 @@ limitations under the License.
 package util
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	. "github.com/vmware/priam/testaid"
-	"testing"
 )
 
 func TestHttpGet(t *testing.T) {
@@ -28,8 +29,30 @@ func TestHttpGet(t *testing.T) {
 	}
 	testpath, output, expected := "/testpath", "", "ok"
 	srv := StartTstServer(t, map[string]TstHandler{"GET" + testpath: h})
-	ctx := NewHttpContext(NewLogr(), srv.URL, "", "")
+	ctx := NewHttpContext(NewLogr(), srv.URL, "", "", false)
 	err := ctx.Request("GET", testpath, nil, &output)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, output)
+}
+
+func TestHttpsGet(t *testing.T) {
+	h := func(t *testing.T, req *TstReq) *TstReply {
+		assert.Empty(t, req.Input)
+		return &TstReply{Output: "ok", ContentType: "text/plain"}
+	}
+	testpath, output, expected := "/testpath", "", "ok"
+	srv := StartTstTLSServer(t, map[string]TstHandler{"GET" + testpath: h})
+
+	t.Run("TestNewHttpContextWithInsecureSkipVerify", func(t *testing.T) {
+		ctx := NewHttpContext(NewLogr(), srv.URL, "", "", true)
+		err := ctx.Request("GET", testpath, nil, &output)
+		assert.Nil(t, err)
+		assert.Equal(t, expected, output)
+	})
+
+	t.Run("TestNewHttpContextWithoutInsecureSkipVerify", func(t *testing.T) {
+		ctx := NewHttpContext(NewLogr(), srv.URL, "", "", false)
+		err := ctx.Request("GET", testpath, nil, &output)
+		assert.Contains(t, err.Error(), "x509: certificate signed by unknown authority")
+	})
 }

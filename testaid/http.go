@@ -17,12 +17,13 @@ package testaid
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type TstReq struct {
@@ -44,6 +45,14 @@ func stringOrDefault(v, dfault string) string {
 }
 
 func StartTstServer(t *testing.T, paths map[string]TstHandler) *httptest.Server {
+	return httptest.NewServer(makeTstHttpHandler(t, paths))
+}
+
+func StartTstTLSServer(t *testing.T, paths map[string]TstHandler) *httptest.Server {
+	return httptest.NewTLSServer(makeTstHttpHandler(t, paths))
+}
+
+func makeTstHttpHandler(t *testing.T, paths map[string]TstHandler) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		t.Logf("Request URL: '%s'\n", r.Method+r.URL.String())
 		if rbody, err := ioutil.ReadAll(r.Body); err != nil {
@@ -63,7 +72,7 @@ func StartTstServer(t *testing.T, paths map[string]TstHandler) *httptest.Server 
 			assert.Nil(t, err)
 		}
 	}
-	return httptest.NewServer(http.HandlerFunc(handler))
+	return http.HandlerFunc(handler)
 }
 
 // Returns an error with the given message

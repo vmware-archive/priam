@@ -19,6 +19,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -27,11 +33,8 @@ import (
 	"github.com/vmware/priam/mocks"
 	. "github.com/vmware/priam/testaid"
 	. "github.com/vmware/priam/util"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
+
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -270,6 +273,36 @@ func TestAddNewTargetSucceedsIfHealthCheckSucceeds(t *testing.T) {
 	defer srv.Close()
 	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon")
 	ctx.assertOnlyInfoContains("new target is: sassoon, " + srv.URL)
+
+	cfg := &Config{}
+	err := yaml.Unmarshal([]byte(ctx.cfg), cfg)
+	require.NoError(t, err)
+	require.Equal(t, nil, cfg.Targets[cfg.CurrentTarget][InsecureSkipVerifyOption])
+	require.Equal(t, false, cfg.OptionAsBool(InsecureSkipVerifyOption))
+	require.Equal(t, "", cfg.Option(InsecureSkipVerifyOption))
+}
+
+func TestAddNewHttpsTargetSucceedsWithInsecureSkipVerify(t *testing.T) {
+	paths := map[string]TstHandler{healthApi: healthHandler(true)}
+	srv := StartTstTLSServer(t, paths)
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", "--insecure-skip-verify", srv.URL, "sassoon")
+	ctx.assertOnlyInfoContains("new target is: sassoon, " + srv.URL)
+
+	cfg := &Config{}
+	err := yaml.Unmarshal([]byte(ctx.cfg), cfg)
+	require.NoError(t, err)
+	require.Equal(t, true, cfg.Targets[cfg.CurrentTarget][InsecureSkipVerifyOption])
+	require.Equal(t, true, cfg.OptionAsBool(InsecureSkipVerifyOption))
+}
+
+func TestAddNewHttpsTargetFailsWithoutInsecureSkipVerify(t *testing.T) {
+	paths := map[string]TstHandler{healthApi: healthHandler(true)}
+	srv := StartTstTLSServer(t, paths)
+	defer srv.Close()
+	ctx := runner(newTstCtx(t, tstSrvTgt(srv.URL)), "target", srv.URL, "sassoon")
+	ctx.assertOnlyErrContains("Error checking health of " + srv.URL)
+	ctx.assertOnlyErrContains("Error checking health of " + srv.URL + ": Get " + srv.URL + "/SAAS/jersey/manager/api/health: x509: certificate signed by unknown authority")
 }
 
 func TestHealth(t *testing.T) {

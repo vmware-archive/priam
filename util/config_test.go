@@ -17,12 +17,13 @@ package util
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	. "github.com/vmware/priam/testaid"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	. "github.com/vmware/priam/testaid"
 )
 
 func cfgTestSetup(t *testing.T) *Config {
@@ -126,7 +127,7 @@ func TestTargetDeleteCurrentNotSet(t *testing.T) {
 func TestTarget(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("", "", nil)
+	cfg.SetTarget("", "", false, nil)
 	assert.Contains(t, "current target is: familyCountDown, https://space.odyssey.example.com\n", cfg.Log.InfoString())
 }
 
@@ -176,14 +177,14 @@ func TestErrorWritingConfigFile(t *testing.T) {
 func TestDefaultHostModeIsTenantInHost(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("https://space.odyssey.example.com", "familyCountDown", nil)
+	cfg.SetTarget("https://space.odyssey.example.com", "familyCountDown", false, nil)
 	assert.True(t, cfg.IsTenantInHost(), "default host mode should be tenant in host")
 }
 
 func TestGetHostModeForTenantInPathFromConfig(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("https://earth.example.com", "staging", nil)
+	cfg.SetTarget("https://earth.example.com", "staging", false, nil)
 	assert.Contains(t, cfg.Log.InfoString(), "new target is: staging")
 	assert.False(t, cfg.IsTenantInHost(), "host mode should be tenant in path")
 }
@@ -191,7 +192,7 @@ func TestGetHostModeForTenantInPathFromConfig(t *testing.T) {
 func TestGetHostModeForTenantInHost(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("https://venus.example.com", "1", nil)
+	cfg.SetTarget("https://venus.example.com", "1", false, nil)
 	assert.Equal(t, cfg.Targets[cfg.CurrentTarget][HostMode], "tenant-in-host")
 	assert.True(t, cfg.IsTenantInHost(), "host mode should be tenant in host")
 }
@@ -199,14 +200,14 @@ func TestGetHostModeForTenantInHost(t *testing.T) {
 func TestUnknownModeLeadsToTenantInHost(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("https://disney.princess.com", "beautyOnTheBeach", nil)
+	cfg.SetTarget("https://disney.princess.com", "beautyOnTheBeach", false, nil)
 	assert.True(t, cfg.IsTenantInHost(), "host mode should be tenant in host")
 }
 
 func TestCanDetectTenantInPathMode(t *testing.T) {
 	cfg := cfgTestSetup(t)
 	defer os.Remove(cfg.fileName)
-	cfg.SetTarget("https://hello.me.com/SAAS/t/foo", "", nil)
+	cfg.SetTarget("https://hello.me.com/SAAS/t/foo", "", false, nil)
 	assert.Contains(t, cfg.Log.InfoString(), "Mode detected: tenant-in-path")
 	assert.False(t, cfg.IsTenantInHost(), "host mode should be tenant in path")
 }
